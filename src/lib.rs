@@ -12,9 +12,11 @@
 use std::fmt;
 
 pub mod ast;
+pub mod environment;
 pub mod lexer;
 pub mod parser;
 pub mod token;
+pub mod value;
 
 /// The MiruScriptX version, taken from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
