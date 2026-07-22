@@ -494,3 +494,193 @@ impl Parser {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{BinaryOp, Expr, LogicalOp, StmtKind, UnaryOp};
+    use crate::lexer::Lexer;
+
+    fn parse_program(source: &str) -> Vec<Stmt> {
+        let tokens = Lexer::tokenize(source).expect("source should tokenize");
+        Parser::parse(tokens).expect("source should parse")
+    }
+
+    fn parse_expr(source: &str) -> Expr {
+        let mut statements = parse_program(source);
+        assert_eq!(statements.len(), 1, "expected a single statement");
+        match statements.remove(0).kind {
+            StmtKind::Expr(expr) => expr,
+            other => panic!("expected an expression statement, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_let_statement() {
+        let statements = parse_program("let x = 1 + 2");
+        match &statements[0].kind {
+            StmtKind::Let { name, value } => {
+                assert_eq!(name, "x");
+                assert_eq!(
+                    *value,
+                    Expr::Binary {
+                        op: BinaryOp::Add,
+                        left: Box::new(Expr::Int(1)),
+                        right: Box::new(Expr::Int(2)),
+                    }
+                );
+            }
+            other => panic!("expected a let statement, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn multiplication_binds_tighter_than_addition() {
+        assert_eq!(
+            parse_expr("1 + 2 * 3"),
+            Expr::Binary {
+                op: BinaryOp::Add,
+                left: Box::new(Expr::Int(1)),
+                right: Box::new(Expr::Binary {
+                    op: BinaryOp::Multiply,
+                    left: Box::new(Expr::Int(2)),
+                    right: Box::new(Expr::Int(3)),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn subtraction_is_left_associative() {
+        assert_eq!(
+            parse_expr("1 - 2 - 3"),
+            Expr::Binary {
+                op: BinaryOp::Subtract,
+                left: Box::new(Expr::Binary {
+                    op: BinaryOp::Subtract,
+                    left: Box::new(Expr::Int(1)),
+                    right: Box::new(Expr::Int(2)),
+                }),
+                right: Box::new(Expr::Int(3)),
+            }
+        );
+    }
+
+    #[test]
+    fn unary_negation_binds_tighter_than_multiplication() {
+        assert_eq!(
+            parse_expr("-2 * 3"),
+            Expr::Binary {
+                op: BinaryOp::Multiply,
+                left: Box::new(Expr::Unary {
+                    op: UnaryOp::Negate,
+                    operand: Box::new(Expr::Int(2)),
+                }),
+                right: Box::new(Expr::Int(3)),
+            }
+        );
+    }
+
+    #[test]
+    fn logical_and_binds_tighter_than_or() {
+        assert_eq!(
+            parse_expr("a || b && c"),
+            Expr::Logical {
+                op: LogicalOp::Or,
+                left: Box::new(Expr::Identifier("a".to_string())),
+                right: Box::new(Expr::Logical {
+                    op: LogicalOp::And,
+                    left: Box::new(Expr::Identifier("b".to_string())),
+                    right: Box::new(Expr::Identifier("c".to_string())),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_call_then_index() {
+        assert_eq!(
+            parse_expr("f(1)[0]"),
+            Expr::Index {
+                target: Box::new(Expr::Call {
+                    callee: Box::new(Expr::Identifier("f".to_string())),
+                    arguments: vec![Expr::Int(1)],
+                }),
+                index: Box::new(Expr::Int(0)),
+            }
+        );
+    }
+
+    #[test]
+    fn parses_array_literal() {
+        assert_eq!(
+            parse_expr("[1, 2, 3]"),
+            Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)])
+        );
+    }
+
+    #[test]
+    fn parses_function_declaration() {
+        let statements = parse_program("fn add(a, b) {\n  return a + b\n}");
+        match &statements[0].kind {
+            StmtKind::Function { name, params, body } => {
+                assert_eq!(name, "add");
+                assert_eq!(params, &vec!["a".to_string(), "b".to_string()]);
+                assert_eq!(body.len(), 1);
+                assert!(matches!(body[0].kind, StmtKind::Return(Some(_))));
+            }
+            other => panic!("expected a function declaration, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_if_else_if_chain() {
+        let statements = parse_program("if a { 1 } else if b { 2 } else { 3 }");
+        match &statements[0].kind {
+            StmtKind::If {
+                else_branch: Some(else_statements),
+                ..
+            } => {
+                assert_eq!(else_statements.len(), 1);
+                assert!(matches!(else_statements[0].kind, StmtKind::If { .. }));
+            }
+            other => panic!("expected an if with an else branch, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_for_in_loop() {
+        let statements = parse_program("for n in names {\n  print(n)\n}");
+        match &statements[0].kind {
+            StmtKind::For {
+                name,
+                iterable,
+                body,
+            } => {
+                assert_eq!(name, "n");
+                assert_eq!(*iterable, Expr::Identifier("names".to_string()));
+                assert_eq!(body.len(), 1);
+            }
+            other => panic!("expected a for loop, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_assignment() {
+        let statements = parse_program("x = 5");
+        match &statements[0].kind {
+            StmtKind::Assign { target, value } => {
+                assert_eq!(*target, Expr::Identifier("x".to_string()));
+                assert_eq!(*value, Expr::Int(5));
+            }
+            other => panic!("expected an assignment, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reports_missing_expression() {
+        let tokens = Lexer::tokenize("let x =").expect("lexes");
+        let err = Parser::parse(tokens).unwrap_err();
+        assert!(err.message.contains("expected an expression"));
+    }
+}
