@@ -1,0 +1,22 @@
+[package]
+name = "miruscriptx"
+version = "0.1.1"
+edition = "2021"
+description = "MiruScriptX: a small, general-purpose scripting language written in Rust."
+license = "MIT"
+authors = ["Stiven Gjekaj"]
+repository = "https://github.com/stiven-gjekaj/miruscriptx"
+readme = "README.md"
+keywords = ["language", "interpreter", "scripting"]
+categories = ["compilers"]
+
+[lib]
+name = "miruscriptx"
+path = "src/lib.rs"
+
+[[bin]]
+name = "miru"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
