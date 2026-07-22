@@ -321,3 +321,147 @@ impl Lexer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::token::TokenKind;
+
+    fn kinds(source: &str) -> Vec<TokenKind> {
+        Lexer::tokenize(source)
+            .expect("source should tokenize")
+            .into_iter()
+            .map(|token| token.kind)
+            .collect()
+    }
+
+    #[test]
+    fn tokenizes_integers_and_floats() {
+        assert_eq!(
+            kinds("1 42 2.5"),
+            vec![
+                TokenKind::Int(1),
+                TokenKind::Int(42),
+                TokenKind::Float(2.5),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenizes_keywords_and_identifiers() {
+        assert_eq!(
+            kinds("fn add total"),
+            vec![
+                TokenKind::Fn,
+                TokenKind::Ident("add".to_string()),
+                TokenKind::Ident("total".to_string()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenizes_two_character_operators() {
+        assert_eq!(
+            kinds("== != <= >= && ||"),
+            vec![
+                TokenKind::Eq,
+                TokenKind::NotEq,
+                TokenKind::LtEq,
+                TokenKind::GtEq,
+                TokenKind::And,
+                TokenKind::Or,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn single_equals_is_assignment() {
+        assert_eq!(
+            kinds("x = 1"),
+            vec![
+                TokenKind::Ident("x".to_string()),
+                TokenKind::Assign,
+                TokenKind::Int(1),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_string_escapes() {
+        assert_eq!(
+            kinds("\"a\\nb\\t\\\"c\""),
+            vec![TokenKind::Str("a\nb\t\"c".to_string()), TokenKind::Eof]
+        );
+    }
+
+    #[test]
+    fn skips_line_comments() {
+        assert_eq!(
+            kinds("1 // this is ignored\n2"),
+            vec![
+                TokenKind::Int(1),
+                TokenKind::Newline,
+                TokenKind::Int(2),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn semicolons_act_as_newlines() {
+        assert_eq!(
+            kinds("1;2"),
+            vec![
+                TokenKind::Int(1),
+                TokenKind::Newline,
+                TokenKind::Int(2),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn newlines_are_suppressed_inside_brackets() {
+        assert_eq!(
+            kinds("[\n  1,\n  2,\n]"),
+            vec![
+                TokenKind::LBracket,
+                TokenKind::Int(1),
+                TokenKind::Comma,
+                TokenKind::Int(2),
+                TokenKind::Comma,
+                TokenKind::RBracket,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn tracks_line_numbers_across_blank_lines() {
+        let tokens = Lexer::tokenize("1\n\n2").expect("tokenizes");
+        assert_eq!(tokens[0].kind, TokenKind::Int(1));
+        assert_eq!(tokens[0].line, 1);
+        let two = tokens
+            .iter()
+            .find(|token| token.kind == TokenKind::Int(2))
+            .expect("has a second integer");
+        assert_eq!(two.line, 3);
+    }
+
+    #[test]
+    fn reports_unterminated_string() {
+        let err = Lexer::tokenize("\"oops").unwrap_err();
+        assert!(err.message.contains("unterminated"));
+    }
+
+    #[test]
+    fn reports_unexpected_character_with_line() {
+        let err = Lexer::tokenize("1\n@").unwrap_err();
+        assert_eq!(err.line, 2);
+        assert!(err.message.contains("unexpected character"));
+    }
+}
