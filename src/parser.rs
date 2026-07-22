@@ -25,9 +25,12 @@ impl Parser {
         let mut statements = Vec::new();
         self.skip_newlines();
         while !self.is_at_end() {
-            statements.push(self.statement()?);
-            self.consume_terminator()?;
+            let stmt = self.statement()?;
+            if !Parser::ends_with_block(&stmt.kind) {
+                self.consume_terminator()?;
+            }
             self.skip_newlines();
+            statements.push(stmt);
         }
         Ok(statements)
     }
@@ -165,9 +168,12 @@ impl Parser {
         let mut statements = Vec::new();
         self.skip_newlines();
         while !self.check(&TokenKind::RBrace) && !self.is_at_end() {
-            statements.push(self.statement()?);
-            self.consume_terminator()?;
+            let stmt = self.statement()?;
+            if !Parser::ends_with_block(&stmt.kind) {
+                self.consume_terminator()?;
+            }
             self.skip_newlines();
+            statements.push(stmt);
         }
         self.expect(TokenKind::RBrace, "to close a block")?;
         Ok(statements)
@@ -443,6 +449,19 @@ impl Parser {
         }
     }
 
+    /// Statements that end in a `}` (a block) do not need a following newline or
+    /// `;` before the next statement, so one-liners like
+    /// `if c { return 1 } return 2` parse cleanly.
+    fn ends_with_block(kind: &StmtKind) -> bool {
+        matches!(
+            kind,
+            StmtKind::If { .. }
+                | StmtKind::While { .. }
+                | StmtKind::For { .. }
+                | StmtKind::Function { .. }
+        )
+    }
+
     fn consume_terminator(&mut self) -> Result<(), MiruError> {
         match self.peek_kind() {
             TokenKind::Newline => {
@@ -682,5 +701,14 @@ mod tests {
         let tokens = Lexer::tokenize("let x =").expect("lexes");
         let err = Parser::parse(tokens).unwrap_err();
         assert!(err.message.contains("expected an expression"));
+    }
+
+    #[test]
+    fn a_statement_may_follow_a_block_on_one_line() {
+        let statements = parse_program("fn f(n) { if n < 1 { return 0 } return 1 }");
+        match &statements[0].kind {
+            StmtKind::Function { body, .. } => assert_eq!(body.len(), 2),
+            other => panic!("expected a function, found {other:?}"),
+        }
     }
 }
