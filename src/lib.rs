@@ -13,6 +13,7 @@ use std::fmt;
 
 pub mod ast;
 pub mod environment;
+pub mod interpreter;
 pub mod lexer;
 pub mod parser;
 pub mod token;
@@ -20,6 +21,12 @@ pub mod value;
 
 /// The MiruScriptX version, taken from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Lex and parse a source string into a program (a list of statements).
+pub fn parse_program(source: &str) -> Result<Vec<ast::Stmt>, MiruError> {
+    let tokens = lexer::Lexer::tokenize(source)?;
+    parser::Parser::parse(tokens)
+}
 
 /// An error produced anywhere in the pipeline (lexing, parsing, or running),
 /// tagged with the 1-based source line where it occurred (0 when unknown).
