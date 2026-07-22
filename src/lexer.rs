@@ -163,24 +163,21 @@ impl Lexer {
                 if self.match_char('&') {
                     TokenKind::And
                 } else {
-                    return Err(MiruError::new(
-                        line,
-                        "unexpected '&' (did you mean '&&'?)",
-                    ));
+                    return Err(MiruError::new(line, "unexpected '&' (did you mean '&&'?)"));
                 }
             }
             '|' => {
                 if self.match_char('|') {
                     TokenKind::Or
                 } else {
-                    return Err(MiruError::new(
-                        line,
-                        "unexpected '|' (did you mean '||'?)",
-                    ));
+                    return Err(MiruError::new(line, "unexpected '|' (did you mean '||'?)"));
                 }
             }
             other => {
-                return Err(MiruError::new(line, format!("unexpected character '{other}'")));
+                return Err(MiruError::new(
+                    line,
+                    format!("unexpected character '{other}'"),
+                ));
             }
         };
         Ok(Token::new(kind, line))

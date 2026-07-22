@@ -90,10 +90,12 @@ fn range(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
         [Value::Int(end)] => (0i64, *end),
         [Value::Int(start), Value::Int(end)] => (*start, *end),
         [_] | [_, _] => return Err("range expects integer arguments".to_string()),
-        _ => return Err(format!(
-            "range expects 1 or 2 arguments but got {}",
-            args.len()
-        )),
+        _ => {
+            return Err(format!(
+                "range expects 1 or 2 arguments but got {}",
+                args.len()
+            ))
+        }
     };
     let mut items = Vec::new();
     let mut current = start;

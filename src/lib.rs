@@ -118,7 +118,10 @@ mod tests {
 
     #[test]
     fn len_of_strings_and_arrays() {
-        assert_eq!(out("print(len(\"hello\"))\nprint(len([1, 2, 3]))"), "5\n3\n");
+        assert_eq!(
+            out("print(len(\"hello\"))\nprint(len([1, 2, 3]))"),
+            "5\n3\n"
+        );
     }
 
     #[test]

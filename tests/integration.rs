@@ -65,5 +65,8 @@ fn runtime_error_reports_line_and_fails() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).expect("utf-8");
     assert!(stderr.contains("line 2"), "stderr was: {stderr}");
-    assert!(stderr.contains("undefined variable 'b'"), "stderr was: {stderr}");
+    assert!(
+        stderr.contains("undefined variable 'b'"),
+        "stderr was: {stderr}"
+    );
 }

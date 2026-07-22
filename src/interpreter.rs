@@ -203,9 +203,10 @@ impl Interpreter {
                 let target_value = self.eval(target, env)?;
                 let index_value = self.eval(index, env)?;
                 let Value::Array(items) = target_value else {
-                    return Err(
-                        self.error(format!("cannot index-assign to a {}", target_value.type_name()))
-                    );
+                    return Err(self.error(format!(
+                        "cannot index-assign to a {}",
+                        target_value.type_name()
+                    )));
                 };
                 let len = items.borrow().len();
                 let idx = self.as_index(&index_value, len)?;
@@ -383,10 +384,12 @@ impl Interpreter {
             BinaryOp::Equal => Ok(Value::Bool(left.equals(&right))),
             BinaryOp::NotEqual => Ok(Value::Bool(!left.equals(&right))),
             BinaryOp::Less => Ok(Value::Bool(self.ordering(left, right)? == Ordering::Less)),
-            BinaryOp::Greater => Ok(Value::Bool(self.ordering(left, right)? == Ordering::Greater)),
-            BinaryOp::LessEqual => {
-                Ok(Value::Bool(self.ordering(left, right)? != Ordering::Greater))
-            }
+            BinaryOp::Greater => Ok(Value::Bool(
+                self.ordering(left, right)? == Ordering::Greater,
+            )),
+            BinaryOp::LessEqual => Ok(Value::Bool(
+                self.ordering(left, right)? != Ordering::Greater,
+            )),
             BinaryOp::GreaterEqual => {
                 Ok(Value::Bool(self.ordering(left, right)? != Ordering::Less))
             }
@@ -465,7 +468,9 @@ mod tests {
     fn run(source: &str) -> Value {
         let program = crate::parse_program(source).expect("source should parse");
         let mut interpreter = Interpreter::with_output(Box::new(Vec::new()));
-        interpreter.run_program(&program).expect("program should run")
+        interpreter
+            .run_program(&program)
+            .expect("program should run")
     }
 
     fn repr(source: &str) -> String {
@@ -476,7 +481,10 @@ mod tests {
         let program = crate::parse_program(source).expect("source should parse");
         let mut interpreter = Interpreter::with_output(Box::new(Vec::new()));
         match interpreter.run_program(&program) {
-            Ok(value) => panic!("expected an error but the program returned {}", value.repr()),
+            Ok(value) => panic!(
+                "expected an error but the program returned {}",
+                value.repr()
+            ),
             Err(err) => err,
         }
     }

@@ -131,10 +131,7 @@ impl Parser {
         let name = self.expect_identifier("after 'fn'")?;
         let params = self.parse_params()?;
         let body = self.block()?;
-        Ok(Stmt::new(
-            StmtKind::Function { name, params, body },
-            line,
-        ))
+        Ok(Stmt::new(StmtKind::Function { name, params, body }, line))
     }
 
     fn expr_or_assign_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {

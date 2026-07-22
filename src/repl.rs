@@ -20,7 +20,11 @@ pub fn run() -> ExitCode {
     let mut buffer = String::new();
 
     loop {
-        let prompt = if buffer.is_empty() { "miru> " } else { "...   " };
+        let prompt = if buffer.is_empty() {
+            "miru> "
+        } else {
+            "...   "
+        };
         print!("{prompt}");
         let _ = io::stdout().flush();
 
