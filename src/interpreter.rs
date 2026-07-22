@@ -455,3 +455,145 @@ impl Interpreter {
         MiruError::new(self.line, message)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::Value;
+
+    fn run(source: &str) -> Value {
+        let program = crate::parse_program(source).expect("source should parse");
+        let mut interpreter = Interpreter::with_output(Box::new(Vec::new()));
+        interpreter.run_program(&program).expect("program should run")
+    }
+
+    fn repr(source: &str) -> String {
+        run(source).repr()
+    }
+
+    fn error(source: &str) -> MiruError {
+        let program = crate::parse_program(source).expect("source should parse");
+        let mut interpreter = Interpreter::with_output(Box::new(Vec::new()));
+        match interpreter.run_program(&program) {
+            Ok(value) => panic!("expected an error but the program returned {}", value.repr()),
+            Err(err) => err,
+        }
+    }
+
+    #[test]
+    fn arithmetic_precedence() {
+        assert_eq!(repr("1 + 2 * 3"), "7");
+        assert_eq!(repr("(1 + 2) * 3"), "9");
+    }
+
+    #[test]
+    fn integer_division_truncates_but_floats_do_not() {
+        assert_eq!(repr("10 / 3"), "3");
+        assert_eq!(repr("10.0 / 4"), "2.5");
+    }
+
+    #[test]
+    fn numeric_promotion_produces_floats() {
+        assert_eq!(repr("2 + 3.0"), "5.0");
+        assert_eq!(repr("2.0"), "2.0");
+    }
+
+    #[test]
+    fn string_concatenation() {
+        assert_eq!(repr("\"Hello, \" + \"world\""), "\"Hello, world\"");
+    }
+
+    #[test]
+    fn comparisons_and_logic() {
+        assert_eq!(repr("1 < 2"), "true");
+        assert_eq!(repr("1 == 1.0"), "true");
+        assert_eq!(repr("true && false"), "false");
+        assert_eq!(repr("false || true"), "true");
+        assert_eq!(repr("!nil"), "true");
+    }
+
+    #[test]
+    fn variables_and_reassignment() {
+        assert_eq!(repr("let x = 5\nx = x + 1\nx"), "6");
+    }
+
+    #[test]
+    fn arrays_index_and_assign() {
+        assert_eq!(repr("let a = [1, 2, 3]\na[1]"), "2");
+        assert_eq!(repr("let a = [1, 2, 3]\na[0] = 9\na"), "[9, 2, 3]");
+    }
+
+    #[test]
+    fn for_loop_sums_an_array() {
+        assert_eq!(
+            repr("let total = 0\nfor x in [1, 2, 3, 4] {\n  total = total + x\n}\ntotal"),
+            "10"
+        );
+    }
+
+    #[test]
+    fn while_loop_counts() {
+        assert_eq!(
+            repr("let i = 0\nlet sum = 0\nwhile i < 5 {\n  sum = sum + i\n  i = i + 1\n}\nsum"),
+            "10"
+        );
+    }
+
+    #[test]
+    fn if_else_selects_a_branch() {
+        let source =
+            "let out = \"\"\nlet x = 7\nif x % 2 == 0 {\n  out = \"even\"\n} else {\n  out = \"odd\"\n}\nout";
+        assert_eq!(repr(source), "\"odd\"");
+    }
+
+    #[test]
+    fn recursive_fibonacci() {
+        let source = "fn fib(n) {\n  if n < 2 {\n    return n\n  }\n  return fib(n - 1) + fib(n - 2)\n}\nfib(10)";
+        assert_eq!(repr(source), "55");
+    }
+
+    #[test]
+    fn closures_capture_their_environment() {
+        let source =
+            "fn make_adder(x) {\n  return fn(y) {\n    return x + y\n  }\n}\nlet add5 = make_adder(5)\nadd5(3)";
+        assert_eq!(repr(source), "8");
+    }
+
+    #[test]
+    fn a_function_without_return_yields_nil() {
+        assert_eq!(repr("fn noop() {}\nnoop()"), "nil");
+    }
+
+    #[test]
+    fn reports_undefined_variable_with_line() {
+        let err = error("let a = 1\nb");
+        assert_eq!(err.line, 2);
+        assert!(err.message.contains("undefined variable 'b'"));
+    }
+
+    #[test]
+    fn reports_division_by_zero() {
+        assert!(error("1 / 0").message.contains("division by zero"));
+    }
+
+    #[test]
+    fn reports_type_errors() {
+        assert!(error("\"a\" - 1").message.contains("cannot subtract"));
+    }
+
+    #[test]
+    fn reports_index_out_of_range() {
+        assert!(error("let a = [1]\na[5]").message.contains("out of range"));
+    }
+
+    #[test]
+    fn reports_wrong_argument_count() {
+        let err = error("fn f(a) {\n  return a\n}\nf(1, 2)");
+        assert!(err.message.contains("expects 1 argument"));
+    }
+
+    #[test]
+    fn reports_calling_a_non_function() {
+        assert!(error("let x = 5\nx()").message.contains("not callable"));
+    }
+}
