@@ -1,0 +1,12 @@
+// greet.msx
+// Say hello to every name in a list.
+// Run with: miru run examples/greet.msx
+
+fn greet(name) {
+  return "Hello, " + name + "!"
+}
+
+let names = ["Aiko", "Ken"]
+for n in names {
+  print(greet(n))
+}

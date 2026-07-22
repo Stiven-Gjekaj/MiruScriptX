@@ -1,0 +1,14 @@
+// fib.msx
+// Print the first ten Fibonacci numbers with a recursive function.
+// Run with: miru run examples/fib.msx
+
+fn fib(n) {
+  if n < 2 {
+    return n
+  }
+  return fib(n - 1) + fib(n - 2)
+}
+
+for i in range(10) {
+  print(fib(i))
+}

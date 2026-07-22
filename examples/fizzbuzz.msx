@@ -1,0 +1,15 @@
+// fizzbuzz.msx
+// The classic FizzBuzz, from 1 to 15.
+// Run with: miru run examples/fizzbuzz.msx
+
+for n in range(1, 16) {
+  if n % 15 == 0 {
+    print("FizzBuzz")
+  } else if n % 3 == 0 {
+    print("Fizz")
+  } else if n % 5 == 0 {
+    print("Buzz")
+  } else {
+    print(n)
+  }
+}
