@@ -55,6 +55,7 @@ impl Interpreter {
     /// the library's capture helpers).
     pub fn with_output(out: Box<dyn Write>) -> Interpreter {
         let globals = environment::new_global();
+        crate::builtins::register(&globals);
         Interpreter {
             globals,
             out,
