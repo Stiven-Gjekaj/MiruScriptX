@@ -273,12 +273,13 @@ mod tests {
         assert_eq!(out(source), "[\"a\", \"b\"]\n[1, 2]\ntrue\nfalse\n2\n");
     }
 
-    const EXAMPLES: [&str; 5] = [
+    const EXAMPLES: [&str; 6] = [
         include_str!("../examples/greet.miru"),
         include_str!("../examples/fib.miru"),
         include_str!("../examples/fizzbuzz.miru"),
         include_str!("../examples/contacts.miru"),
         include_str!("../examples/greeter.miru"),
+        include_str!("../examples/transform.miru"),
     ];
 
     #[test]

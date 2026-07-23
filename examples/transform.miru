@@ -1,0 +1,23 @@
+// transform.miru
+// Reshape a list of numbers with map, filter, and reduce.
+// Run with: miru run examples/transform.miru
+
+let nums = [1, 2, 3, 4, 5, 6]
+
+// Double every number.
+let doubled = map(nums, fn(x) { return x * 2 })
+print("doubled:", doubled)
+
+// Keep only the even numbers.
+let evens = filter(nums, fn(x) { return x % 2 == 0 })
+print("evens:", evens)
+
+// Add them all up, starting from zero.
+let total = reduce(nums, fn(acc, x) { return acc + x }, 0)
+print("sum:", total)
+
+// Chain them: the sum of the squares of the odd numbers.
+let odds = filter(nums, fn(x) { return x % 2 == 1 })
+let squares = map(odds, fn(x) { return x * x })
+let sum_of_squares = reduce(squares, fn(acc, x) { return acc + x }, 0)
+print("sum of odd squares:", sum_of_squares)

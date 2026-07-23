@@ -45,6 +45,13 @@ fn contacts_example_output() {
 }
 
 #[test]
+fn transform_example_output() {
+    let expected =
+        "doubled: [2, 4, 6, 8, 10, 12]\nevens: [2, 4, 6]\nsum: 21\nsum of odd squares: 35\n";
+    assert_eq!(run_example("transform.miru"), expected);
+}
+
+#[test]
 fn greeter_example_reads_stdin() {
     use std::io::Write;
 
