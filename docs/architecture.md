@@ -4,9 +4,10 @@
 
 # Architecture
 
-MiruScriptX is a tree-walking interpreter written in Rust with zero external
-dependencies. This document explains how the pieces fit together, so you can
-find your way around the code and extend it with confidence.
+MiruScriptX is a tree-walking interpreter written from scratch in Rust, with a
+single runtime dependency (rustyline, used only for REPL line editing and
+history). This document explains how the pieces fit together, so you can find
+your way around the code and extend it with confidence.
 
 ## The pipeline
 

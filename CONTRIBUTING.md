@@ -52,8 +52,9 @@ Every change must keep the project green. Run these locally, exactly as CI does:
 
 - Match the surrounding code. The project favors small, focused functions and
   clear names over cleverness.
-- Keep the interpreter dependency-free. MiruScriptX uses only the Rust standard
-  library, and pull requests that add dependencies are unlikely to be merged.
+- Add dependencies sparingly. MiruScriptX keeps a small, curated dependency set
+  (currently just rustyline, for REPL history); a pull request that adds one
+  should justify the need and prefer the standard library where practical.
 - Write documentation and comments in plain prose. Do not use em-dashes or
   emoji in source, docs, commit messages, or examples.
 
