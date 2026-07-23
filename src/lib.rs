@@ -20,6 +20,7 @@ use crate::value::Input;
 pub mod ast;
 pub mod builtins;
 pub mod environment;
+pub mod formatter;
 pub mod interpreter;
 pub mod lexer;
 pub mod parser;
