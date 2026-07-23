@@ -1,9 +1,6 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/miru-dark.svg">
-  <img src="assets/miru-light.svg" alt="MiruScriptX" width="300">
-</picture>
+<img src="assets/Miru.png" alt="MiruScriptX" width="300">
 
 ### A small, general-purpose scripting language, written in Rust
 

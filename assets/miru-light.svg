@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 140" role="img" aria-label="MiruScriptX">
-  <title>MiruScriptX</title>
-  <polyline points="34,114 70,30 104,82 138,30 174,114"
-    fill="none" stroke="#1B1712" stroke-width="20"
-    stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="210" y="103" fill="#1B1712"
-    font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif"
-    font-size="76" font-weight="700" letter-spacing="4">MIRU</text>
-</svg>
