@@ -1,0 +1,15 @@
+// A tiny interactive program. Run it with `miru run examples/greeter.msx`
+// and type your name when prompted. Reading from standard input uses input().
+
+let raw = input("What is your name? ")
+if raw == nil {
+  // End of input (for example when nothing is piped in).
+  print("Goodbye!")
+} else {
+  let name = trim(raw)
+  if len(name) == 0 {
+    print("Hello there!")
+  } else {
+    print("Hello,", name + "!")
+  }
+}

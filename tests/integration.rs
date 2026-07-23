@@ -45,6 +45,31 @@ fn contacts_example_output() {
 }
 
 #[test]
+fn greeter_example_reads_stdin() {
+    use std::io::Write;
+
+    let mut child = miru()
+        .arg("run")
+        .arg("examples/greeter.msx")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(b"Aiko\n")
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("wait for miru");
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("output should be valid utf-8"),
+        "What is your name? Hello, Aiko!\n"
+    );
+}
+
+#[test]
 fn version_flag_prints_version() {
     let output = miru().arg("--version").output().expect("runs");
     assert!(output.status.success());
