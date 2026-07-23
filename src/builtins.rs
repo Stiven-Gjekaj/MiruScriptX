@@ -18,6 +18,9 @@ pub fn register(env: &Env) {
     define(env, "str", to_str);
     define(env, "type", type_of);
     define(env, "range", range);
+    define(env, "keys", keys);
+    define(env, "values", values);
+    define(env, "has", has);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -43,14 +46,15 @@ fn print(out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Nil)
 }
 
-/// `len(value)` returns the length of a string or array.
+/// `len(value)` returns the length of a string, array, or map.
 fn len(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     check_arity("len", &args, 1)?;
     match &args[0] {
         Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
         Value::Array(items) => Ok(Value::Int(items.borrow().len() as i64)),
+        Value::Map(entries) => Ok(Value::Int(entries.borrow().len() as i64)),
         other => Err(format!(
-            "len expects a string or array but got a {}",
+            "len expects a string, array, or map but got a {}",
             other.type_name()
         )),
     }
@@ -104,4 +108,56 @@ fn range(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
         current += 1;
     }
     Ok(Value::Array(Rc::new(RefCell::new(items))))
+}
+
+/// `keys(map)` returns an array of the map's keys, in sorted order.
+fn keys(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("keys", &args, 1)?;
+    match &args[0] {
+        Value::Map(entries) => {
+            let items: Vec<Value> = entries
+                .borrow()
+                .keys()
+                .map(|key| Value::Str(Rc::new(key.clone())))
+                .collect();
+            Ok(Value::Array(Rc::new(RefCell::new(items))))
+        }
+        other => Err(format!(
+            "keys expects a map but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `values(map)` returns an array of the map's values, in key order.
+fn values(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("values", &args, 1)?;
+    match &args[0] {
+        Value::Map(entries) => {
+            let items: Vec<Value> = entries.borrow().values().cloned().collect();
+            Ok(Value::Array(Rc::new(RefCell::new(items))))
+        }
+        other => Err(format!(
+            "values expects a map but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `has(map, key)` reports whether the map contains the given string key.
+fn has(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("has", &args, 2)?;
+    let key = match &args[1] {
+        Value::Str(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "has expects a string key but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    match &args[0] {
+        Value::Map(entries) => Ok(Value::Bool(entries.borrow().contains_key(&key))),
+        other => Err(format!("has expects a map but got a {}", other.type_name())),
+    }
 }

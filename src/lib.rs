@@ -147,4 +147,10 @@ mod tests {
     fn str_converts_and_concatenates() {
         assert_eq!(out("print(str(42) + \"!\")"), "42!\n");
     }
+
+    #[test]
+    fn map_builtins() {
+        let source = "let m = {\"b\": 2, \"a\": 1}\nprint(keys(m))\nprint(values(m))\nprint(has(m, \"a\"))\nprint(has(m, \"z\"))\nprint(len(m))";
+        assert_eq!(out(source), "[\"a\", \"b\"]\n[1, 2]\ntrue\nfalse\n2\n");
+    }
 }
