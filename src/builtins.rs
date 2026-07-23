@@ -27,6 +27,8 @@ pub fn register(env: &Env) {
     define(env, "replace", replace);
     define(env, "split", split);
     define(env, "join", join);
+    define(env, "contains", contains);
+    define(env, "find", find);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -250,6 +252,44 @@ fn join(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     }
 }
 
+/// `contains(seq, value)` reports whether a string contains a substring or an
+/// array contains an element equal to `value`.
+fn contains(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("contains", &args, 2)?;
+    match &args[0] {
+        Value::Str(s) => match &args[1] {
+            Value::Str(sub) => Ok(Value::Bool(s.contains(sub.as_str()))),
+            other => Err(format!(
+                "contains on a string expects a string but got a {}",
+                other.type_name()
+            )),
+        },
+        Value::Array(items) => Ok(Value::Bool(
+            items.borrow().iter().any(|item| item.equals(&args[1])),
+        )),
+        other => Err(format!(
+            "contains expects a string or array but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `find(s, sub)` returns the character index of the first `sub` in `s`, or -1
+/// when it is not present.
+fn find(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("find", &args, 2)?;
+    match (&args[0], &args[1]) {
+        (Value::Str(s), Value::Str(sub)) => {
+            let index = match s.find(sub.as_str()) {
+                Some(byte_index) => s[..byte_index].chars().count() as i64,
+                None => -1,
+            };
+            Ok(Value::Int(index))
+        }
+        _ => Err("find expects two string arguments".to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -300,5 +340,21 @@ mod tests {
     #[test]
     fn join_concatenates_with_separator() {
         assert_eq!(out("print(join([1, 2, 3], \"-\"))"), "1-2-3\n");
+    }
+
+    #[test]
+    fn contains_checks_substrings_and_membership() {
+        assert_eq!(
+            out("print(contains(\"hello\", \"ell\"), contains([1, 2], 2), contains([1, 2], 9))"),
+            "true true false\n"
+        );
+    }
+
+    #[test]
+    fn find_returns_char_index_or_negative_one() {
+        assert_eq!(
+            out("print(find(\"hello\", \"l\"), find(\"hello\", \"z\"))"),
+            "2 -1\n"
+        );
     }
 }
