@@ -169,19 +169,28 @@ impl Lexer {
                 if self.match_char('&') {
                     TokenKind::And
                 } else {
-                    return Err(MiruError::new(line, "unexpected '&' (did you mean '&&'?)"));
+                    return Err(MiruError::with_column(
+                        line,
+                        column,
+                        "unexpected '&' (did you mean '&&'?)",
+                    ));
                 }
             }
             '|' => {
                 if self.match_char('|') {
                     TokenKind::Or
                 } else {
-                    return Err(MiruError::new(line, "unexpected '|' (did you mean '||'?)"));
+                    return Err(MiruError::with_column(
+                        line,
+                        column,
+                        "unexpected '|' (did you mean '||'?)",
+                    ));
                 }
             }
             other => {
-                return Err(MiruError::new(
+                return Err(MiruError::with_column(
                     line,
+                    column,
                     format!("unexpected character '{other}'"),
                 ));
             }
@@ -216,13 +225,18 @@ impl Lexer {
         if is_float {
             match text.parse::<f64>() {
                 Ok(value) => Ok(Token::new(TokenKind::Float(value), line, column)),
-                Err(_) => Err(MiruError::new(line, format!("invalid number '{text}'"))),
+                Err(_) => Err(MiruError::with_column(
+                    line,
+                    column,
+                    format!("invalid number '{text}'"),
+                )),
             }
         } else {
             match text.parse::<i64>() {
                 Ok(value) => Ok(Token::new(TokenKind::Int(value), line, column)),
-                Err(_) => Err(MiruError::new(
+                Err(_) => Err(MiruError::with_column(
                     line,
+                    column,
                     format!("integer literal '{text}' is out of range"),
                 )),
             }
@@ -263,13 +277,23 @@ impl Lexer {
         let mut value = String::new();
         loop {
             match self.peek() {
-                None => return Err(MiruError::new(line, "unterminated string literal")),
+                None => {
+                    return Err(MiruError::with_column(
+                        line,
+                        column,
+                        "unterminated string literal",
+                    ))
+                }
                 Some('"') => {
                     self.advance();
                     break;
                 }
                 Some('\n') => {
-                    return Err(MiruError::new(line, "unterminated string literal"));
+                    return Err(MiruError::with_column(
+                        line,
+                        column,
+                        "unterminated string literal",
+                    ));
                 }
                 Some('\\') => {
                     self.advance();
@@ -281,13 +305,18 @@ impl Lexer {
                         Some('"') => value.push('"'),
                         Some('0') => value.push('\0'),
                         Some(other) => {
-                            return Err(MiruError::new(
+                            return Err(MiruError::with_column(
                                 line,
+                                column,
                                 format!("unknown escape sequence '\\{other}'"),
                             ));
                         }
                         None => {
-                            return Err(MiruError::new(line, "unterminated string literal"));
+                            return Err(MiruError::with_column(
+                                line,
+                                column,
+                                "unterminated string literal",
+                            ));
                         }
                     }
                     self.advance();
@@ -506,5 +535,12 @@ mod tests {
             .expect("has cd");
         assert_eq!(cd.line, 2);
         assert_eq!(cd.column, 3);
+    }
+
+    #[test]
+    fn lexer_error_carries_a_column() {
+        let err = Lexer::tokenize("  @").unwrap_err();
+        assert_eq!(err.line, 1);
+        assert_eq!(err.column, 3);
     }
 }
