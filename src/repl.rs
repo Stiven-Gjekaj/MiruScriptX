@@ -1,5 +1,6 @@
 //! The interactive read-eval-print loop for the `miru` binary.
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use rustyline::error::ReadlineError;
@@ -26,10 +27,16 @@ pub fn run() -> ExitCode {
         }
     };
 
+    let history = history_path();
+    if let Some(path) = &history {
+        // A missing history file on the first run is fine.
+        let _ = editor.load_history(path);
+    }
+
     let mut interpreter = Interpreter::new();
     let mut buffer = String::new();
 
-    loop {
+    let exit_code = loop {
         let prompt = if buffer.is_empty() {
             "miru> "
         } else {
@@ -46,20 +53,34 @@ pub fn run() -> ExitCode {
                 if source.trim().is_empty() {
                     continue;
                 }
-                // Record the input so the up arrow recalls it this session.
+                // Record the input so the up arrow recalls it, this session and
+                // future ones.
                 let _ = editor.add_history_entry(source.trim_end());
                 evaluate(&mut interpreter, &source);
             }
             // Ctrl-C discards the current (possibly multi-line) input.
             Err(ReadlineError::Interrupted) => buffer.clear(),
             // Ctrl-D exits.
-            Err(ReadlineError::Eof) => return ExitCode::SUCCESS,
+            Err(ReadlineError::Eof) => break ExitCode::SUCCESS,
             Err(err) => {
                 eprintln!("miru: input error: {err}");
-                return ExitCode::FAILURE;
+                break ExitCode::FAILURE;
             }
         }
+    };
+
+    if let Some(path) = &history {
+        let _ = editor.save_history(path);
     }
+    exit_code
+}
+
+/// The path to the REPL history file, `~/.miru_history` (or the Windows home
+/// equivalent). `None` when no home directory is known.
+fn history_path() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(|home| PathBuf::from(home).join(".miru_history"))
 }
 
 /// Parse and run one complete input, printing the result value or the error.
