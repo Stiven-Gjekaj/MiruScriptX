@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::rc::Rc;
 
-use crate::ast::{BinaryOp, Expr, LogicalOp, Stmt, StmtKind, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
 use crate::environment::{self, Env};
 use crate::value::{EmptyInput, Function, Input, Output, Value};
 use crate::MiruError;
@@ -35,6 +35,7 @@ pub struct Interpreter {
     out: Box<dyn Write>,
     input: Box<dyn Input>,
     line: usize,
+    column: usize,
 }
 
 impl Default for Interpreter {
@@ -65,6 +66,7 @@ impl Interpreter {
             out,
             input: Box::new(EmptyInput),
             line: 0,
+            column: 0,
         }
     }
 
@@ -212,15 +214,17 @@ impl Interpreter {
     }
 
     fn assign_target(&mut self, target: &Expr, value: Value, env: &Env) -> Result<(), MiruError> {
-        match target {
-            Expr::Identifier(name) => {
+        self.line = target.line;
+        self.column = target.column;
+        match &target.kind {
+            ExprKind::Identifier(name) => {
                 if environment::assign(env, name, value) {
                     Ok(())
                 } else {
                     Err(self.error(format!("cannot assign to undefined variable '{name}'")))
                 }
             }
-            Expr::Index { target, index } => {
+            ExprKind::Index { target, index } => {
                 let target_value = self.eval(target, env)?;
                 let index_value = self.eval(index, env)?;
                 match target_value {
@@ -236,6 +240,8 @@ impl Interpreter {
                         Ok(())
                     }
                     other => {
+                        self.line = target.line;
+                        self.column = target.column;
                         Err(self.error(format!("cannot index-assign to a {}", other.type_name())))
                     }
                 }
@@ -247,22 +253,24 @@ impl Interpreter {
     // --- Expressions ------------------------------------------------------
 
     fn eval(&mut self, expr: &Expr, env: &Env) -> Result<Value, MiruError> {
-        match expr {
-            Expr::Int(n) => Ok(Value::Int(*n)),
-            Expr::Float(f) => Ok(Value::Float(*f)),
-            Expr::Str(s) => Ok(Value::Str(Rc::new(s.clone()))),
-            Expr::Bool(b) => Ok(Value::Bool(*b)),
-            Expr::Nil => Ok(Value::Nil),
-            Expr::Identifier(name) => environment::get(env, name)
+        self.line = expr.line;
+        self.column = expr.column;
+        match &expr.kind {
+            ExprKind::Int(n) => Ok(Value::Int(*n)),
+            ExprKind::Float(f) => Ok(Value::Float(*f)),
+            ExprKind::Str(s) => Ok(Value::Str(Rc::new(s.clone()))),
+            ExprKind::Bool(b) => Ok(Value::Bool(*b)),
+            ExprKind::Nil => Ok(Value::Nil),
+            ExprKind::Identifier(name) => environment::get(env, name)
                 .ok_or_else(|| self.error(format!("undefined variable '{name}'"))),
-            Expr::Array(elements) => {
+            ExprKind::Array(elements) => {
                 let mut items = Vec::with_capacity(elements.len());
                 for element in elements {
                     items.push(self.eval(element, env)?);
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(items))))
             }
-            Expr::Map(entries) => {
+            ExprKind::Map(entries) => {
                 let mut map = BTreeMap::new();
                 for (key_expr, value_expr) in entries {
                     let key = self.eval(key_expr, env)?;
@@ -277,26 +285,32 @@ impl Interpreter {
                 }
                 Ok(Value::Map(Rc::new(RefCell::new(map))))
             }
-            Expr::Index { target, index } => self.eval_index(target, index, env),
-            Expr::Unary { op, operand } => {
+            ExprKind::Index { target, index } => self.eval_index(target, index, env),
+            ExprKind::Unary { op, operand } => {
                 let value = self.eval(operand, env)?;
+                self.line = expr.line;
+                self.column = expr.column;
                 self.eval_unary(*op, value)
             }
-            Expr::Binary { op, left, right } => {
+            ExprKind::Binary { op, left, right } => {
                 let left = self.eval(left, env)?;
                 let right = self.eval(right, env)?;
+                self.line = expr.line;
+                self.column = expr.column;
                 self.eval_binary(*op, left, right)
             }
-            Expr::Logical { op, left, right } => self.eval_logical(*op, left, right, env),
-            Expr::Call { callee, arguments } => {
+            ExprKind::Logical { op, left, right } => self.eval_logical(*op, left, right, env),
+            ExprKind::Call { callee, arguments } => {
                 let callee = self.eval(callee, env)?;
                 let mut args = Vec::with_capacity(arguments.len());
                 for argument in arguments {
                     args.push(self.eval(argument, env)?);
                 }
+                self.line = expr.line;
+                self.column = expr.column;
                 self.call(callee, args)
             }
-            Expr::Function { params, body } => Ok(Value::Function(Rc::new(Function {
+            ExprKind::Function { params, body } => Ok(Value::Function(Rc::new(Function {
                 name: None,
                 params: params.clone(),
                 body: body.clone(),
@@ -357,7 +371,11 @@ impl Interpreter {
                 let key = self.as_map_key(&index_value)?;
                 Ok(entries.borrow().get(&key).cloned().unwrap_or(Value::Nil))
             }
-            other => Err(self.error(format!("cannot index a {}", other.type_name()))),
+            other => {
+                self.line = target.line;
+                self.column = target.column;
+                Err(self.error(format!("cannot index a {}", other.type_name())))
+            }
         }
     }
 
@@ -524,7 +542,7 @@ impl Interpreter {
     }
 
     fn error(&self, message: impl Into<String>) -> MiruError {
-        MiruError::new(self.line, message)
+        MiruError::with_column(self.line, self.column, message)
     }
 }
 
@@ -555,6 +573,27 @@ mod tests {
             ),
             Err(err) => err,
         }
+    }
+
+    #[test]
+    fn runtime_error_points_at_the_operator() {
+        // The '/' sits at column 3, where the division by zero happens.
+        let err = error("1 / 0");
+        assert_eq!(err.line, 1);
+        assert_eq!(err.column, 3);
+    }
+
+    #[test]
+    fn undefined_variable_points_at_the_name() {
+        let err = error("  nope");
+        assert_eq!(err.column, 3);
+    }
+
+    #[test]
+    fn out_of_range_index_points_at_the_index() {
+        // The index expression 5 sits at column 7, where the lookup fails.
+        let err = error("[1][  5]");
+        assert_eq!(err.column, 7);
     }
 
     #[test]

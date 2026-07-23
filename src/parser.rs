@@ -5,7 +5,7 @@
 //! drives infix operators by binding power, while prefix operators, calls, and
 //! indexing are handled by [`Parser::unary`] and [`Parser::postfix`].
 
-use crate::ast::{BinaryOp, Expr, LogicalOp, Stmt, StmtKind, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
 use crate::token::{Token, TokenKind};
 use crate::MiruError;
 
@@ -145,11 +145,12 @@ impl Parser {
         let expr = self.expression()?;
         if self.check(&TokenKind::Assign) {
             self.advance(); // '='
-            match &expr {
-                Expr::Identifier(_) | Expr::Index { .. } => {}
+            match &expr.kind {
+                ExprKind::Identifier(_) | ExprKind::Index { .. } => {}
                 _ => {
-                    return Err(MiruError::new(
-                        line,
+                    return Err(MiruError::with_column(
+                        expr.line,
+                        expr.column,
                         "invalid assignment target (only variables and array elements can be assigned to)",
                     ));
                 }
@@ -261,7 +262,7 @@ impl Parser {
             }
             let op = self.advance();
             let right = self.parse_binary(bp + 1)?;
-            left = Parser::make_infix(&op.kind, left, right);
+            left = Parser::make_infix(&op, left, right);
         }
         Ok(left)
     }
@@ -278,22 +279,22 @@ impl Parser {
         }
     }
 
-    fn make_infix(kind: &TokenKind, left: Expr, right: Expr) -> Expr {
+    fn make_infix(op: &Token, left: Expr, right: Expr) -> Expr {
         let left = Box::new(left);
         let right = Box::new(right);
-        match kind {
-            TokenKind::Or => Expr::Logical {
+        let kind = match &op.kind {
+            TokenKind::Or => ExprKind::Logical {
                 op: LogicalOp::Or,
                 left,
                 right,
             },
-            TokenKind::And => Expr::Logical {
+            TokenKind::And => ExprKind::Logical {
                 op: LogicalOp::And,
                 left,
                 right,
             },
             _ => {
-                let op = match kind {
+                let binary_op = match &op.kind {
                     TokenKind::Eq => BinaryOp::Equal,
                     TokenKind::NotEq => BinaryOp::NotEqual,
                     TokenKind::Lt => BinaryOp::Less,
@@ -307,28 +308,41 @@ impl Parser {
                     TokenKind::Percent => BinaryOp::Modulo,
                     _ => unreachable!("make_infix called with a non-operator token"),
                 };
-                Expr::Binary { op, left, right }
+                ExprKind::Binary {
+                    op: binary_op,
+                    left,
+                    right,
+                }
             }
-        }
+        };
+        Expr::new(kind, op.line, op.column)
     }
 
     fn unary(&mut self) -> Result<Expr, MiruError> {
         match self.peek_kind() {
             TokenKind::Minus => {
-                self.advance();
+                let op = self.advance();
                 let operand = self.unary()?;
-                Ok(Expr::Unary {
-                    op: UnaryOp::Negate,
-                    operand: Box::new(operand),
-                })
+                Ok(Expr::new(
+                    ExprKind::Unary {
+                        op: UnaryOp::Negate,
+                        operand: Box::new(operand),
+                    },
+                    op.line,
+                    op.column,
+                ))
             }
             TokenKind::Bang => {
-                self.advance();
+                let op = self.advance();
                 let operand = self.unary()?;
-                Ok(Expr::Unary {
-                    op: UnaryOp::Not,
-                    operand: Box::new(operand),
-                })
+                Ok(Expr::new(
+                    ExprKind::Unary {
+                        op: UnaryOp::Not,
+                        operand: Box::new(operand),
+                    },
+                    op.line,
+                    op.column,
+                ))
             }
             _ => self.postfix(),
         }
@@ -341,19 +355,29 @@ impl Parser {
                 TokenKind::LParen => {
                     self.advance();
                     let arguments = self.parse_arguments()?;
-                    expr = Expr::Call {
-                        callee: Box::new(expr),
-                        arguments,
-                    };
+                    let (line, column) = (expr.line, expr.column);
+                    expr = Expr::new(
+                        ExprKind::Call {
+                            callee: Box::new(expr),
+                            arguments,
+                        },
+                        line,
+                        column,
+                    );
                 }
                 TokenKind::LBracket => {
                     self.advance();
                     let index = self.expression()?;
                     self.expect(TokenKind::RBracket, "to close an index")?;
-                    expr = Expr::Index {
-                        target: Box::new(expr),
-                        index: Box::new(index),
-                    };
+                    let (line, column) = (expr.line, expr.column);
+                    expr = Expr::new(
+                        ExprKind::Index {
+                            target: Box::new(expr),
+                            index: Box::new(index),
+                        },
+                        line,
+                        column,
+                    );
                 }
                 _ => break,
             }
@@ -382,34 +406,36 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Expr, MiruError> {
         let token = self.peek().clone();
+        let line = token.line;
+        let column = token.column;
         match token.kind {
             TokenKind::Int(n) => {
                 self.advance();
-                Ok(Expr::Int(n))
+                Ok(Expr::new(ExprKind::Int(n), line, column))
             }
             TokenKind::Float(f) => {
                 self.advance();
-                Ok(Expr::Float(f))
+                Ok(Expr::new(ExprKind::Float(f), line, column))
             }
             TokenKind::Str(s) => {
                 self.advance();
-                Ok(Expr::Str(s))
+                Ok(Expr::new(ExprKind::Str(s), line, column))
             }
             TokenKind::True => {
                 self.advance();
-                Ok(Expr::Bool(true))
+                Ok(Expr::new(ExprKind::Bool(true), line, column))
             }
             TokenKind::False => {
                 self.advance();
-                Ok(Expr::Bool(false))
+                Ok(Expr::new(ExprKind::Bool(false), line, column))
             }
             TokenKind::Nil => {
                 self.advance();
-                Ok(Expr::Nil)
+                Ok(Expr::new(ExprKind::Nil, line, column))
             }
             TokenKind::Ident(name) => {
                 self.advance();
-                Ok(Expr::Identifier(name))
+                Ok(Expr::new(ExprKind::Identifier(name), line, column))
             }
             TokenKind::LParen => {
                 self.advance();
@@ -420,21 +446,21 @@ impl Parser {
             TokenKind::LBracket => {
                 self.advance();
                 let elements = self.parse_array_elements()?;
-                Ok(Expr::Array(elements))
+                Ok(Expr::new(ExprKind::Array(elements), line, column))
             }
             TokenKind::LBrace => {
                 self.advance();
-                self.parse_map()
+                self.parse_map(line, column)
             }
             TokenKind::Fn => {
                 self.advance();
                 let params = self.parse_params()?;
                 let body = self.function_body()?;
-                Ok(Expr::Function { params, body })
+                Ok(Expr::new(ExprKind::Function { params, body }, line, column))
             }
             other => Err(MiruError::with_column(
-                token.line,
-                token.column,
+                line,
+                column,
                 format!("expected an expression but found {}", other.describe()),
             )),
         }
@@ -459,7 +485,7 @@ impl Parser {
         Ok(elements)
     }
 
-    fn parse_map(&mut self) -> Result<Expr, MiruError> {
+    fn parse_map(&mut self, line: usize, column: usize) -> Result<Expr, MiruError> {
         // The lexer does not suppress newlines inside braces (blocks need
         // them), so a map literal skips newlines between its entries itself.
         let mut entries = Vec::new();
@@ -483,7 +509,7 @@ impl Parser {
             }
         }
         self.expect(TokenKind::RBrace, "to close a map literal")?;
-        Ok(Expr::Map(entries))
+        Ok(Expr::new(ExprKind::Map(entries), line, column))
     }
 
     // --- Token helpers ----------------------------------------------------
@@ -600,7 +626,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{BinaryOp, Expr, LogicalOp, StmtKind, UnaryOp};
+    use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, StmtKind, UnaryOp};
     use crate::lexer::Lexer;
 
     fn parse_program(source: &str) -> Vec<Stmt> {
@@ -615,6 +641,12 @@ mod tests {
             StmtKind::Expr(expr) => expr,
             other => panic!("expected an expression statement, found {other:?}"),
         }
+    }
+
+    /// Wrap an expression kind with dummy position, for comparing tree shape.
+    /// `Expr`'s `PartialEq` ignores positions, so these match parsed output.
+    fn e(kind: ExprKind) -> Expr {
+        Expr::new(kind, 0, 0)
     }
 
     #[test]
@@ -634,11 +666,11 @@ mod tests {
                 assert_eq!(name, "x");
                 assert_eq!(
                     *value,
-                    Expr::Binary {
+                    e(ExprKind::Binary {
                         op: BinaryOp::Add,
-                        left: Box::new(Expr::Int(1)),
-                        right: Box::new(Expr::Int(2)),
-                    }
+                        left: Box::new(e(ExprKind::Int(1))),
+                        right: Box::new(e(ExprKind::Int(2))),
+                    })
                 );
             }
             other => panic!("expected a let statement, found {other:?}"),
@@ -649,15 +681,15 @@ mod tests {
     fn multiplication_binds_tighter_than_addition() {
         assert_eq!(
             parse_expr("1 + 2 * 3"),
-            Expr::Binary {
+            e(ExprKind::Binary {
                 op: BinaryOp::Add,
-                left: Box::new(Expr::Int(1)),
-                right: Box::new(Expr::Binary {
+                left: Box::new(e(ExprKind::Int(1))),
+                right: Box::new(e(ExprKind::Binary {
                     op: BinaryOp::Multiply,
-                    left: Box::new(Expr::Int(2)),
-                    right: Box::new(Expr::Int(3)),
-                }),
-            }
+                    left: Box::new(e(ExprKind::Int(2))),
+                    right: Box::new(e(ExprKind::Int(3))),
+                })),
+            })
         );
     }
 
@@ -665,15 +697,15 @@ mod tests {
     fn subtraction_is_left_associative() {
         assert_eq!(
             parse_expr("1 - 2 - 3"),
-            Expr::Binary {
+            e(ExprKind::Binary {
                 op: BinaryOp::Subtract,
-                left: Box::new(Expr::Binary {
+                left: Box::new(e(ExprKind::Binary {
                     op: BinaryOp::Subtract,
-                    left: Box::new(Expr::Int(1)),
-                    right: Box::new(Expr::Int(2)),
-                }),
-                right: Box::new(Expr::Int(3)),
-            }
+                    left: Box::new(e(ExprKind::Int(1))),
+                    right: Box::new(e(ExprKind::Int(2))),
+                })),
+                right: Box::new(e(ExprKind::Int(3))),
+            })
         );
     }
 
@@ -681,14 +713,14 @@ mod tests {
     fn unary_negation_binds_tighter_than_multiplication() {
         assert_eq!(
             parse_expr("-2 * 3"),
-            Expr::Binary {
+            e(ExprKind::Binary {
                 op: BinaryOp::Multiply,
-                left: Box::new(Expr::Unary {
+                left: Box::new(e(ExprKind::Unary {
                     op: UnaryOp::Negate,
-                    operand: Box::new(Expr::Int(2)),
-                }),
-                right: Box::new(Expr::Int(3)),
-            }
+                    operand: Box::new(e(ExprKind::Int(2))),
+                })),
+                right: Box::new(e(ExprKind::Int(3))),
+            })
         );
     }
 
@@ -696,15 +728,15 @@ mod tests {
     fn logical_and_binds_tighter_than_or() {
         assert_eq!(
             parse_expr("a || b && c"),
-            Expr::Logical {
+            e(ExprKind::Logical {
                 op: LogicalOp::Or,
-                left: Box::new(Expr::Identifier("a".to_string())),
-                right: Box::new(Expr::Logical {
+                left: Box::new(e(ExprKind::Identifier("a".to_string()))),
+                right: Box::new(e(ExprKind::Logical {
                     op: LogicalOp::And,
-                    left: Box::new(Expr::Identifier("b".to_string())),
-                    right: Box::new(Expr::Identifier("c".to_string())),
-                }),
-            }
+                    left: Box::new(e(ExprKind::Identifier("b".to_string()))),
+                    right: Box::new(e(ExprKind::Identifier("c".to_string()))),
+                })),
+            })
         );
     }
 
@@ -712,13 +744,13 @@ mod tests {
     fn parses_call_then_index() {
         assert_eq!(
             parse_expr("f(1)[0]"),
-            Expr::Index {
-                target: Box::new(Expr::Call {
-                    callee: Box::new(Expr::Identifier("f".to_string())),
-                    arguments: vec![Expr::Int(1)],
-                }),
-                index: Box::new(Expr::Int(0)),
-            }
+            e(ExprKind::Index {
+                target: Box::new(e(ExprKind::Call {
+                    callee: Box::new(e(ExprKind::Identifier("f".to_string()))),
+                    arguments: vec![e(ExprKind::Int(1))],
+                })),
+                index: Box::new(e(ExprKind::Int(0))),
+            })
         );
     }
 
@@ -726,7 +758,11 @@ mod tests {
     fn parses_array_literal() {
         assert_eq!(
             parse_expr("[1, 2, 3]"),
-            Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)])
+            e(ExprKind::Array(vec![
+                e(ExprKind::Int(1)),
+                e(ExprKind::Int(2)),
+                e(ExprKind::Int(3)),
+            ]))
         );
     }
 
@@ -769,7 +805,7 @@ mod tests {
                 body,
             } => {
                 assert_eq!(name, "n");
-                assert_eq!(*iterable, Expr::Identifier("names".to_string()));
+                assert_eq!(*iterable, e(ExprKind::Identifier("names".to_string())));
                 assert_eq!(body.len(), 1);
             }
             other => panic!("expected a for loop, found {other:?}"),
@@ -781,8 +817,8 @@ mod tests {
         let statements = parse_program("x = 5");
         match &statements[0].kind {
             StmtKind::Assign { target, value } => {
-                assert_eq!(*target, Expr::Identifier("x".to_string()));
-                assert_eq!(*value, Expr::Int(5));
+                assert_eq!(*target, e(ExprKind::Identifier("x".to_string())));
+                assert_eq!(*value, e(ExprKind::Int(5)));
             }
             other => panic!("expected an assignment, found {other:?}"),
         }
@@ -835,15 +871,15 @@ mod tests {
     fn parses_map_literal() {
         assert_eq!(
             parse_expr("{\"a\": 1, \"b\": 2}"),
-            Expr::Map(vec![
-                (Expr::Str("a".to_string()), Expr::Int(1)),
-                (Expr::Str("b".to_string()), Expr::Int(2)),
-            ])
+            e(ExprKind::Map(vec![
+                (e(ExprKind::Str("a".to_string())), e(ExprKind::Int(1))),
+                (e(ExprKind::Str("b".to_string())), e(ExprKind::Int(2))),
+            ]))
         );
     }
 
     #[test]
     fn parses_empty_map() {
-        assert_eq!(parse_expr("{}"), Expr::Map(vec![]));
+        assert_eq!(parse_expr("{}"), e(ExprKind::Map(vec![])));
     }
 }

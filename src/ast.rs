@@ -52,9 +52,32 @@ pub enum StmtKind {
     },
 }
 
+/// An expression, tagged with its 1-based starting line and column so runtime
+/// errors can point a caret at the exact expression that failed.
+#[derive(Debug, Clone)]
+pub struct Expr {
+    pub kind: ExprKind,
+    pub line: usize,
+    pub column: usize,
+}
+
+impl Expr {
+    pub fn new(kind: ExprKind, line: usize, column: usize) -> Expr {
+        Expr { kind, line, column }
+    }
+}
+
+/// Two expressions are equal when their kinds match; positions are ignored so
+/// tests can compare tree shape without tracking every line and column.
+impl PartialEq for Expr {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
 /// The different kinds of expressions in the language.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr {
+pub enum ExprKind {
     Int(i64),
     Float(f64),
     Str(String),
