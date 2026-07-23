@@ -6,6 +6,8 @@ use std::rc::Rc;
 
 use crate::ast::Stmt;
 use crate::environment::Env;
+use crate::interpreter::Interpreter;
+use crate::MiruError;
 
 /// A sink that side-effecting builtins such as `print` write to. The
 /// interpreter implements this, so the very same builtins can target real
@@ -52,6 +54,18 @@ pub struct Builtin {
     pub func: BuiltinFn,
 }
 
+/// The signature of a higher-order builtin: one handed the interpreter so it can
+/// apply a function argument, for example to each element of an array.
+pub type HostFn = fn(&mut Interpreter, Vec<Value>) -> Result<Value, MiruError>;
+
+/// A native builtin that receives the interpreter itself, used by the
+/// higher-order builtins `map`, `filter`, and `reduce`.
+#[derive(Clone)]
+pub struct HostBuiltin {
+    pub name: &'static str,
+    pub func: HostFn,
+}
+
 /// A MiruScriptX runtime value. Strings, arrays, and functions are reference
 /// counted so they are cheap to pass around and share.
 #[derive(Clone)]
@@ -64,6 +78,7 @@ pub enum Value {
     Map(Rc<RefCell<BTreeMap<String, Value>>>),
     Function(Rc<Function>),
     Builtin(Builtin),
+    HostBuiltin(HostBuiltin),
     Nil,
 }
 
@@ -77,7 +92,7 @@ impl Value {
             Value::Str(_) => "string",
             Value::Array(_) => "array",
             Value::Map(_) => "map",
-            Value::Function(_) | Value::Builtin(_) => "function",
+            Value::Function(_) | Value::Builtin(_) | Value::HostBuiltin(_) => "function",
             Value::Nil => "nil",
         }
     }
@@ -122,6 +137,7 @@ impl Value {
                 None => "<fn>".to_string(),
             },
             Value::Builtin(builtin) => format!("<builtin {}>", builtin.name),
+            Value::HostBuiltin(builtin) => format!("<builtin {}>", builtin.name),
         }
     }
 
@@ -142,6 +158,7 @@ impl Value {
             }
             (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
             (Value::Builtin(a), Value::Builtin(b)) => a.name == b.name,
+            (Value::HostBuiltin(a), Value::HostBuiltin(b)) => a.name == b.name,
             (Value::Map(a), Value::Map(b)) => {
                 let a = a.borrow();
                 let b = b.borrow();

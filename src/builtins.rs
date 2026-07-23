@@ -9,7 +9,9 @@ use std::cmp::Ordering;
 use std::rc::Rc;
 
 use crate::environment::{self, Env};
-use crate::value::{Builtin, BuiltinFn, Input, Output, Value};
+use crate::interpreter::Interpreter;
+use crate::value::{Builtin, BuiltinFn, HostBuiltin, HostFn, Input, Output, Value};
+use crate::MiruError;
 
 /// Register every builtin into the given (global) scope.
 pub fn register(env: &Env) {
@@ -46,10 +48,17 @@ pub fn register(env: &Env) {
     define(env, "int", int);
     define(env, "float", float);
     define(env, "input", input);
+    define_host(env, "map", map);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
     environment::define(env, name, Value::Builtin(Builtin { name, func }));
+}
+
+/// Register a higher-order builtin, one that receives the interpreter so it can
+/// apply a function argument.
+fn define_host(env: &Env, name: &'static str, func: HostFn) {
+    environment::define(env, name, Value::HostBuiltin(HostBuiltin { name, func }));
 }
 
 fn check_arity(name: &str, args: &[Value], expected: usize) -> Result<(), String> {
@@ -685,6 +694,30 @@ fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Resul
     }
 }
 
+/// `map(array, f)` returns a new array holding `f(x)` for each element `x`, in
+/// order. The function is applied through the interpreter, so it may be a
+/// user-defined function, a closure, or another builtin.
+fn map(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError> {
+    if args.len() != 2 {
+        return Err(interp.error(format!("map expects 2 argument(s) but got {}", args.len())));
+    }
+    let items = match &args[0] {
+        Value::Array(items) => items.borrow().clone(),
+        other => {
+            return Err(interp.error(format!(
+                "map expects an array but got a {}",
+                other.type_name()
+            )))
+        }
+    };
+    let func = args[1].clone();
+    let mut result = Vec::with_capacity(items.len());
+    for item in items {
+        result.push(interp.call(func.clone(), vec![item])?);
+    }
+    Ok(Value::Array(Rc::new(RefCell::new(result))))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -889,5 +922,46 @@ mod tests {
         let output =
             crate::run_capture_with_input("print(input())", &[]).expect("program should run");
         assert_eq!(output, "nil\n");
+    }
+
+    #[test]
+    fn map_applies_a_function_to_each_element() {
+        assert_eq!(
+            out("print(map([1, 2, 3], fn(x) { return x * 2 }))"),
+            "[2, 4, 6]\n"
+        );
+    }
+
+    #[test]
+    fn map_over_an_empty_array_is_empty() {
+        assert_eq!(out("print(map([], fn(x) { return x }))"), "[]\n");
+    }
+
+    #[test]
+    fn map_can_apply_a_closure() {
+        assert_eq!(
+            out("let n = 10\nlet add = fn(x) { return x + n }\nprint(map([1, 2, 3], add))"),
+            "[11, 12, 13]\n"
+        );
+    }
+
+    #[test]
+    fn map_can_apply_a_builtin() {
+        assert_eq!(out("print(map([-1, -2, 3], abs))"), "[1, 2, 3]\n");
+    }
+
+    #[test]
+    fn map_rejects_non_arrays() {
+        assert!(err("map(5, fn(x) { return x })").contains("expects an array"));
+    }
+
+    #[test]
+    fn map_rejects_a_non_callable_function() {
+        assert!(err("map([1, 2], 3)").contains("not callable"));
+    }
+
+    #[test]
+    fn map_checks_arity() {
+        assert!(err("map([1, 2])").contains("2 argument(s)"));
     }
 }

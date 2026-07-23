@@ -319,7 +319,7 @@ impl Interpreter {
         }
     }
 
-    fn call(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError> {
+    pub(crate) fn call(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError> {
         match callee {
             Value::Function(func) => {
                 if args.len() != func.params.len() {
@@ -353,6 +353,9 @@ impl Interpreter {
                     Err(message) => Err(self.error(message)),
                 }
             }
+            // Higher-order builtins receive the interpreter itself, so they can
+            // apply a function argument through `self.call`.
+            Value::HostBuiltin(builtin) => (builtin.func)(self, args),
             other => Err(self.error(format!("a {} is not callable", other.type_name()))),
         }
     }
@@ -541,7 +544,7 @@ impl Interpreter {
         }
     }
 
-    fn error(&self, message: impl Into<String>) -> MiruError {
+    pub(crate) fn error(&self, message: impl Into<String>) -> MiruError {
         MiruError::with_column(self.line, self.column, message)
     }
 }
