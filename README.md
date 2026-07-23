@@ -1,47 +1,94 @@
-# MiruScriptX
+<div align="center">
 
-[![CI](https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg)](https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/miru-dark.svg">
+  <img src="assets/miru-light.svg" alt="MiruScriptX" width="300">
+</picture>
 
-A small, general-purpose scripting language written in Rust, with zero external
-dependencies.
+### A small, general-purpose scripting language, written in Rust
 
-MiruScriptX (files use the `.msx` extension) is dynamically typed with a clean,
-modern syntax. It runs through a tree-walking interpreter: source is tokenized,
-parsed into an abstract syntax tree, and then evaluated.
+_A tree-walking interpreter with zero dependencies: source -&gt; tokens -&gt; AST -&gt; values_
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
+  <img src="https://img.shields.io/badge/std_only-zero_deps-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Standard library only"/>
+  <img src="https://img.shields.io/badge/tests-78_passing-427819?style=for-the-badge" alt="78 tests passing"/>
+</p>
+
+<p align="center">
+  <a href="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml"><img src="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <img src="https://img.shields.io/badge/version-0.2-blue?style=flat-square" alt="Version 0.2"/>
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"/>
+</p>
+
+<p align="center">
+  <a href="#quick-start"><b>Quick Start</b></a> |
+  <a href="#features"><b>Features</b></a> |
+  <a href="#examples"><b>Examples</b></a> |
+  <a href="#documentation"><b>Documentation</b></a>
+</p>
+
+</div>
+
+---
+
+## Overview
+
+**MiruScriptX** is a minimalist, dynamically typed scripting language with a
+clean, modern syntax. It runs through a tree-walking interpreter written from
+scratch in Rust, using only the standard library. Write functions, closures,
+loops, arrays, and maps in familiar syntax, then run them from a file or an
+interactive REPL. Programs use the `.msx` extension.
 
 ```
 fn greet(name) {
   return "Hello, " + name + "!"
 }
 
-let names = ["Aiko", "Ken"]
-for n in names {
-  print(greet(n))
+let people = ["Aiko", "Ken"]
+for name in people {
+  print(greet(name))
 }
 ```
 
-```
-Hello, Aiko!
-Hello, Ken!
-```
+---
 
 ## Features
 
-- Integers, floats, booleans, strings, arrays, maps, and nil
-- Arithmetic with integer and float promotion, comparisons, and short-circuit logic
-- `let` bindings and reassignment
-- `if` / `else if` / `else`, `while`, `for ... in`, and `break` / `continue`
-- First-class functions and closures with `return`
-- Array literals, indexing, and index assignment
-- Maps with `{"key": value}` literals, reading, and writing by key
-- Builtins: `print`, `len`, `push`, `str`, `type`, `range`, `keys`, `values`, `has`
-- A file runner and an interactive REPL
-- Friendly error messages with line numbers
-- Zero dependencies: pure Rust standard library
+<table>
+<tr>
+<td width="50%" valign="top">
 
-## Quick start
+### Language
 
-Build the interpreter (you need a recent Rust toolchain):
+- Integers, floats, booleans, strings, nil
+- Arrays and maps, with indexing
+- Functions, closures, and recursion
+- `if` / `else if` / `else`, `while`, `for ... in`
+- `break` and `continue`
+- Arithmetic, comparison, and short-circuit logic
+
+</td>
+<td width="50%" valign="top">
+
+### Interpreter and tooling
+
+- Lexer, Pratt parser, tree-walking evaluator
+- Builtins: print, len, push, str, type, range, keys, values, has
+- File runner and interactive REPL
+- Friendly errors with line numbers
+- Zero dependencies (Rust standard library only)
+- Unit and integration tests, plus CI
+
+</td>
+</tr>
+</table>
+
+---
+
+## Quick Start
+
+Build the interpreter (a recent stable Rust toolchain is all you need):
 
 ```
 cargo build --release
@@ -65,28 +112,97 @@ miru> x * 2
 42
 ```
 
-## Learn the language
+For a step-by-step guide, start the wiki at
+[wiki/01-introduction.md](wiki/01-introduction.md).
 
-The `wiki/` folder is a guided, w3schools-style tour you can read in order,
-starting at [Introduction](wiki/01-introduction.md). For a single searchable
-page, see the [language reference](docs/language-reference.md).
-
-## Documentation
-
-- [wiki/](wiki): step-by-step lessons for learning the language
-- [docs/language-reference.md](docs/language-reference.md): the whole language on one page
-- [docs/architecture.md](docs/architecture.md): how the interpreter is built
-- [docs/milestones.md](docs/milestones.md): status and roadmap
+---
 
 ## Examples
 
 Runnable programs live in [examples/](examples):
 
-- `greet.msx`: functions, arrays, and a loop
-- `fib.msx`: recursion
-- `fizzbuzz.msx`: control flow
+| Program | Shows off |
+| ------- | --------- |
+| [greet.msx](examples/greet.msx) | Functions, arrays, and a loop |
+| [fib.msx](examples/fib.msx) | Recursion |
+| [fizzbuzz.msx](examples/fizzbuzz.msx) | Control flow and the modulo operator |
+| [contacts.msx](examples/contacts.msx) | Maps, lookups, and iteration |
 
-Run one with `miru run examples/fizzbuzz.msx`.
+Run one with `miru run examples/contacts.msx`.
+
+---
+
+## Language at a glance
+
+```
+// Maps, loops, and loop control
+let book = {"Aiko": "555-0100", "Ken": "555-0142"}
+book["Mai"] = "555-0177"
+
+for name in keys(book) {
+  if name == "Ken" { continue }
+  print(name + ": " + book[name])
+}
+```
+
+See the [language reference](docs/language-reference.md) for the whole language
+on one page.
+
+---
+
+## Project structure
+
+MiruScriptX is a classic pipeline: source becomes tokens, tokens become an
+abstract syntax tree, and the tree is evaluated directly.
+
+| Stage | Files | Lines | Responsibility |
+| ----- | ----- | ----- | -------------- |
+| **Lexer** | token.rs, lexer.rs | 601 | Source text to tokens, with line tracking |
+| **Parser** | ast.rs, parser.rs | 949 | Recursive descent plus a Pratt expression parser |
+| **Interpreter** | value, environment, interpreter, builtins | 1166 | Tree-walking evaluation, scopes, closures, builtins |
+| **CLI and REPL** | main.rs, repl.rs | 173 | File runner and interactive REPL |
+| **Library** | lib.rs | 156 | Ties it together (`parse_program`, `run_source`) |
+| **Total** | **11 files** | **3045** | Zero-dependency interpreter |
+
+```
+src/         the interpreter (lexer, parser, evaluator, builtins, CLI, REPL)
+examples/    runnable .msx programs
+wiki/        step-by-step learning lessons
+docs/        language reference, architecture, and roadmap
+tests/       end-to-end integration tests
+scripts/     build_reference.sh regenerates the single-page reference
+```
+
+---
+
+## Documentation
+
+<table>
+<tr>
+<td align="center" width="25%" valign="top">
+<h3>Learn</h3>
+<p>A guided tour,<br/>read in order</p>
+<a href="wiki/01-introduction.md"><b>Wiki</b></a>
+</td>
+<td align="center" width="25%" valign="top">
+<h3>Look up</h3>
+<p>The whole language<br/>on one page</p>
+<a href="docs/language-reference.md"><b>Reference</b></a>
+</td>
+<td align="center" width="25%" valign="top">
+<h3>Internals</h3>
+<p>How the interpreter<br/>is built</p>
+<a href="docs/architecture.md"><b>Architecture</b></a>
+</td>
+<td align="center" width="25%" valign="top">
+<h3>Roadmap</h3>
+<p>Status and what<br/>comes next</p>
+<a href="docs/milestones.md"><b>Milestones</b></a>
+</td>
+</tr>
+</table>
+
+---
 
 ## Testing
 
@@ -94,28 +210,26 @@ Run one with `miru run examples/fizzbuzz.msx`.
 cargo test
 ```
 
-Unit tests cover the lexer, parser, interpreter, and builtins; the integration
-tests in `tests/` run the compiled binary against the example programs.
+Unit tests sit next to each module; the integration tests in `tests/` run the
+compiled binary against the example programs. The same checks run in CI, along
+with `cargo fmt --check` and `cargo clippy -D warnings`.
 
-## Project layout
-
-```
-src/         the interpreter (lexer, parser, evaluator, builtins, CLI, REPL)
-examples/    runnable .msx programs
-wiki/        learning stages
-docs/        reference, architecture, and roadmap
-tests/       end-to-end integration tests
-scripts/     build_reference.sh regenerates the single-page reference
-```
+---
 
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get
-started, and please follow the [Code of Conduct](CODE_OF_CONDUCT.md). For help
-using the language, see [SUPPORT.md](SUPPORT.md); the
-[changelog](CHANGELOG.md) records what changed between versions.
+started, follow the [Code of Conduct](CODE_OF_CONDUCT.md), and check
+[SUPPORT.md](SUPPORT.md) if you need help. The [changelog](CHANGELOG.md) records
+what changed between versions.
+
+---
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Use of the project is also subject to the
-[terms and conditions](TERMS.md).
+Released under the MIT License. See [LICENSE](LICENSE) for the full text, and
+[TERMS.md](TERMS.md) for the project terms.
+
+<div align="center">
+<sub>Built in Rust with zero dependencies. Start writing MiruScriptX with the <a href="wiki/01-introduction.md">wiki</a>.</sub>
+</div>
