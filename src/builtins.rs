@@ -31,6 +31,7 @@ pub fn register(env: &Env) {
     define(env, "find", find);
     define(env, "pop", pop);
     define(env, "index_of", index_of);
+    define(env, "slice", slice);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -328,6 +329,55 @@ fn index_of(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     }
 }
 
+/// Clamp a half-open `[start, end)` range to `0..=len`, keeping `end >= start`.
+fn clamp_range(start: i64, end: i64, len: usize) -> (usize, usize) {
+    let len = len as i64;
+    let lo = start.clamp(0, len) as usize;
+    let hi = end.clamp(0, len) as usize;
+    (lo, hi.max(lo))
+}
+
+/// `slice(seq, start, end)` returns the half-open `[start, end)` slice of an
+/// array or string. Indices are character based for strings and are clamped to
+/// the sequence bounds.
+fn slice(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("slice", &args, 3)?;
+    let start = match &args[1] {
+        Value::Int(n) => *n,
+        other => {
+            return Err(format!(
+                "slice expects an integer start but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    let end = match &args[2] {
+        Value::Int(n) => *n,
+        other => {
+            return Err(format!(
+                "slice expects an integer end but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    match &args[0] {
+        Value::Array(items) => {
+            let items = items.borrow();
+            let (lo, hi) = clamp_range(start, end, items.len());
+            Ok(Value::Array(Rc::new(RefCell::new(items[lo..hi].to_vec()))))
+        }
+        Value::Str(s) => {
+            let chars: Vec<char> = s.chars().collect();
+            let (lo, hi) = clamp_range(start, end, chars.len());
+            Ok(Value::Str(Rc::new(chars[lo..hi].iter().collect())))
+        }
+        other => Err(format!(
+            "slice expects an array or string but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -411,6 +461,20 @@ mod tests {
         assert_eq!(
             out("print(index_of([10, 20, 30], 20), index_of([1], 9))"),
             "1 -1\n"
+        );
+    }
+
+    #[test]
+    fn slice_on_arrays_and_strings() {
+        assert_eq!(out("print(slice([1, 2, 3, 4], 1, 3))"), "[2, 3]\n");
+        assert_eq!(out("print(slice(\"hello\", 1, 4))"), "ell\n");
+    }
+
+    #[test]
+    fn slice_clamps_out_of_range_bounds() {
+        assert_eq!(
+            out("print(slice([1, 2], 0, 99), slice([1, 2], 5, 9))"),
+            "[1, 2] []\n"
         );
     }
 }
