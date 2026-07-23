@@ -204,17 +204,27 @@ impl Parser {
     }
 
     fn break_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
+        let column = self.peek().column;
         self.advance(); // 'break'
         if self.loop_depth == 0 {
-            return Err(MiruError::new(line, "break outside of a loop"));
+            return Err(MiruError::with_column(
+                line,
+                column,
+                "break outside of a loop",
+            ));
         }
         Ok(Stmt::new(StmtKind::Break, line))
     }
 
     fn continue_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
+        let column = self.peek().column;
         self.advance(); // 'continue'
         if self.loop_depth == 0 {
-            return Err(MiruError::new(line, "continue outside of a loop"));
+            return Err(MiruError::with_column(
+                line,
+                column,
+                "continue outside of a loop",
+            ));
         }
         Ok(Stmt::new(StmtKind::Continue, line))
     }
@@ -422,8 +432,9 @@ impl Parser {
                 let body = self.function_body()?;
                 Ok(Expr::Function { params, body })
             }
-            other => Err(MiruError::new(
+            other => Err(MiruError::with_column(
                 token.line,
+                token.column,
                 format!("expected an expression but found {}", other.describe()),
             )),
         }
@@ -539,9 +550,10 @@ impl Parser {
             }
             TokenKind::RBrace | TokenKind::Eof => Ok(()),
             other => {
-                let line = self.peek().line;
-                Err(MiruError::new(
-                    line,
+                let token = self.peek();
+                Err(MiruError::with_column(
+                    token.line,
+                    token.column,
                     format!("expected end of statement but found {}", other.describe()),
                 ))
             }
@@ -553,8 +565,9 @@ impl Parser {
             Ok(self.advance())
         } else {
             let token = self.peek();
-            Err(MiruError::new(
+            Err(MiruError::with_column(
                 token.line,
+                token.column,
                 format!(
                     "expected {} {} but found {}",
                     kind.describe(),
@@ -571,8 +584,9 @@ impl Parser {
             self.advance();
             Ok(name)
         } else {
-            Err(MiruError::new(
+            Err(MiruError::with_column(
                 token.line,
+                token.column,
                 format!(
                     "expected an identifier {} but found {}",
                     context,
@@ -601,6 +615,15 @@ mod tests {
             StmtKind::Expr(expr) => expr,
             other => panic!("expected an expression statement, found {other:?}"),
         }
+    }
+
+    #[test]
+    fn syntax_error_carries_a_column() {
+        // 'let' must be followed by a name; the '=' sits at column 5.
+        let tokens = Lexer::tokenize("let = 1").expect("source should tokenize");
+        let err = Parser::parse(tokens).unwrap_err();
+        assert_eq!(err.line, 1);
+        assert_eq!(err.column, 5);
     }
 
     #[test]
