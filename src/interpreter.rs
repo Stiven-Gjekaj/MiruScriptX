@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use crate::ast::{BinaryOp, Expr, LogicalOp, Stmt, StmtKind, UnaryOp};
 use crate::environment::{self, Env};
-use crate::value::{Function, Output, Value};
+use crate::value::{EmptyInput, Function, Input, Output, Value};
 use crate::MiruError;
 
 /// How execution should continue after a statement.
@@ -33,6 +33,7 @@ enum Num {
 pub struct Interpreter {
     globals: Env,
     out: Box<dyn Write>,
+    input: Box<dyn Input>,
     line: usize,
 }
 
@@ -62,6 +63,7 @@ impl Interpreter {
         Interpreter {
             globals,
             out,
+            input: Box::new(EmptyInput),
             line: 0,
         }
     }
@@ -320,10 +322,17 @@ impl Interpreter {
                     }
                 }
             }
-            Value::Builtin(builtin) => match (builtin.func)(self, args) {
-                Ok(value) => Ok(value),
-                Err(message) => Err(self.error(message)),
-            },
+            Value::Builtin(builtin) => {
+                // Move the input reader out so the interpreter can also be
+                // borrowed as the output sink during the call, then restore it.
+                let mut input = std::mem::replace(&mut self.input, Box::new(EmptyInput));
+                let result = (builtin.func)(self, &mut *input, args);
+                self.input = input;
+                match result {
+                    Ok(value) => Ok(value),
+                    Err(message) => Err(self.error(message)),
+                }
+            }
             other => Err(self.error(format!("a {} is not callable", other.type_name()))),
         }
     }

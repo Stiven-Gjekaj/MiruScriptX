@@ -14,8 +14,27 @@ pub trait Output {
     fn write(&mut self, text: &str);
 }
 
+/// A source of input lines that builtins such as `input` read from. Like
+/// [`Output`], this is abstracted so the binary can read real stdin while tests
+/// feed a scripted buffer.
+pub trait Input {
+    /// Read the next line of input, without its trailing newline, or `None` at
+    /// end of input.
+    fn read_line(&mut self) -> Option<String>;
+}
+
+/// An [`Input`] that is always at end of input. This is the default when no
+/// input source is supplied, for example in `run_capture`.
+pub struct EmptyInput;
+
+impl Input for EmptyInput {
+    fn read_line(&mut self) -> Option<String> {
+        None
+    }
+}
+
 /// The shared signature of every native (Rust-implemented) builtin.
-pub type BuiltinFn = fn(&mut dyn Output, Vec<Value>) -> Result<Value, String>;
+pub type BuiltinFn = fn(&mut dyn Output, &mut dyn Input, Vec<Value>) -> Result<Value, String>;
 
 /// A user-defined function together with the environment it closed over. The
 /// captured `closure` is what makes closures and recursion work.

@@ -9,7 +9,7 @@ use std::cmp::Ordering;
 use std::rc::Rc;
 
 use crate::environment::{self, Env};
-use crate::value::{Builtin, BuiltinFn, Output, Value};
+use crate::value::{Builtin, BuiltinFn, Input, Output, Value};
 
 /// Register every builtin into the given (global) scope.
 pub fn register(env: &Env) {
@@ -63,7 +63,7 @@ fn check_arity(name: &str, args: &[Value], expected: usize) -> Result<(), String
 }
 
 /// `print(...)` writes its arguments separated by spaces, then a newline.
-fn print(out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn print(out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     let parts: Vec<String> = args.iter().map(Value::display).collect();
     out.write(&parts.join(" "));
     out.write("\n");
@@ -71,7 +71,7 @@ fn print(out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `len(value)` returns the length of a string, array, or map.
-fn len(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn len(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("len", &args, 1)?;
     match &args[0] {
         Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
@@ -85,7 +85,7 @@ fn len(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `push(array, value)` appends to an array in place and returns the array.
-fn push(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn push(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("push", &args, 2)?;
     match &args[0] {
         Value::Array(items) => {
@@ -100,20 +100,28 @@ fn push(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `str(value)` converts any value to its display string.
-fn to_str(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn to_str(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
     check_arity("str", &args, 1)?;
     Ok(Value::Str(Rc::new(args[0].display())))
 }
 
 /// `type(value)` returns the name of a value's type.
-fn type_of(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn type_of(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
     check_arity("type", &args, 1)?;
     Ok(Value::Str(Rc::new(args[0].type_name().to_string())))
 }
 
 /// `range(end)` or `range(start, end)` returns an array of integers in the
 /// half-open interval, so the end value is not included.
-fn range(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn range(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     let (start, end) = match args.as_slice() {
         [Value::Int(end)] => (0i64, *end),
         [Value::Int(start), Value::Int(end)] => (*start, *end),
@@ -135,7 +143,7 @@ fn range(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `keys(map)` returns an array of the map's keys, in sorted order.
-fn keys(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn keys(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("keys", &args, 1)?;
     match &args[0] {
         Value::Map(entries) => {
@@ -154,7 +162,11 @@ fn keys(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `values(map)` returns an array of the map's values, in key order.
-fn values(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn values(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
     check_arity("values", &args, 1)?;
     match &args[0] {
         Value::Map(entries) => {
@@ -169,7 +181,7 @@ fn values(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `has(map, key)` reports whether the map contains the given string key.
-fn has(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn has(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("has", &args, 2)?;
     let key = match &args[1] {
         Value::Str(s) => s.to_string(),
@@ -187,7 +199,7 @@ fn has(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `upper(s)` returns the string with every letter upper-cased.
-fn upper(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn upper(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("upper", &args, 1)?;
     match &args[0] {
         Value::Str(s) => Ok(Value::Str(Rc::new(s.to_uppercase()))),
@@ -199,7 +211,7 @@ fn upper(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `lower(s)` returns the string with every letter lower-cased.
-fn lower(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn lower(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("lower", &args, 1)?;
     match &args[0] {
         Value::Str(s) => Ok(Value::Str(Rc::new(s.to_lowercase()))),
@@ -211,7 +223,7 @@ fn lower(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `trim(s)` returns the string with leading and trailing whitespace removed.
-fn trim(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn trim(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("trim", &args, 1)?;
     match &args[0] {
         Value::Str(s) => Ok(Value::Str(Rc::new(s.trim().to_string()))),
@@ -224,7 +236,11 @@ fn trim(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 
 /// `replace(s, from, to)` returns `s` with every occurrence of `from` replaced
 /// by `to`.
-fn replace(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn replace(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
     check_arity("replace", &args, 3)?;
     match (&args[0], &args[1], &args[2]) {
         (Value::Str(s), Value::Str(from), Value::Str(to)) => {
@@ -236,7 +252,7 @@ fn replace(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 
 /// `split(s, sep)` returns an array of the pieces of `s` between each `sep`.
 /// An empty separator splits the string into its individual characters.
-fn split(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn split(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("split", &args, 2)?;
     match (&args[0], &args[1]) {
         (Value::Str(s), Value::Str(sep)) => {
@@ -257,7 +273,7 @@ fn split(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 
 /// `join(array, sep)` returns the array's elements, displayed and joined by
 /// `sep` into a single string.
-fn join(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn join(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("join", &args, 2)?;
     match (&args[0], &args[1]) {
         (Value::Array(items), Value::Str(sep)) => {
@@ -270,7 +286,11 @@ fn join(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 
 /// `contains(seq, value)` reports whether a string contains a substring or an
 /// array contains an element equal to `value`.
-fn contains(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn contains(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
     check_arity("contains", &args, 2)?;
     match &args[0] {
         Value::Str(s) => match &args[1] {
@@ -292,7 +312,7 @@ fn contains(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 
 /// `find(s, sub)` returns the character index of the first `sub` in `s`, or -1
 /// when it is not present.
-fn find(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn find(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("find", &args, 2)?;
     match (&args[0], &args[1]) {
         (Value::Str(s), Value::Str(sub)) => {
@@ -307,7 +327,7 @@ fn find(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `pop(array)` removes and returns the last element; an empty array is an error.
-fn pop(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn pop(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("pop", &args, 1)?;
     match &args[0] {
         Value::Array(items) => items
@@ -323,7 +343,11 @@ fn pop(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 
 /// `index_of(array, value)` returns the index of the first element equal to
 /// `value`, or -1 when there is none.
-fn index_of(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn index_of(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
     check_arity("index_of", &args, 2)?;
     match &args[0] {
         Value::Array(items) => {
@@ -353,7 +377,7 @@ fn clamp_range(start: i64, end: i64, len: usize) -> (usize, usize) {
 /// `slice(seq, start, end)` returns the half-open `[start, end)` slice of an
 /// array or string. Indices are character based for strings and are clamped to
 /// the sequence bounds.
-fn slice(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn slice(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("slice", &args, 3)?;
     let start = match &args[1] {
         Value::Int(n) => *n,
@@ -402,7 +426,7 @@ fn number_as_f64(value: &Value) -> f64 {
 
 /// `sort(array)` returns a sorted copy. The array must hold all numbers or all
 /// strings; anything else is an error.
-fn sort(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn sort(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("sort", &args, 1)?;
     let mut sorted = match &args[0] {
         Value::Array(items) => items.borrow().clone(),
@@ -445,7 +469,11 @@ fn sort(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `reverse(seq)` returns a reversed copy of an array or string.
-fn reverse(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn reverse(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
     check_arity("reverse", &args, 1)?;
     match &args[0] {
         Value::Array(items) => {
@@ -462,7 +490,7 @@ fn reverse(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 }
 
 /// `abs(x)` returns the absolute value of an int or float.
-fn abs(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn abs(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("abs", &args, 1)?;
     match &args[0] {
         Value::Int(n) => n
@@ -507,12 +535,12 @@ fn extreme(name: &str, args: Vec<Value>, want: Ordering) -> Result<Value, String
 }
 
 /// `min(...)` returns the smallest of its numeric arguments.
-fn min(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn min(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     extreme("min", args, Ordering::Less)
 }
 
 /// `max(...)` returns the largest of its numeric arguments.
-fn max(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn max(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     extreme("max", args, Ordering::Greater)
 }
 
@@ -538,17 +566,17 @@ fn round_like(name: &str, args: Vec<Value>, apply: fn(f64) -> f64) -> Result<Val
 }
 
 /// `floor(x)` returns the largest integer not greater than `x`.
-fn floor(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn floor(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     round_like("floor", args, f64::floor)
 }
 
 /// `ceil(x)` returns the smallest integer not less than `x`.
-fn ceil(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn ceil(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     round_like("ceil", args, f64::ceil)
 }
 
 /// `round(x)` returns `x` rounded to the nearest integer, halves away from zero.
-fn round(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn round(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     round_like("round", args, f64::round)
 }
 
@@ -565,7 +593,7 @@ fn number_arg(name: &str, value: &Value) -> Result<f64, String> {
 }
 
 /// `sqrt(x)` returns the square root of a non-negative number, as a float.
-fn sqrt(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn sqrt(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("sqrt", &args, 1)?;
     let x = number_arg("sqrt", &args[0])?;
     if x < 0.0 {
@@ -576,7 +604,7 @@ fn sqrt(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 
 /// `pow(base, exp)` returns `base` raised to `exp`. With two integers and a
 /// non-negative exponent the result is an integer; otherwise it is a float.
-fn pow(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn pow(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("pow", &args, 2)?;
     match (&args[0], &args[1]) {
         (Value::Int(base), Value::Int(exp)) if *exp >= 0 => {
@@ -595,7 +623,7 @@ fn pow(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 
 /// `int(x)` converts a float (truncating toward zero) or a numeric string to an
 /// integer; an integer is returned unchanged.
-fn int(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn int(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("int", &args, 1)?;
     match &args[0] {
         Value::Int(n) => Ok(Value::Int(*n)),
@@ -617,7 +645,7 @@ fn int(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
 
 /// `float(x)` converts an integer or a numeric string to a float; a float is
 /// returned unchanged.
-fn float(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+fn float(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("float", &args, 1)?;
     match &args[0] {
         Value::Int(n) => Ok(Value::Float(*n as f64)),
