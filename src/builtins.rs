@@ -43,6 +43,8 @@ pub fn register(env: &Env) {
     define(env, "round", round);
     define(env, "sqrt", sqrt);
     define(env, "pow", pow);
+    define(env, "int", int);
+    define(env, "float", float);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -591,6 +593,44 @@ fn pow(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     }
 }
 
+/// `int(x)` converts a float (truncating toward zero) or a numeric string to an
+/// integer; an integer is returned unchanged.
+fn int(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("int", &args, 1)?;
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Int(*n)),
+        Value::Float(f) => {
+            if f.is_finite() {
+                Ok(Value::Int(*f as i64))
+            } else {
+                Err("int of a non-finite number".to_string())
+            }
+        }
+        Value::Str(s) => s
+            .trim()
+            .parse::<i64>()
+            .map(Value::Int)
+            .map_err(|_| format!("cannot convert \"{s}\" to an int")),
+        other => Err(format!("int cannot convert a {}", other.type_name())),
+    }
+}
+
+/// `float(x)` converts an integer or a numeric string to a float; a float is
+/// returned unchanged.
+fn float(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("float", &args, 1)?;
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Float(*n as f64)),
+        Value::Float(f) => Ok(Value::Float(*f)),
+        Value::Str(s) => s
+            .trim()
+            .parse::<f64>()
+            .map(Value::Float)
+            .map_err(|_| format!("cannot convert \"{s}\" to a float")),
+        other => Err(format!("float cannot convert a {}", other.type_name())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -758,5 +798,20 @@ mod tests {
             out("print(pow(2, 10), pow(2, -1), pow(2.0, 3))"),
             "1024 0.5 8.0\n"
         );
+    }
+
+    #[test]
+    fn int_converts_floats_and_strings() {
+        assert_eq!(out("print(int(2.9), int(\"42\"), int(7))"), "2 42 7\n");
+    }
+
+    #[test]
+    fn float_converts_ints_and_strings() {
+        assert_eq!(out("print(float(3), float(\"1.5\"))"), "3.0 1.5\n");
+    }
+
+    #[test]
+    fn int_rejects_unparseable_strings() {
+        assert!(err("int(\"abc\")").contains("cannot convert"));
     }
 }
