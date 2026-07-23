@@ -412,6 +412,10 @@ impl Parser {
                 let elements = self.parse_array_elements()?;
                 Ok(Expr::Array(elements))
             }
+            TokenKind::LBrace => {
+                self.advance();
+                self.parse_map()
+            }
             TokenKind::Fn => {
                 self.advance();
                 let params = self.parse_params()?;
@@ -442,6 +446,33 @@ impl Parser {
         }
         self.expect(TokenKind::RBracket, "to close an array literal")?;
         Ok(elements)
+    }
+
+    fn parse_map(&mut self) -> Result<Expr, MiruError> {
+        // The lexer does not suppress newlines inside braces (blocks need
+        // them), so a map literal skips newlines between its entries itself.
+        let mut entries = Vec::new();
+        self.skip_newlines();
+        if !self.check(&TokenKind::RBrace) {
+            loop {
+                let key = self.expression()?;
+                self.expect(TokenKind::Colon, "after a map key")?;
+                let value = self.expression()?;
+                entries.push((key, value));
+                self.skip_newlines();
+                if self.check(&TokenKind::Comma) {
+                    self.advance();
+                    self.skip_newlines();
+                    if self.check(&TokenKind::RBrace) {
+                        break; // tolerate a trailing comma
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        self.expect(TokenKind::RBrace, "to close a map literal")?;
+        Ok(Expr::Map(entries))
     }
 
     // --- Token helpers ----------------------------------------------------
@@ -775,5 +806,21 @@ mod tests {
             Lexer::tokenize("for i in [1] {\n  fn f() {\n    break\n  }\n}").expect("lexes");
         let err = Parser::parse(tokens).unwrap_err();
         assert!(err.message.contains("break outside of a loop"));
+    }
+
+    #[test]
+    fn parses_map_literal() {
+        assert_eq!(
+            parse_expr("{\"a\": 1, \"b\": 2}"),
+            Expr::Map(vec![
+                (Expr::Str("a".to_string()), Expr::Int(1)),
+                (Expr::Str("b".to_string()), Expr::Int(2)),
+            ])
+        );
+    }
+
+    #[test]
+    fn parses_empty_map() {
+        assert_eq!(parse_expr("{}"), Expr::Map(vec![]));
     }
 }

@@ -7,6 +7,7 @@
 
 use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::rc::Rc;
 
@@ -246,6 +247,21 @@ impl Interpreter {
                     items.push(self.eval(element, env)?);
                 }
                 Ok(Value::Array(Rc::new(RefCell::new(items))))
+            }
+            Expr::Map(entries) => {
+                let mut map = BTreeMap::new();
+                for (key_expr, value_expr) in entries {
+                    let key = self.eval(key_expr, env)?;
+                    let Value::Str(key) = key else {
+                        return Err(self.error(format!(
+                            "map key must be a string, not a {}",
+                            key.type_name()
+                        )));
+                    };
+                    let value = self.eval(value_expr, env)?;
+                    map.insert(key.to_string(), value);
+                }
+                Ok(Value::Map(Rc::new(RefCell::new(map))))
             }
             Expr::Index { target, index } => self.eval_index(target, index, env),
             Expr::Unary { op, operand } => {
@@ -645,5 +661,23 @@ mod tests {
     fn break_only_exits_the_inner_loop() {
         let source = "let count = 0\nfor a in range(0, 3) {\n  for b in range(0, 3) {\n    if b == 1 { break }\n    count = count + 1\n  }\n}\ncount";
         assert_eq!(repr(source), "3");
+    }
+
+    #[test]
+    fn evaluates_map_literals_in_sorted_order() {
+        assert_eq!(
+            repr("{\"name\": \"Aiko\", \"age\": 3}"),
+            "{\"age\": 3, \"name\": \"Aiko\"}"
+        );
+    }
+
+    #[test]
+    fn evaluates_an_empty_map() {
+        assert_eq!(repr("{}"), "{}");
+    }
+
+    #[test]
+    fn map_key_must_be_a_string() {
+        assert!(error("{1: 2}").message.contains("map key must be a string"));
     }
 }

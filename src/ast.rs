@@ -62,6 +62,7 @@ pub enum Expr {
     Nil,
     Identifier(String),
     Array(Vec<Expr>),
+    Map(Vec<(Expr, Expr)>),
     Index {
         target: Box<Expr>,
         index: Box<Expr>,
