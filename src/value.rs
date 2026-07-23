@@ -1,6 +1,7 @@
 //! Runtime values, plus the output sink that builtins write to.
 
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use crate::ast::Stmt;
@@ -41,6 +42,7 @@ pub enum Value {
     Bool(bool),
     Str(Rc<String>),
     Array(Rc<RefCell<Vec<Value>>>),
+    Map(Rc<RefCell<BTreeMap<String, Value>>>),
     Function(Rc<Function>),
     Builtin(Builtin),
     Nil,
@@ -55,6 +57,7 @@ impl Value {
             Value::Bool(_) => "bool",
             Value::Str(_) => "string",
             Value::Array(_) => "array",
+            Value::Map(_) => "map",
             Value::Function(_) | Value::Builtin(_) => "function",
             Value::Nil => "nil",
         }
@@ -87,6 +90,14 @@ impl Value {
                 let parts: Vec<String> = items.borrow().iter().map(Value::repr).collect();
                 format!("[{}]", parts.join(", "))
             }
+            Value::Map(entries) => {
+                let parts: Vec<String> = entries
+                    .borrow()
+                    .iter()
+                    .map(|(key, value)| format!("\"{}\": {}", escape_string(key), value.repr()))
+                    .collect();
+                format!("{{{}}}", parts.join(", "))
+            }
             Value::Function(func) => match &func.name {
                 Some(name) => format!("<fn {name}>"),
                 None => "<fn>".to_string(),
@@ -112,6 +123,15 @@ impl Value {
             }
             (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
             (Value::Builtin(a), Value::Builtin(b)) => a.name == b.name,
+            (Value::Map(a), Value::Map(b)) => {
+                let a = a.borrow();
+                let b = b.borrow();
+                a.len() == b.len()
+                    && a.iter().all(|(key, value)| match b.get(key) {
+                        Some(other) => value.equals(other),
+                        None => false,
+                    })
+            }
             _ => false,
         }
     }
@@ -151,4 +171,42 @@ fn escape_string(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn map(pairs: &[(&str, Value)]) -> Value {
+        let mut entries = BTreeMap::new();
+        for (key, value) in pairs {
+            entries.insert((*key).to_string(), value.clone());
+        }
+        Value::Map(Rc::new(RefCell::new(entries)))
+    }
+
+    #[test]
+    fn map_repr_is_sorted_and_quoted() {
+        let m = map(&[
+            ("name", Value::Str(Rc::new("Aiko".to_string()))),
+            ("age", Value::Int(3)),
+        ]);
+        assert_eq!(m.repr(), "{\"age\": 3, \"name\": \"Aiko\"}");
+    }
+
+    #[test]
+    fn map_type_name_and_truthiness() {
+        let m = map(&[]);
+        assert_eq!(m.type_name(), "map");
+        assert!(m.is_truthy());
+    }
+
+    #[test]
+    fn maps_compare_by_entries() {
+        let a = map(&[("x", Value::Int(1))]);
+        let b = map(&[("x", Value::Int(1))]);
+        let c = map(&[("x", Value::Int(2))]);
+        assert!(a.equals(&b));
+        assert!(!a.equals(&c));
+    }
 }
