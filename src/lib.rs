@@ -15,6 +15,8 @@ use std::fmt;
 use std::io::Write;
 use std::rc::Rc;
 
+use crate::value::Input;
+
 pub mod ast;
 pub mod builtins;
 pub mod environment;
@@ -37,6 +39,7 @@ pub fn parse_program(source: &str) -> Result<Vec<ast::Stmt>, MiruError> {
 pub fn run_source(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
     let program = parse_program(source)?;
     let mut interpreter = interpreter::Interpreter::with_output(out);
+    interpreter.set_input(Box::new(StdinInput));
     interpreter.run_program(&program)?;
     interpreter.flush();
     Ok(())
@@ -45,10 +48,16 @@ pub fn run_source(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
 /// Run a source string and capture everything it printed. Handy for tests and
 /// tooling that needs the output as a string rather than on a stream.
 pub fn run_capture(source: &str) -> Result<String, MiruError> {
+    run_capture_with_input(source, &[])
+}
+
+/// Like [`run_capture`], but feeds the given lines to `input()` in order.
+pub fn run_capture_with_input(source: &str, input: &[&str]) -> Result<String, MiruError> {
     let program = parse_program(source)?;
     let buffer = Rc::new(RefCell::new(Vec::<u8>::new()));
     let mut interpreter =
         interpreter::Interpreter::with_output(Box::new(SharedBuffer(Rc::clone(&buffer))));
+    interpreter.set_input(Box::new(ScriptedInput::new(input)));
     interpreter.run_program(&program)?;
     interpreter.flush();
     let bytes = buffer.borrow();
@@ -67,6 +76,51 @@ impl Write for SharedBuffer {
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+}
+
+/// Reads lines from the process's standard input, one per `input()` call.
+struct StdinInput;
+
+impl Input for StdinInput {
+    fn read_line(&mut self) -> Option<String> {
+        let mut line = String::new();
+        match std::io::stdin().read_line(&mut line) {
+            Ok(0) => None,
+            Ok(_) => Some(strip_trailing_newline(line)),
+            Err(_) => None,
+        }
+    }
+}
+
+/// An [`Input`] backed by a fixed list of lines, used by the capture helpers.
+struct ScriptedInput {
+    lines: std::vec::IntoIter<String>,
+}
+
+impl ScriptedInput {
+    fn new(lines: &[&str]) -> ScriptedInput {
+        let lines: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        ScriptedInput {
+            lines: lines.into_iter(),
+        }
+    }
+}
+
+impl Input for ScriptedInput {
+    fn read_line(&mut self) -> Option<String> {
+        self.lines.next()
+    }
+}
+
+/// Remove a single trailing newline (and any preceding carriage return).
+fn strip_trailing_newline(mut line: String) -> String {
+    if line.ends_with('\n') {
+        line.pop();
+        if line.ends_with('\r') {
+            line.pop();
+        }
+    }
+    line
 }
 
 /// An error produced anywhere in the pipeline (lexing, parsing, or running),

@@ -45,6 +45,7 @@ pub fn register(env: &Env) {
     define(env, "pow", pow);
     define(env, "int", int);
     define(env, "float", float);
+    define(env, "input", input);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -659,6 +660,31 @@ fn float(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
     }
 }
 
+/// `input()` reads one line from the input source and returns it as a string,
+/// or `nil` at end of input. `input(prompt)` writes the prompt string first.
+fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
+    match args.as_slice() {
+        [] => {}
+        [Value::Str(prompt)] => out.write(prompt.as_str()),
+        [other] => {
+            return Err(format!(
+                "input expects a string prompt but got a {}",
+                other.type_name()
+            ))
+        }
+        _ => {
+            return Err(format!(
+                "input expects 0 or 1 arguments but got {}",
+                args.len()
+            ))
+        }
+    }
+    match input.read_line() {
+        Some(line) => Ok(Value::Str(Rc::new(line))),
+        None => Ok(Value::Nil),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -841,5 +867,27 @@ mod tests {
     #[test]
     fn int_rejects_unparseable_strings() {
         assert!(err("int(\"abc\")").contains("cannot convert"));
+    }
+
+    #[test]
+    fn input_reads_a_line() {
+        let output =
+            crate::run_capture_with_input("let name = input()\nprint(\"hi\", name)", &["Aiko"])
+                .expect("program should run");
+        assert_eq!(output, "hi Aiko\n");
+    }
+
+    #[test]
+    fn input_writes_the_prompt() {
+        let output = crate::run_capture_with_input("let x = input(\"name? \")\nprint(x)", &["Bo"])
+            .expect("program should run");
+        assert_eq!(output, "name? Bo\n");
+    }
+
+    #[test]
+    fn input_returns_nil_at_end_of_input() {
+        let output =
+            crate::run_capture_with_input("print(input())", &[]).expect("program should run");
+        assert_eq!(output, "nil\n");
     }
 }

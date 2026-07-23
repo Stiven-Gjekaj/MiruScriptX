@@ -73,6 +73,12 @@ impl Interpreter {
         let _ = self.out.flush();
     }
 
+    /// Replace the input source. The binary points this at standard input; the
+    /// capture helpers point it at a scripted buffer.
+    pub fn set_input(&mut self, input: Box<dyn Input>) {
+        self.input = input;
+    }
+
     /// Run a whole program. Returns the value of the final expression statement
     /// (or `nil`), which the REPL echoes back.
     pub fn run_program(&mut self, program: &[Stmt]) -> Result<Value, MiruError> {
