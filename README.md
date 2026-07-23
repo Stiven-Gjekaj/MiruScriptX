@@ -63,6 +63,7 @@ for name in people {
 - Functions, closures, and recursion
 - `if` / `else if` / `else`, `while`, `for ... in`
 - `break` and `continue`
+- Reading input with `input`
 - Arithmetic, comparison, and short-circuit logic
 
 </td>
@@ -71,9 +72,9 @@ for name in people {
 ### Interpreter and tooling
 
 - Lexer, Pratt parser, tree-walking evaluator
-- Builtins: print, len, push, str, type, range, keys, values, has
+- A standard library of string, array, math, map, and I/O builtins
 - File runner and interactive REPL
-- Friendly errors with line numbers
+- Errors with a line, a column, and a caret under the problem
 - Zero dependencies (Rust standard library only)
 - Unit and integration tests, plus CI
 
