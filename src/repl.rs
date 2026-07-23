@@ -59,9 +59,9 @@ pub fn run() -> ExitCode {
                         println!("{}", value.repr());
                     }
                 }
-                Err(err) => eprintln!("{err}"),
+                Err(err) => eprintln!("{}", err.render(&source)),
             },
-            Err(err) => eprintln!("{err}"),
+            Err(err) => eprintln!("{}", err.render(&source)),
         }
     }
 }

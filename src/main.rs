@@ -58,7 +58,7 @@ fn run_file(args: &[String]) -> ExitCode {
     match miruscriptx::run_source(&source, Box::new(std::io::stdout())) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("miru: {err}");
+            eprintln!("miru: {}", err.render(&source));
             ExitCode::FAILURE
         }
     }
