@@ -8,7 +8,7 @@ _A tree-walking interpreter with zero dependencies: source -&gt; tokens -&gt; AS
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
-  <img src="https://img.shields.io/badge/std_only-zero_deps-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Standard library only"/>
+  <img src="https://img.shields.io/badge/dependencies-1_(15)-007ec6?style=for-the-badge" alt="1 direct dependency, 15 total crates"/>
   <img src="https://img.shields.io/badge/tests-120_passing-427819?style=for-the-badge" alt="120 tests passing"/>
 </p>
 
