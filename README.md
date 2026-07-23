@@ -108,6 +108,14 @@ tests/       end-to-end integration tests
 scripts/     build_reference.sh regenerates the single-page reference
 ```
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get
+started, and please follow the [Code of Conduct](CODE_OF_CONDUCT.md). For help
+using the language, see [SUPPORT.md](SUPPORT.md); the
+[changelog](CHANGELOG.md) records what changed between versions.
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Use of the project is also subject to the
+[terms and conditions](TERMS.md).
