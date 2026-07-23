@@ -49,6 +49,7 @@ pub fn register(env: &Env) {
     define(env, "float", float);
     define(env, "input", input);
     define_host(env, "map", map);
+    define_host(env, "filter", filter);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -718,6 +719,34 @@ fn map(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError> {
     Ok(Value::Array(Rc::new(RefCell::new(result))))
 }
 
+/// `filter(array, f)` returns a new array of the elements for which `f(x)` is
+/// truthy, keeping their original order.
+fn filter(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError> {
+    if args.len() != 2 {
+        return Err(interp.error(format!(
+            "filter expects 2 argument(s) but got {}",
+            args.len()
+        )));
+    }
+    let items = match &args[0] {
+        Value::Array(items) => items.borrow().clone(),
+        other => {
+            return Err(interp.error(format!(
+                "filter expects an array but got a {}",
+                other.type_name()
+            )))
+        }
+    };
+    let func = args[1].clone();
+    let mut result = Vec::new();
+    for item in items {
+        if interp.call(func.clone(), vec![item.clone()])?.is_truthy() {
+            result.push(item);
+        }
+    }
+    Ok(Value::Array(Rc::new(RefCell::new(result))))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -963,5 +992,41 @@ mod tests {
     #[test]
     fn map_checks_arity() {
         assert!(err("map([1, 2])").contains("2 argument(s)"));
+    }
+
+    #[test]
+    fn filter_keeps_elements_where_the_predicate_is_truthy() {
+        assert_eq!(
+            out("print(filter([1, 2, 3, 4], fn(x) { return x % 2 == 0 }))"),
+            "[2, 4]\n"
+        );
+    }
+
+    #[test]
+    fn filter_can_drop_every_element() {
+        assert_eq!(out("print(filter([1, 2], fn(x) { return false }))"), "[]\n");
+    }
+
+    #[test]
+    fn filter_treats_nil_and_false_as_falsy() {
+        assert_eq!(
+            out("print(filter([1, 2, 3], fn(x) { if x == 2 { return nil } return true }))"),
+            "[1, 3]\n"
+        );
+    }
+
+    #[test]
+    fn filter_rejects_non_arrays() {
+        assert!(err("filter(5, fn(x) { return true })").contains("expects an array"));
+    }
+
+    #[test]
+    fn filter_rejects_a_non_callable_predicate() {
+        assert!(err("filter([1, 2], 3)").contains("not callable"));
+    }
+
+    #[test]
+    fn filter_checks_arity() {
+        assert!(err("filter([1, 2])").contains("2 argument(s)"));
     }
 }
