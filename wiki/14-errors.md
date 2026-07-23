@@ -1,0 +1,59 @@
+# Error messages
+
+When something goes wrong, MiruScriptX stops and prints a single, precise error.
+Every error names the line and column where it happened and draws a caret (`^`)
+under the exact spot in your source, so you can find the problem quickly.
+
+## Syntax errors
+
+A syntax error means the source could not be parsed. It is caught before any code
+runs.
+
+```
+print(1 +)
+```
+
+Running that reports:
+
+```
+error (line 1, column 10): expected an expression but found ')'
+    print(1 +)
+             ^
+```
+
+The caret points at the `)` that appeared where an expression was expected.
+
+## Runtime errors
+
+A runtime error happens while the program runs: dividing by zero, using a name
+that was never defined, or indexing past the end of an array. These carry a caret
+too, pointing at the expression that failed.
+
+```
+let xs = [1, 2, 3]
+print(xs[7])
+```
+
+```
+error (line 2, column 10): index 7 is out of range for an array of length 3
+    print(xs[7])
+             ^
+```
+
+Here the caret sits under the index `7`. A division by zero points at the
+operator, and an undefined variable points at the name:
+
+```
+error (line 1, column 3): division by zero
+    1 / 0
+      ^
+```
+
+## Exit codes
+
+Run a file with `miru run` and a successful program exits with status 0. Any
+error (a missing file, a syntax error, or a runtime error) exits with a non-zero
+status, so scripts and continuous integration can tell success from failure.
+
+---
+Previous: [Builtins](13-builtins.md) | Next: [Next steps](15-next-steps.md)

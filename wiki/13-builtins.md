@@ -162,4 +162,4 @@ The standard library stays small on purpose; see the
 [roadmap](../docs/milestones.md) for what is planned next.
 
 ---
-Previous: [Closures](12-closures.md) | Next: [Next steps](14-next-steps.md)
+Previous: [Closures](12-closures.md) | Next: [Errors](14-errors.md)

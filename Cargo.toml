@@ -1,6 +1,6 @@
 [package]
 name = "miruscriptx"
-version = "0.2.43"
+version = "0.2.44"
 edition = "2021"
 description = "MiruScriptX: a small, general-purpose scripting language written in Rust."
 license = "MIT"

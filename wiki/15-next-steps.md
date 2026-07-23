@@ -1,6 +1,6 @@
 # Next steps
 
-You now know all of MiruScriptX v0.1. Here is where to go from here.
+You now know all of MiruScriptX v0.2. Here is where to go from here.
 
 ## Practice
 
@@ -11,7 +11,8 @@ Try writing a few small programs:
 - Compute the greatest common divisor of two numbers with a `while` loop.
 
 The programs in the [examples](../examples) folder are a good starting point.
-Run them with `miru run examples/greet.msx`, and so on.
+Run them with `miru run examples/greet.msx`, and try
+`miru run examples/greeter.msx` for one that reads your input.
 
 ## Look things up
 
@@ -26,8 +27,8 @@ and evaluator.
 
 ## What is coming
 
-The [roadmap](../docs/milestones.md) lists what is planned next: maps, more
-builtins, a bytecode virtual machine, and a browser playground.
+The [roadmap](../docs/milestones.md) lists what is planned next, from a source
+formatter to a bytecode virtual machine and a browser playground.
 
 ---
-Previous: [Builtins](13-builtins.md)
+Previous: [Errors](14-errors.md)
