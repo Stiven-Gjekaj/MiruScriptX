@@ -47,11 +47,19 @@ guided wiki, a single-page reference, an architecture guide, community docs
 (contributing, code of conduct, security, support, terms), issue and pull
 request templates, and a branded README with a project logo.
 
-## v0.3: tooling and richer functions
+## v0.3: tooling, richer functions, and a first dependency
 
-- REPL history and a source formatter (`miru fmt`).
-- Higher-order builtins (`map`, `filter`, `reduce`), which require letting
-  builtins call back into user-defined functions.
+- REPL history and line editing, backed by rustyline and persisted to
+  `~/.miru_history` between sessions, with arrow-key recall. This is the
+  project's first external dependency, so the earlier zero-dependency claim is
+  retired in favor of an honest dependency count.
+- `miru fmt`, a source formatter that reprints a program in one canonical style
+  (two-space indentation, minimal parentheses, inline literals), preserving
+  comments and single blank lines. It prints to standard output by default and
+  rewrites the file in place with `-w`.
+- Higher-order builtins `map`, `filter`, and `reduce`, which required an
+  interpreter-aware builtin kind so a builtin can call back into a user-defined
+  function, a closure, or another builtin.
 
 ## v0.4: performance
 

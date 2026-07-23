@@ -8,6 +8,26 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 0.3 (2026-07-23)
+
+### Added
+
+- Higher-order builtins `map`, `filter`, and `reduce`, backed by an
+  interpreter-aware builtin kind so a builtin can call a user-defined function,
+  a closure, or another builtin.
+- `miru fmt`, a source formatter that reprints a program in one canonical style,
+  preserving comments and single blank lines. It prints to standard output by
+  default and rewrites the file in place with `-w` / `--write`.
+- REPL history and line editing via rustyline, persisted to `~/.miru_history`
+  across sessions, with arrow-key recall and Ctrl-C / Ctrl-D handling.
+- A `transform.miru` example showing `map`, `filter`, and `reduce`.
+
+### Changed
+
+- MiruScriptX now has one external dependency (rustyline, for REPL history). The
+  earlier zero-dependency claim is retired in favor of a dependency count in the
+  README.
+
 ## 0.2 (2026-07-23)
 
 ### Added
