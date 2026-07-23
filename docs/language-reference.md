@@ -20,6 +20,7 @@ wiki/ and re-run the script.
 - [Functions](#functions)
 - [Closures](#closures)
 - [Builtins](#builtins)
+- [Error messages](#error-messages)
 - [Next steps](#next-steps)
 
 # Introduction
@@ -743,12 +744,144 @@ print(has(m, "a"))   // true
 print(has(m, "z"))   // false
 ```
 
-More builtins are planned; see the [roadmap](../docs/milestones.md).
+## String functions
+
+- `upper(s)` and `lower(s)` change the case of every letter.
+- `trim(s)` removes leading and trailing whitespace.
+- `replace(s, from, to)` replaces every occurrence of `from` with `to`.
+- `split(s, sep)` breaks a string into an array of pieces; an empty separator
+  splits it into single characters.
+- `join(array, sep)` joins an array's displayed elements with `sep`.
+- `contains(seq, value)` reports whether a string holds a substring, or an array
+  holds an element.
+- `find(s, sub)` returns the character index of the first `sub`, or -1.
+
+```
+print(upper("hi"), lower("HI"))     // HI hi
+print(trim("  hi  "))               // hi
+print(replace("a.b.c", ".", "-"))   // a-b-c
+print(split("a,b,c", ","))          // ["a", "b", "c"]
+print(join(["a", "b", "c"], "-"))   // a-b-c
+print(contains("hello", "ell"))     // true
+print(find("hello", "l"))           // 2
+```
+
+## Array functions
+
+- `pop(array)` removes and returns the last element.
+- `index_of(array, value)` returns the index of the first match, or -1.
+- `slice(seq, start, end)` returns the half-open slice of an array or string.
+- `sort(array)` returns a sorted copy (all numbers or all strings).
+- `reverse(seq)` returns a reversed copy of an array or string.
+
+```
+let xs = [3, 1, 2]
+print(sort(xs))                // [1, 2, 3]
+print(reverse(xs))             // [2, 1, 3]
+print(slice(xs, 0, 2))         // [3, 1]
+print(index_of([10, 20], 20))  // 1
+```
+
+## Math functions
+
+- `abs(x)` is the absolute value.
+- `min(...)` and `max(...)` take any number of numeric arguments.
+- `floor(x)`, `ceil(x)`, and `round(x)` return integers.
+- `sqrt(x)` is the square root (a float); `pow(base, exp)` raises to a power.
+
+```
+print(abs(-3), min(3, 1, 2), max(3, 1, 2))   // 3 1 3
+print(floor(2.7), ceil(2.1), round(2.5))     // 2 3 3
+print(sqrt(9), pow(2, 10))                    // 3.0 1024
+```
+
+## Conversion
+
+- `int(x)` converts a float (truncating toward zero) or a numeric string to an
+  integer.
+- `float(x)` converts an integer or a numeric string to a float.
+
+```
+print(int("42"), int(2.9))      // 42 2
+print(float("1.5"), float(3))   // 1.5 3.0
+```
+
+## input(prompt)
+
+Reads one line from standard input and returns it as a string, without the
+trailing newline. With a `prompt` argument, the prompt is written first (with no
+newline). At end of input it returns `nil`.
+
+```
+let name = input("What is your name? ")
+print("Hello,", name)
+```
+
+The standard library stays small on purpose; see the
+[roadmap](../docs/milestones.md) for what is planned next.
+
+
+# Error messages
+
+When something goes wrong, MiruScriptX stops and prints a single, precise error.
+Every error names the line and column where it happened and draws a caret (`^`)
+under the exact spot in your source, so you can find the problem quickly.
+
+## Syntax errors
+
+A syntax error means the source could not be parsed. It is caught before any code
+runs.
+
+```
+print(1 +)
+```
+
+Running that reports:
+
+```
+error (line 1, column 10): expected an expression but found ')'
+    print(1 +)
+             ^
+```
+
+The caret points at the `)` that appeared where an expression was expected.
+
+## Runtime errors
+
+A runtime error happens while the program runs: dividing by zero, using a name
+that was never defined, or indexing past the end of an array. These carry a caret
+too, pointing at the expression that failed.
+
+```
+let xs = [1, 2, 3]
+print(xs[7])
+```
+
+```
+error (line 2, column 10): index 7 is out of range for an array of length 3
+    print(xs[7])
+             ^
+```
+
+Here the caret sits under the index `7`. A division by zero points at the
+operator, and an undefined variable points at the name:
+
+```
+error (line 1, column 3): division by zero
+    1 / 0
+      ^
+```
+
+## Exit codes
+
+Run a file with `miru run` and a successful program exits with status 0. Any
+error (a missing file, a syntax error, or a runtime error) exits with a non-zero
+status, so scripts and continuous integration can tell success from failure.
 
 
 # Next steps
 
-You now know all of MiruScriptX v0.1. Here is where to go from here.
+You now know all of MiruScriptX v0.2. Here is where to go from here.
 
 ## Practice
 
@@ -759,7 +892,8 @@ Try writing a few small programs:
 - Compute the greatest common divisor of two numbers with a `while` loop.
 
 The programs in the [examples](../examples) folder are a good starting point.
-Run them with `miru run examples/greet.msx`, and so on.
+Run them with `miru run examples/greet.msx`, and try
+`miru run examples/greeter.msx` for one that reads your input.
 
 ## Look things up
 
@@ -774,7 +908,7 @@ and evaluator.
 
 ## What is coming
 
-The [roadmap](../docs/milestones.md) lists what is planned next: maps, more
-builtins, a bytecode virtual machine, and a browser playground.
+The [roadmap](../docs/milestones.md) lists what is planned next, from a source
+formatter to a bytecode virtual machine and a browser playground.
 
 
