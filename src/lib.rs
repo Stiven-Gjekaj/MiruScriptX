@@ -36,6 +36,15 @@ pub fn parse_program(source: &str) -> Result<Vec<ast::Stmt>, MiruError> {
     parser::Parser::parse(tokens)
 }
 
+/// Lex, parse, and reprint a source string in the canonical `miru fmt` style,
+/// preserving comments and single blank lines. This is what the `fmt` command
+/// runs on a file.
+pub fn format_source(source: &str) -> Result<String, MiruError> {
+    let (tokens, trivia) = lexer::Lexer::tokenize_with_trivia(source)?;
+    let program = parser::Parser::parse(tokens)?;
+    Ok(formatter::format_program(&program, &trivia))
+}
+
 /// Lex, parse, and run a source string, sending `print` output to `out`.
 pub fn run_source(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
     let program = parse_program(source)?;
@@ -262,5 +271,45 @@ mod tests {
     fn map_builtins() {
         let source = "let m = {\"b\": 2, \"a\": 1}\nprint(keys(m))\nprint(values(m))\nprint(has(m, \"a\"))\nprint(has(m, \"z\"))\nprint(len(m))";
         assert_eq!(out(source), "[\"a\", \"b\"]\n[1, 2]\ntrue\nfalse\n2\n");
+    }
+
+    const EXAMPLES: [&str; 5] = [
+        include_str!("../examples/greet.miru"),
+        include_str!("../examples/fib.miru"),
+        include_str!("../examples/fizzbuzz.miru"),
+        include_str!("../examples/contacts.miru"),
+        include_str!("../examples/greeter.miru"),
+    ];
+
+    #[test]
+    fn format_source_is_idempotent_on_examples() {
+        for source in EXAMPLES {
+            let once = format_source(source).expect("formats");
+            let twice = format_source(&once).expect("reformats");
+            assert_eq!(once, twice, "formatting is not idempotent");
+        }
+    }
+
+    #[test]
+    fn format_source_does_not_change_behavior() {
+        // Reprinting must never change what a program does. Every example runs
+        // deterministically (greeter reads from an empty input and says goodbye).
+        for source in EXAMPLES {
+            let formatted = format_source(source).expect("formats");
+            assert_eq!(
+                run_capture(source).expect("source runs"),
+                run_capture(&formatted).expect("formatted runs"),
+                "formatting changed program behavior"
+            );
+        }
+    }
+
+    #[test]
+    fn format_source_preserves_comments() {
+        let source = include_str!("../examples/contacts.miru");
+        let formatted = format_source(source).expect("formats");
+        assert!(formatted.contains("// Build a small phone book"));
+        assert!(formatted.contains("// Add a new entry and update an existing one."));
+        assert!(formatted.contains("// Look up a name, guarding against a missing one."));
     }
 }

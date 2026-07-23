@@ -6,6 +6,9 @@
 //! (tracked with `group_depth`). A `;` is treated as an explicit statement
 //! separator, so semicolons are always optional.
 
+use std::collections::HashSet;
+
+use crate::formatter::{Comment, Trivia};
 use crate::token::{Token, TokenKind};
 use crate::MiruError;
 
@@ -15,6 +18,13 @@ pub struct Lexer {
     line: usize,
     line_start: usize,
     group_depth: usize,
+    /// When set, the lexer records comments and blank-line positions for the
+    /// formatter instead of discarding them.
+    collect_trivia: bool,
+    comments: Vec<Comment>,
+    blank_before: HashSet<usize>,
+    /// The last line that carried a token or comment, used to spot blank lines.
+    last_content_line: usize,
 }
 
 impl Lexer {
@@ -25,12 +35,29 @@ impl Lexer {
             line: 1,
             line_start: 0,
             group_depth: 0,
+            collect_trivia: false,
+            comments: Vec::new(),
+            blank_before: HashSet::new(),
+            last_content_line: 0,
         }
     }
 
     /// Tokenize an entire source string, ending with an `Eof` token.
     pub fn tokenize(source: &str) -> Result<Vec<Token>, MiruError> {
         Lexer::new(source).run()
+    }
+
+    /// Tokenize like [`tokenize`](Lexer::tokenize), and also gather the comments
+    /// and blank-line positions that `miru fmt` needs to reprint a program.
+    pub fn tokenize_with_trivia(source: &str) -> Result<(Vec<Token>, Trivia), MiruError> {
+        let mut lexer = Lexer::new(source);
+        lexer.collect_trivia = true;
+        let tokens = lexer.run()?;
+        let trivia = Trivia {
+            comments: lexer.comments,
+            blank_before: lexer.blank_before,
+        };
+        Ok((tokens, trivia))
     }
 
     fn run(&mut self) -> Result<Vec<Token>, MiruError> {
@@ -49,12 +76,31 @@ impl Lexer {
                 }
             }
 
+            if !matches!(token.kind, TokenKind::Newline | TokenKind::Eof) {
+                self.note_content_line(token.line);
+            }
+
             tokens.push(token);
             if is_eof {
                 break;
             }
         }
         Ok(tokens)
+    }
+
+    /// Record that content appeared on `line`, marking a blank line before it
+    /// when there is a gap from the previous content line. Only active while
+    /// collecting trivia for the formatter.
+    fn note_content_line(&mut self, line: usize) {
+        if !self.collect_trivia {
+            return;
+        }
+        if self.last_content_line != 0 && line >= self.last_content_line + 2 {
+            self.blank_before.insert(line);
+        }
+        if line > self.last_content_line {
+            self.last_content_line = line;
+        }
     }
 
     fn next_token(&mut self) -> Result<Token, MiruError> {
@@ -82,11 +128,29 @@ impl Lexer {
             }
 
             if c == '/' && self.peek_at(1) == Some('/') {
+                // A comment is a leading (own-line) comment when only whitespace
+                // precedes it on the line; otherwise it trails code.
+                let comment_line = self.line;
+                let own_line = self.chars[self.line_start..self.pos]
+                    .iter()
+                    .all(|ch| ch.is_whitespace());
+                self.advance(); // first '/'
+                self.advance(); // second '/'
+                let start = self.pos;
                 while let Some(ch) = self.peek() {
                     if ch == '\n' {
                         break;
                     }
                     self.advance();
+                }
+                if self.collect_trivia {
+                    let text: String = self.chars[start..self.pos].iter().collect();
+                    self.note_content_line(comment_line);
+                    self.comments.push(Comment {
+                        line: comment_line,
+                        own_line,
+                        text,
+                    });
                 }
                 continue;
             }
@@ -542,5 +606,26 @@ mod tests {
         let err = Lexer::tokenize("  @").unwrap_err();
         assert_eq!(err.line, 1);
         assert_eq!(err.column, 3);
+    }
+
+    #[test]
+    fn trivia_collects_comments_and_blank_lines() {
+        let (_tokens, trivia) =
+            Lexer::tokenize_with_trivia("// header\n\nlet x = 1 // trailing").expect("lexes");
+        assert_eq!(trivia.comments.len(), 2);
+        assert!(trivia.comments[0].own_line);
+        assert_eq!(trivia.comments[0].text.trim(), "header");
+        assert!(!trivia.comments[1].own_line);
+        assert_eq!(trivia.comments[1].text.trim(), "trailing");
+        // "let x = 1" sits on line 3, with a blank line 2 above it.
+        assert!(trivia.blank_before.contains(&3));
+    }
+
+    #[test]
+    fn trivia_ignores_gaps_filled_by_comments() {
+        // Consecutive lines, one of them a comment: no blank line anywhere.
+        let (_tokens, trivia) =
+            Lexer::tokenize_with_trivia("let a = 1\n// note\nlet b = 2").expect("lexes");
+        assert!(trivia.blank_before.is_empty());
     }
 }
