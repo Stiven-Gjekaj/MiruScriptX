@@ -25,29 +25,33 @@ The first milestone is a small but genuinely usable language, built end to end:
 - A command line runner (`miru run file.msx`) and an interactive REPL.
 - Example programs, a unit and integration test suite, and this documentation.
 
-## v0.2 (current): maps and loop control
+## v0.2: maps, loop control, a bigger standard library, and better errors
 
 - Maps / dictionaries: `{"key": value}` literals, reading and writing by key
   (a missing key reads as `nil`), with deterministic sorted-key ordering.
 - Map builtins `keys`, `values`, and `has`, and `len` extended to maps.
 - `break` and `continue` in `while` and `for` loops, checked at parse time so
   using them outside a loop is caught early.
-
-Deferred from this milestone, still planned:
-
-- More general builtins (string helpers, array helpers, `input`, basic math).
-- Error messages with a column and a caret under the offending token.
+- String builtins: `upper`, `lower`, `trim`, `replace`, `split`, `join`,
+  `contains`, and `find`.
+- Array builtins: `pop`, `index_of`, `slice`, `sort`, and `reverse`.
+- Math and conversion builtins: `abs`, `min`, `max`, `floor`, `ceil`, `round`,
+  `sqrt`, `pow`, `int`, and `float`.
+- `input` for reading a line of input, through a testable input channel that
+  mirrors the existing output trait.
+- Error messages with a line, a column, and a caret under the offending token,
+  for both syntax and runtime errors.
 
 Documentation and project infrastructure landed alongside this milestone: a
 guided wiki, a single-page reference, an architecture guide, community docs
 (contributing, code of conduct, security, support, terms), issue and pull
 request templates, and a branded README with a project logo.
 
-## v0.3: more builtins and better errors
+## v0.3: tooling and richer functions
 
-- The general string, array, math, and `input` builtins deferred from v0.2.
-- Column-and-caret error spans for both syntax and runtime errors.
 - REPL history and a source formatter (`miru fmt`).
+- Higher-order builtins (`map`, `filter`, `reduce`), which require letting
+  builtins call back into user-defined functions.
 
 ## v0.4: performance
 
