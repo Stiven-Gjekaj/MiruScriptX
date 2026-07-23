@@ -21,6 +21,8 @@ pub fn register(env: &Env) {
     define(env, "keys", keys);
     define(env, "values", values);
     define(env, "has", has);
+    define(env, "upper", upper);
+    define(env, "lower", lower);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -159,5 +161,54 @@ fn has(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     match &args[0] {
         Value::Map(entries) => Ok(Value::Bool(entries.borrow().contains_key(&key))),
         other => Err(format!("has expects a map but got a {}", other.type_name())),
+    }
+}
+
+/// `upper(s)` returns the string with every letter upper-cased.
+fn upper(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("upper", &args, 1)?;
+    match &args[0] {
+        Value::Str(s) => Ok(Value::Str(Rc::new(s.to_uppercase()))),
+        other => Err(format!(
+            "upper expects a string but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `lower(s)` returns the string with every letter lower-cased.
+fn lower(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("lower", &args, 1)?;
+    match &args[0] {
+        Value::Str(s) => Ok(Value::Str(Rc::new(s.to_lowercase()))),
+        other => Err(format!(
+            "lower expects a string but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::run_capture;
+
+    fn out(source: &str) -> String {
+        run_capture(source).expect("program should run")
+    }
+
+    fn err(source: &str) -> String {
+        run_capture(source)
+            .expect_err("program should fail")
+            .message
+    }
+
+    #[test]
+    fn upper_and_lower() {
+        assert_eq!(out("print(upper(\"aBc\"), lower(\"aBc\"))"), "ABC abc\n");
+    }
+
+    #[test]
+    fn upper_rejects_non_strings() {
+        assert!(err("upper(1)").contains("expects a string"));
     }
 }
