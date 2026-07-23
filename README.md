@@ -9,7 +9,7 @@ _A tree-walking interpreter with zero dependencies: source -&gt; tokens -&gt; AS
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/std_only-zero_deps-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Standard library only"/>
-  <img src="https://img.shields.io/badge/tests-78_passing-427819?style=for-the-badge" alt="78 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-120_passing-427819?style=for-the-badge" alt="120 tests passing"/>
 </p>
 
 <p align="center">
@@ -155,12 +155,12 @@ abstract syntax tree, and the tree is evaluated directly.
 
 | Stage | Files | Lines | Responsibility |
 | ----- | ----- | ----- | -------------- |
-| **Lexer** | token.rs, lexer.rs | 601 | Source text to tokens, with line tracking |
-| **Parser** | ast.rs, parser.rs | 949 | Recursive descent plus a Pratt expression parser |
-| **Interpreter** | value, environment, interpreter, builtins | 1166 | Tree-walking evaluation, scopes, closures, builtins |
+| **Lexer** | token.rs, lexer.rs | 668 | Source text to tokens, with line and column tracking |
+| **Parser** | ast.rs, parser.rs | 1031 | Recursive descent plus a Pratt expression parser |
+| **Interpreter** | value, environment, interpreter, builtins | 1969 | Tree-walking evaluation, scopes, closures, builtins |
 | **CLI and REPL** | main.rs, repl.rs | 173 | File runner and interactive REPL |
-| **Library** | lib.rs | 156 | Ties it together (`parse_program`, `run_source`) |
-| **Total** | **11 files** | **3045** | Zero-dependency interpreter |
+| **Library** | lib.rs | 265 | Ties it together (`parse_program`, `run_source`) |
+| **Total** | **11 files** | **4106** | Zero-dependency interpreter |
 
 ```
 src/         the interpreter (lexer, parser, evaluator, builtins, CLI, REPL)

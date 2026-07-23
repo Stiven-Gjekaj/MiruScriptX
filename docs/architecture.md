@@ -28,22 +28,24 @@ source text
  values and printed output
 ```
 
-Every stage reports problems as a single `MiruError { line, message }`
+Every stage reports problems as a single `MiruError { line, column, message }`
 (defined in `src/lib.rs`), so a syntax error and a runtime error are surfaced
-the same way, both carrying the source line where they happened.
+the same way, both carrying the source line and column where they happened. The
+error's `render` method draws the offending source line with a caret under that
+column.
 
 ## Module map
 
 | File                 | Responsibility                                             |
 | -------------------- | ---------------------------------------------------------- |
 | `src/token.rs`       | `Token` and `TokenKind`, plus a `describe` helper for errors |
-| `src/lexer.rs`       | Turns source text into tokens; tracks lines                |
+| `src/lexer.rs`       | Turns source text into tokens; tracks lines and columns    |
 | `src/ast.rs`         | `Expr` and `Stmt` node definitions                         |
 | `src/parser.rs`      | Builds the AST (recursive descent plus a Pratt expression parser) |
 | `src/value.rs`       | `Value`, `Function`, the `Output` trait, display and equality |
 | `src/environment.rs` | `Scope` chain for lexical scoping and closures             |
 | `src/interpreter.rs` | Walks the AST and evaluates it                             |
-| `src/builtins.rs`    | Native functions: `print`, `len`, `push`, `str`, `type`, `range` |
+| `src/builtins.rs`    | The native builtins: printing, plus string, array, math, map, and input helpers |
 | `src/lib.rs`         | Ties the modules together (`parse_program`, `run_source`, `run_capture`) |
 | `src/main.rs`        | The `miru` command line interface                          |
 | `src/repl.rs`        | The interactive REPL                                       |
@@ -78,10 +80,11 @@ function can find itself in the scope it was defined in.
 
 ### Return uses a control-flow signal
 
-Executing a statement returns a `Flow` value: either `Flow::Normal` or
-`Flow::Return(value)`. Blocks and loops propagate `Flow::Return` upward, and a
-function call catches it to produce the function's result. This avoids threading
-special cases through every statement.
+Executing a statement returns a `Flow` value: `Flow::Normal`,
+`Flow::Return(value)`, or `Flow::Break` / `Flow::Continue` for loop control.
+Blocks and loops propagate these upward; a function call catches `Flow::Return`
+to produce its result, and a loop catches `Break` and `Continue`. This avoids
+threading special cases through every statement.
 
 ### Numbers are integers or floats
 
@@ -91,22 +94,24 @@ interpreter). Integer division and modulo truncate; division or modulo by zero
 is a runtime error; integer operations use checked arithmetic and report
 overflow rather than panicking.
 
-### Output goes through a trait
+### Input and output go through traits
 
 Builtins that print do not write to stdout directly. Instead they receive a
 `&mut dyn Output` (defined in `src/value.rs`), which the interpreter implements.
 The binary points that at stdout, while `run_capture` in `src/lib.rs` points it
 at an in-memory buffer. That is why the test suite can assert on program output
-without spawning a process.
+without spawning a process. A parallel `Input` trait feeds `input()` the same
+way: real standard input in the binary, a scripted buffer in
+`run_capture_with_input`.
 
 ## How to extend it
 
 ### Add a builtin
 
 Write a function in `src/builtins.rs` with the signature
-`fn(&mut dyn Output, Vec<Value>) -> Result<Value, String>`, then register it in
-`register`. Return an `Err(String)` for bad arguments; the interpreter attaches
-the current line automatically.
+`fn(&mut dyn Output, &mut dyn Input, Vec<Value>) -> Result<Value, String>`, then
+register it in `register`. Return an `Err(String)` for bad arguments; the
+interpreter attaches the current line and column automatically.
 
 ### Add an operator
 
