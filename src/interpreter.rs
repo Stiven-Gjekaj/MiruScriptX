@@ -19,6 +19,8 @@ use crate::MiruError;
 enum Flow {
     Normal,
     Return(Value),
+    Break,
+    Continue,
 }
 
 /// A pair of numbers promoted to a common representation for arithmetic.
@@ -81,6 +83,9 @@ impl Interpreter {
                 match self.execute(stmt, &env)? {
                     Flow::Normal => last = Value::Nil,
                     Flow::Return(_) => break,
+                    Flow::Break | Flow::Continue => {
+                        return Err(self.error("break or continue outside of a loop"));
+                    }
                 }
             }
         }
@@ -113,6 +118,8 @@ impl Interpreter {
                 };
                 Ok(Flow::Return(value))
             }
+            StmtKind::Break => Ok(Flow::Break),
+            StmtKind::Continue => Ok(Flow::Continue),
             StmtKind::If {
                 condition,
                 then_branch,
@@ -128,8 +135,10 @@ impl Interpreter {
             }
             StmtKind::While { condition, body } => {
                 while self.eval(condition, env)?.is_truthy() {
-                    if let Flow::Return(value) = self.execute_block(body, env)? {
-                        return Ok(Flow::Return(value));
+                    match self.execute_block(body, env)? {
+                        Flow::Return(value) => return Ok(Flow::Return(value)),
+                        Flow::Break => break,
+                        Flow::Continue | Flow::Normal => {}
                     }
                 }
                 Ok(Flow::Normal)
@@ -169,8 +178,10 @@ impl Interpreter {
         for item in snapshot {
             let loop_env = environment::new_child(env);
             environment::define(&loop_env, name, item);
-            if let Flow::Return(value) = self.execute_statements(body, &loop_env)? {
-                return Ok(Flow::Return(value));
+            match self.execute_statements(body, &loop_env)? {
+                Flow::Return(value) => return Ok(Flow::Return(value)),
+                Flow::Break => break,
+                Flow::Continue | Flow::Normal => {}
             }
         }
         Ok(Flow::Normal)
@@ -183,8 +194,9 @@ impl Interpreter {
 
     fn execute_statements(&mut self, statements: &[Stmt], env: &Env) -> Result<Flow, MiruError> {
         for stmt in statements {
-            if let Flow::Return(value) = self.execute(stmt, env)? {
-                return Ok(Flow::Return(value));
+            match self.execute(stmt, env)? {
+                Flow::Normal => {}
+                other => return Ok(other),
             }
         }
         Ok(Flow::Normal)
@@ -281,6 +293,9 @@ impl Interpreter {
                 match self.execute_statements(&func.body, &call_env)? {
                     Flow::Return(value) => Ok(value),
                     Flow::Normal => Ok(Value::Nil),
+                    Flow::Break | Flow::Continue => {
+                        Err(self.error("break or continue outside of a loop"))
+                    }
                 }
             }
             Value::Builtin(builtin) => match (builtin.func)(self, args) {
@@ -604,5 +619,31 @@ mod tests {
     #[test]
     fn reports_calling_a_non_function() {
         assert!(error("let x = 5\nx()").message.contains("not callable"));
+    }
+
+    #[test]
+    fn break_stops_a_loop() {
+        let source =
+            "let last = 0\nfor n in range(1, 10) {\n  if n == 5 { break }\n  last = n\n}\nlast";
+        assert_eq!(repr(source), "4");
+    }
+
+    #[test]
+    fn continue_skips_to_the_next_iteration() {
+        let source =
+            "let sum = 0\nfor n in range(1, 6) {\n  if n % 2 == 0 { continue }\n  sum = sum + n\n}\nsum";
+        assert_eq!(repr(source), "9");
+    }
+
+    #[test]
+    fn break_works_in_a_while_loop() {
+        let source = "let i = 0\nwhile true {\n  i = i + 1\n  if i == 3 { break }\n}\ni";
+        assert_eq!(repr(source), "3");
+    }
+
+    #[test]
+    fn break_only_exits_the_inner_loop() {
+        let source = "let count = 0\nfor a in range(0, 3) {\n  for b in range(0, 3) {\n    if b == 1 { break }\n    count = count + 1\n  }\n}\ncount";
+        assert_eq!(repr(source), "3");
     }
 }

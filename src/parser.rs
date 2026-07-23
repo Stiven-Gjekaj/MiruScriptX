@@ -12,12 +12,17 @@ use crate::MiruError;
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    loop_depth: usize,
 }
 
 impl Parser {
     /// Parse a full program (a list of statements) from a token stream.
     pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, MiruError> {
-        let mut parser = Parser { tokens, pos: 0 };
+        let mut parser = Parser {
+            tokens,
+            pos: 0,
+            loop_depth: 0,
+        };
         parser.program()
     }
 
@@ -45,6 +50,8 @@ impl Parser {
             TokenKind::If => self.if_statement(line),
             TokenKind::While => self.while_statement(line),
             TokenKind::For => self.for_statement(line),
+            TokenKind::Break => self.break_statement(line),
+            TokenKind::Continue => self.continue_statement(line),
             TokenKind::Fn if matches!(self.peek_at_kind(1), Some(TokenKind::Ident(_))) => {
                 self.function_statement(line)
             }
@@ -106,7 +113,7 @@ impl Parser {
     fn while_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
         self.advance(); // 'while'
         let condition = self.expression()?;
-        let body = self.block()?;
+        let body = self.loop_body()?;
         Ok(Stmt::new(StmtKind::While { condition, body }, line))
     }
 
@@ -115,7 +122,7 @@ impl Parser {
         let name = self.expect_identifier("after 'for'")?;
         self.expect(TokenKind::In, "after the loop variable")?;
         let iterable = self.expression()?;
-        let body = self.block()?;
+        let body = self.loop_body()?;
         Ok(Stmt::new(
             StmtKind::For {
                 name,
@@ -130,7 +137,7 @@ impl Parser {
         self.advance(); // 'fn'
         let name = self.expect_identifier("after 'fn'")?;
         let params = self.parse_params()?;
-        let body = self.block()?;
+        let body = self.function_body()?;
         Ok(Stmt::new(StmtKind::Function { name, params, body }, line))
     }
 
@@ -194,6 +201,40 @@ impl Parser {
         }
         self.expect(TokenKind::RParen, "to close the parameter list")?;
         Ok(params)
+    }
+
+    fn break_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
+        self.advance(); // 'break'
+        if self.loop_depth == 0 {
+            return Err(MiruError::new(line, "break outside of a loop"));
+        }
+        Ok(Stmt::new(StmtKind::Break, line))
+    }
+
+    fn continue_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
+        self.advance(); // 'continue'
+        if self.loop_depth == 0 {
+            return Err(MiruError::new(line, "continue outside of a loop"));
+        }
+        Ok(Stmt::new(StmtKind::Continue, line))
+    }
+
+    /// Parse a loop body, marking that `break` and `continue` are allowed inside.
+    fn loop_body(&mut self) -> Result<Vec<Stmt>, MiruError> {
+        self.loop_depth += 1;
+        let body = self.block();
+        self.loop_depth -= 1;
+        body
+    }
+
+    /// Parse a function body. A `break` or `continue` cannot target a loop
+    /// outside the function, so loop depth is reset while parsing the body.
+    fn function_body(&mut self) -> Result<Vec<Stmt>, MiruError> {
+        let saved = self.loop_depth;
+        self.loop_depth = 0;
+        let body = self.block();
+        self.loop_depth = saved;
+        body
     }
 
     // --- Expressions (Pratt) ---------------------------------------------
@@ -374,7 +415,7 @@ impl Parser {
             TokenKind::Fn => {
                 self.advance();
                 let params = self.parse_params()?;
-                let body = self.block()?;
+                let body = self.function_body()?;
                 Ok(Expr::Function { params, body })
             }
             other => Err(MiruError::new(
@@ -707,5 +748,32 @@ mod tests {
             StmtKind::Function { body, .. } => assert_eq!(body.len(), 2),
             other => panic!("expected a function, found {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_break_and_continue_in_a_loop() {
+        let statements = parse_program("while true {\n  continue\n  break\n}");
+        match &statements[0].kind {
+            StmtKind::While { body, .. } => {
+                assert!(matches!(body[0].kind, StmtKind::Continue));
+                assert!(matches!(body[1].kind, StmtKind::Break));
+            }
+            other => panic!("expected a while loop, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn break_outside_a_loop_is_an_error() {
+        let tokens = Lexer::tokenize("break").expect("lexes");
+        let err = Parser::parse(tokens).unwrap_err();
+        assert!(err.message.contains("break outside of a loop"));
+    }
+
+    #[test]
+    fn break_cannot_target_a_loop_outside_a_function() {
+        let tokens =
+            Lexer::tokenize("for i in [1] {\n  fn f() {\n    break\n  }\n}").expect("lexes");
+        let err = Parser::parse(tokens).unwrap_err();
+        assert!(err.message.contains("break outside of a loop"));
     }
 }

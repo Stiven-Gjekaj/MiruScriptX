@@ -26,6 +26,10 @@ pub enum StmtKind {
     Expr(Expr),
     /// `return` with an optional value.
     Return(Option<Expr>),
+    /// `break` out of the nearest enclosing loop.
+    Break,
+    /// `continue` to the next iteration of the nearest enclosing loop.
+    Continue,
     /// `if condition { .. } else { .. }`; the else branch is optional.
     If {
         condition: Expr,
