@@ -13,6 +13,7 @@ pub struct Lexer {
     chars: Vec<char>,
     pos: usize,
     line: usize,
+    line_start: usize,
     group_depth: usize,
 }
 
@@ -22,6 +23,7 @@ impl Lexer {
             chars: source.chars().collect(),
             pos: 0,
             line: 1,
+            line_start: 0,
             group_depth: 0,
         }
     }
@@ -58,18 +60,20 @@ impl Lexer {
     fn next_token(&mut self) -> Result<Token, MiruError> {
         loop {
             let c = match self.peek() {
-                None => return Ok(Token::new(TokenKind::Eof, self.line)),
+                None => return Ok(Token::new(TokenKind::Eof, self.line, self.column())),
                 Some(c) => c,
             };
 
             if c == '\n' {
                 let line = self.line;
+                let column = self.column();
                 self.advance();
                 self.line += 1;
+                self.line_start = self.pos;
                 if self.group_depth > 0 {
                     continue; // insignificant inside ( ) or [ ]
                 }
-                return Ok(Token::new(TokenKind::Newline, line));
+                return Ok(Token::new(TokenKind::Newline, line, column));
             }
 
             if c == ' ' || c == '\t' || c == '\r' {
@@ -93,15 +97,16 @@ impl Lexer {
 
     fn read_token(&mut self, c: char) -> Result<Token, MiruError> {
         let line = self.line;
+        let column = self.column();
 
         if c.is_ascii_digit() {
-            return self.read_number(line);
+            return self.read_number(line, column);
         }
         if c == '_' || c.is_alphabetic() {
-            return Ok(self.read_identifier(line));
+            return Ok(self.read_identifier(line, column));
         }
         if c == '"' {
-            return self.read_string(line);
+            return self.read_string(line, column);
         }
 
         self.advance();
@@ -181,10 +186,10 @@ impl Lexer {
                 ));
             }
         };
-        Ok(Token::new(kind, line))
+        Ok(Token::new(kind, line, column))
     }
 
-    fn read_number(&mut self, line: usize) -> Result<Token, MiruError> {
+    fn read_number(&mut self, line: usize, column: usize) -> Result<Token, MiruError> {
         let start = self.pos;
         while let Some(c) = self.peek() {
             if c.is_ascii_digit() {
@@ -210,12 +215,12 @@ impl Lexer {
         let text: String = self.chars[start..self.pos].iter().collect();
         if is_float {
             match text.parse::<f64>() {
-                Ok(value) => Ok(Token::new(TokenKind::Float(value), line)),
+                Ok(value) => Ok(Token::new(TokenKind::Float(value), line, column)),
                 Err(_) => Err(MiruError::new(line, format!("invalid number '{text}'"))),
             }
         } else {
             match text.parse::<i64>() {
-                Ok(value) => Ok(Token::new(TokenKind::Int(value), line)),
+                Ok(value) => Ok(Token::new(TokenKind::Int(value), line, column)),
                 Err(_) => Err(MiruError::new(
                     line,
                     format!("integer literal '{text}' is out of range"),
@@ -224,7 +229,7 @@ impl Lexer {
         }
     }
 
-    fn read_identifier(&mut self, line: usize) -> Token {
+    fn read_identifier(&mut self, line: usize, column: usize) -> Token {
         let start = self.pos;
         while let Some(c) = self.peek() {
             if c == '_' || c.is_alphanumeric() {
@@ -250,10 +255,10 @@ impl Lexer {
             "nil" => TokenKind::Nil,
             _ => TokenKind::Ident(text),
         };
-        Token::new(kind, line)
+        Token::new(kind, line, column)
     }
 
-    fn read_string(&mut self, line: usize) -> Result<Token, MiruError> {
+    fn read_string(&mut self, line: usize, column: usize) -> Result<Token, MiruError> {
         self.advance(); // consume opening quote
         let mut value = String::new();
         loop {
@@ -293,7 +298,7 @@ impl Lexer {
                 }
             }
         }
-        Ok(Token::new(TokenKind::Str(value), line))
+        Ok(Token::new(TokenKind::Str(value), line, column))
     }
 
     fn peek(&self) -> Option<char> {
@@ -319,6 +324,11 @@ impl Lexer {
         } else {
             false
         }
+    }
+
+    /// The 1-based column of the current position within the current line.
+    fn column(&self) -> usize {
+        self.pos - self.line_start + 1
     }
 }
 
@@ -476,5 +486,25 @@ mod tests {
         let err = Lexer::tokenize("1\n@").unwrap_err();
         assert_eq!(err.line, 2);
         assert!(err.message.contains("unexpected character"));
+    }
+
+    #[test]
+    fn tracks_columns_within_a_line() {
+        let tokens = Lexer::tokenize("let x = 42").expect("tokenizes");
+        assert_eq!(tokens[0].column, 1); // let
+        assert_eq!(tokens[1].column, 5); // x
+        assert_eq!(tokens[2].column, 7); // =
+        assert_eq!(tokens[3].column, 9); // 42
+    }
+
+    #[test]
+    fn columns_reset_on_each_line() {
+        let tokens = Lexer::tokenize("ab\n  cd").expect("tokenizes");
+        let cd = tokens
+            .iter()
+            .find(|token| token.kind == TokenKind::Ident("cd".to_string()))
+            .expect("has cd");
+        assert_eq!(cd.line, 2);
+        assert_eq!(cd.column, 3);
     }
 }

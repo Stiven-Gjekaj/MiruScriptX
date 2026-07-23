@@ -1,16 +1,17 @@
 //! Token definitions for the MiruScriptX lexer.
 
-/// A single token produced by the lexer, tagged with the 1-based source line it
-/// starts on so later stages can report precise error locations.
+/// A single token produced by the lexer, tagged with the 1-based source line and
+/// column it starts on so later stages can report precise error locations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub line: usize,
+    pub column: usize,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, line: usize) -> Token {
-        Token { kind, line }
+    pub fn new(kind: TokenKind, line: usize, column: usize) -> Token {
+        Token { kind, line, column }
     }
 }
 
