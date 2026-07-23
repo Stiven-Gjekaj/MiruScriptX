@@ -41,5 +41,20 @@ for i in range(1, 11) {
 print(total)   // 55
 ```
 
+## Loop control: break and continue
+
+Use `break` to stop a loop early, and `continue` to skip to the next iteration:
+
+```
+for n in range(1, 10) {
+  if n == 5 { break }        // stop the loop entirely
+  if n % 2 == 0 { continue } // skip the even numbers
+  print(n)                   // 1, then 3
+}
+```
+
+Both work in `while` loops too, and they always affect the nearest enclosing
+loop.
+
 ---
 Previous: [Control flow](07-control-flow.md) | Next: [Arrays](09-arrays.md)

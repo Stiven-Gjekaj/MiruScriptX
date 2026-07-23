@@ -1,6 +1,7 @@
 # Builtins
 
-These functions are always available. In v0.1 the set is deliberately small.
+These functions are always available. The set is small but grows with each
+release.
 
 ## print(...)
 
@@ -58,7 +59,33 @@ print(range(4))      // [0, 1, 2, 3]
 print(range(2, 6))   // [2, 3, 4, 5]
 ```
 
+## keys(map)
+
+Returns an array of the map's keys, in sorted order.
+
+```
+print(keys({"b": 2, "a": 1}))   // ["a", "b"]
+```
+
+## values(map)
+
+Returns an array of the map's values, in key order.
+
+```
+print(values({"b": 2, "a": 1}))   // [1, 2]
+```
+
+## has(map, key)
+
+Reports whether the map contains a given string key.
+
+```
+let m = {"a": 1}
+print(has(m, "a"))   // true
+print(has(m, "z"))   // false
+```
+
 More builtins are planned; see the [roadmap](../docs/milestones.md).
 
 ---
-Previous: [Closures](11-closures.md) | Next: [Next steps](13-next-steps.md)
+Previous: [Closures](12-closures.md) | Next: [Next steps](14-next-steps.md)

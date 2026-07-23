@@ -51,4 +51,4 @@ print(add5(10))   // 15
 `add5` keeps its own `x` of 5, even though `make_adder` has already returned.
 
 ---
-Previous: [Functions](10-functions.md) | Next: [Builtins](12-builtins.md)
+Previous: [Functions](11-functions.md) | Next: [Builtins](13-builtins.md)

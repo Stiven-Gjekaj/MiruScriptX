@@ -47,4 +47,4 @@ print(factorial(5))   // 120
 ```
 
 ---
-Previous: [Arrays](09-arrays.md) | Next: [Closures](11-closures.md)
+Previous: [Maps](10-maps.md) | Next: [Closures](12-closures.md)

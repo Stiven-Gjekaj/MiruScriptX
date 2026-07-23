@@ -30,4 +30,4 @@ The [roadmap](../docs/milestones.md) lists what is planned next: maps, more
 builtins, a bytecode virtual machine, and a browser playground.
 
 ---
-Previous: [Builtins](12-builtins.md)
+Previous: [Builtins](13-builtins.md)

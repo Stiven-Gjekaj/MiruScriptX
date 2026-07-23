@@ -38,6 +38,13 @@ fn fizzbuzz_example_output() {
 }
 
 #[test]
+fn contacts_example_output() {
+    let expected =
+        "names:\n  Aiko: 555-0100\n  Ken: 555-0199\n  Mai: 555-0177\nKen is 555-0199\nentries: 3\n";
+    assert_eq!(run_example("contacts.msx"), expected);
+}
+
+#[test]
 fn version_flag_prints_version() {
     let output = miru().arg("--version").output().expect("runs");
     assert!(output.status.success());

@@ -1,0 +1,27 @@
+// contacts.msx
+// Build a small phone book (a map), then look people up.
+// Run with: miru run examples/contacts.msx
+
+let book = {
+  "Aiko": "555-0100",
+  "Ken": "555-0142",
+}
+
+// Add a new entry and update an existing one.
+book["Mai"] = "555-0177"
+book["Ken"] = "555-0199"
+
+print("names:")
+for name in keys(book) {
+  print("  " + name + ": " + book[name])
+}
+
+// Look up a name, guarding against a missing one.
+let wanted = "Ken"
+if has(book, wanted) {
+  print(wanted + " is " + book[wanted])
+} else {
+  print(wanted + " is not in the book")
+}
+
+print("entries: " + str(len(book)))

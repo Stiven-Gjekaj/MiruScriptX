@@ -55,4 +55,4 @@ for n in names {
 ```
 
 ---
-Previous: [Loops](08-loops.md) | Next: [Functions](10-functions.md)
+Previous: [Loops](08-loops.md) | Next: [Maps](10-maps.md)
