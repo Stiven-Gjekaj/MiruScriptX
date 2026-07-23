@@ -29,6 +29,8 @@ pub fn register(env: &Env) {
     define(env, "join", join);
     define(env, "contains", contains);
     define(env, "find", find);
+    define(env, "pop", pop);
+    define(env, "index_of", index_of);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -290,6 +292,42 @@ fn find(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     }
 }
 
+/// `pop(array)` removes and returns the last element; an empty array is an error.
+fn pop(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("pop", &args, 1)?;
+    match &args[0] {
+        Value::Array(items) => items
+            .borrow_mut()
+            .pop()
+            .ok_or_else(|| "pop from an empty array".to_string()),
+        other => Err(format!(
+            "pop expects an array but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `index_of(array, value)` returns the index of the first element equal to
+/// `value`, or -1 when there is none.
+fn index_of(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("index_of", &args, 2)?;
+    match &args[0] {
+        Value::Array(items) => {
+            let index = items
+                .borrow()
+                .iter()
+                .position(|item| item.equals(&args[1]))
+                .map(|p| p as i64)
+                .unwrap_or(-1);
+            Ok(Value::Int(index))
+        }
+        other => Err(format!(
+            "index_of expects an array but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -355,6 +393,24 @@ mod tests {
         assert_eq!(
             out("print(find(\"hello\", \"l\"), find(\"hello\", \"z\"))"),
             "2 -1\n"
+        );
+    }
+
+    #[test]
+    fn pop_removes_and_returns_last() {
+        assert_eq!(out("let a = [1, 2, 3]\nprint(pop(a), a)"), "3 [1, 2]\n");
+    }
+
+    #[test]
+    fn pop_on_empty_array_errors() {
+        assert!(err("pop([])").contains("empty array"));
+    }
+
+    #[test]
+    fn index_of_finds_first_match_or_negative_one() {
+        assert_eq!(
+            out("print(index_of([10, 20, 30], 20), index_of([1], 9))"),
+            "1 -1\n"
         );
     }
 }
