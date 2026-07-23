@@ -41,6 +41,8 @@ pub fn register(env: &Env) {
     define(env, "floor", floor);
     define(env, "ceil", ceil);
     define(env, "round", round);
+    define(env, "sqrt", sqrt);
+    define(env, "pow", pow);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -548,6 +550,47 @@ fn round(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     round_like("round", args, f64::round)
 }
 
+/// The f64 value of a numeric argument, or an error naming the builtin.
+fn number_arg(name: &str, value: &Value) -> Result<f64, String> {
+    match value {
+        Value::Int(n) => Ok(*n as f64),
+        Value::Float(f) => Ok(*f),
+        other => Err(format!(
+            "{name} expects numbers but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `sqrt(x)` returns the square root of a non-negative number, as a float.
+fn sqrt(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("sqrt", &args, 1)?;
+    let x = number_arg("sqrt", &args[0])?;
+    if x < 0.0 {
+        return Err("sqrt of a negative number".to_string());
+    }
+    Ok(Value::Float(x.sqrt()))
+}
+
+/// `pow(base, exp)` returns `base` raised to `exp`. With two integers and a
+/// non-negative exponent the result is an integer; otherwise it is a float.
+fn pow(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("pow", &args, 2)?;
+    match (&args[0], &args[1]) {
+        (Value::Int(base), Value::Int(exp)) if *exp >= 0 => {
+            let exp = u32::try_from(*exp).map_err(|_| "pow exponent is too large".to_string())?;
+            base.checked_pow(exp)
+                .map(Value::Int)
+                .ok_or_else(|| "integer overflow in pow".to_string())
+        }
+        _ => {
+            let base = number_arg("pow", &args[0])?;
+            let exp = number_arg("pow", &args[1])?;
+            Ok(Value::Float(base.powf(exp)))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -697,5 +740,23 @@ mod tests {
     #[test]
     fn rounding_passes_ints_through() {
         assert_eq!(out("print(floor(5), ceil(5), round(5))"), "5 5 5\n");
+    }
+
+    #[test]
+    fn sqrt_returns_a_float() {
+        assert_eq!(out("print(sqrt(9), sqrt(16.0))"), "3.0 4.0\n");
+    }
+
+    #[test]
+    fn sqrt_rejects_negatives() {
+        assert!(err("sqrt(-1)").contains("negative"));
+    }
+
+    #[test]
+    fn pow_is_int_for_int_base_and_nonneg_exp() {
+        assert_eq!(
+            out("print(pow(2, 10), pow(2, -1), pow(2.0, 3))"),
+            "1024 0.5 8.0\n"
+        );
     }
 }
