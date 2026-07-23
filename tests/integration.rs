@@ -70,6 +70,65 @@ fn greeter_example_reads_stdin() {
 }
 
 #[test]
+fn fmt_prints_formatted_source_to_stdout() {
+    let output = miru()
+        .arg("fmt")
+        .arg("examples/fib.miru")
+        .output()
+        .expect("runs");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf-8");
+    // Canonical spacing: the recursive call is reprinted with single spaces.
+    assert!(
+        stdout.contains("return fib(n - 1) + fib(n - 2)"),
+        "stdout was: {stdout}"
+    );
+    // Printing to stdout must leave the file itself untouched.
+    let on_disk = std::fs::read_to_string("examples/fib.miru").expect("read example");
+    assert!(on_disk.contains("fib.miru"));
+}
+
+#[test]
+fn fmt_write_rewrites_the_file_and_is_idempotent() {
+    let path = std::env::temp_dir().join("miru_integration_fmt.miru");
+    std::fs::write(&path, "let  x=[1,2,3]\nprint(  x )\n").expect("write temp file");
+
+    let first = miru()
+        .arg("fmt")
+        .arg("-w")
+        .arg(&path)
+        .output()
+        .expect("runs");
+    assert!(first.status.success());
+    let after_first = std::fs::read_to_string(&path).expect("read back");
+    assert_eq!(after_first, "let x = [1, 2, 3]\nprint(x)\n");
+
+    // Formatting an already-formatted file changes nothing.
+    let second = miru()
+        .arg("fmt")
+        .arg("--write")
+        .arg(&path)
+        .output()
+        .expect("runs");
+    assert!(second.status.success());
+    let after_second = std::fs::read_to_string(&path).expect("read back");
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(after_first, after_second);
+}
+
+#[test]
+fn fmt_reports_a_syntax_error_and_fails() {
+    let path = std::env::temp_dir().join("miru_integration_fmt_bad.miru");
+    std::fs::write(&path, "let = 1\n").expect("write temp file");
+    let output = miru().arg("fmt").arg(&path).output().expect("runs");
+    let _ = std::fs::remove_file(&path);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf-8");
+    assert!(stderr.contains("miru:"), "stderr was: {stderr}");
+}
+
+#[test]
 fn version_flag_prints_version() {
     let output = miru().arg("--version").output().expect("runs");
     assert!(output.status.success());

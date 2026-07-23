@@ -46,6 +46,7 @@ pub fn format_program(program: &[Stmt], trivia: &Trivia) -> String {
         comments: &trivia.comments,
         idx: 0,
         blank_before: &trivia.blank_before,
+        blanked: HashSet::new(),
         last_blank: false,
     };
     printer.print_stmts(program, 0);
@@ -59,6 +60,9 @@ struct Printer<'a> {
     comments: &'a [Comment],
     idx: usize,
     blank_before: &'a HashSet<usize>,
+    /// Lines whose leading blank has already been emitted, so a line shared by
+    /// several statements (such as `fn f() { return 1 }`) blanks only once.
+    blanked: HashSet<usize>,
     last_blank: bool,
 }
 
@@ -187,9 +191,10 @@ impl Printer<'_> {
         }
     }
 
-    /// Emit a single blank line if `line` had one above it in the source.
+    /// Emit a single blank line if `line` had one above it in the source and it
+    /// has not been blanked already.
     fn maybe_blank(&mut self, line: usize) {
-        if self.blank_before.contains(&line) {
+        if self.blank_before.contains(&line) && self.blanked.insert(line) {
             self.push_blank();
         }
     }
@@ -575,6 +580,21 @@ mod tests {
             blank_before: HashSet::from([3]),
         };
         assert_eq!(format_program(&stmts, &trivia), "let x = 1\n\nlet y = 2\n");
+    }
+
+    #[test]
+    fn a_blank_above_a_shared_line_blanks_only_once() {
+        // The function header and its body statement are both on line 3, so the
+        // blank above line 3 must not repeat inside the body.
+        let stmts = program("let x = 1\n\nfn f() { return 2 }");
+        let trivia = Trivia {
+            comments: Vec::new(),
+            blank_before: HashSet::from([3]),
+        };
+        assert_eq!(
+            format_program(&stmts, &trivia),
+            "let x = 1\n\nfn f() {\n  return 2\n}\n"
+        );
     }
 
     #[test]

@@ -6,11 +6,13 @@ use std::process::ExitCode;
 
 const USAGE: &str = "\
 Usage:
-  miru run <file.miru>   Run a MiruScriptX program from a file
-  miru                  Start the interactive REPL
-  miru repl             Start the interactive REPL
-  miru --version        Print the version and exit
-  miru --help           Show this help and exit";
+  miru run <file.miru>      Run a MiruScriptX program from a file
+  miru fmt <file.miru>      Format a program and print it to standard output
+  miru fmt -w <file.miru>   Format a program and rewrite the file in place
+  miru                      Start the interactive REPL
+  miru repl                 Start the interactive REPL
+  miru --version            Print the version and exit
+  miru --help               Show this help and exit";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -18,6 +20,7 @@ fn main() -> ExitCode {
         None => repl::run(),
         Some((command, rest)) => match command.as_str() {
             "run" => run_file(rest),
+            "fmt" => fmt_file(rest),
             "repl" => {
                 if rest.is_empty() {
                     repl::run()
@@ -61,6 +64,58 @@ fn run_file(args: &[String]) -> ExitCode {
             eprintln!("miru: {}", err.render(&source));
             ExitCode::FAILURE
         }
+    }
+}
+
+fn fmt_file(args: &[String]) -> ExitCode {
+    let mut write = false;
+    let mut path: Option<&str> = None;
+    for arg in args {
+        match arg.as_str() {
+            "--write" | "-w" => write = true,
+            other if other.starts_with('-') => {
+                return usage_error(&format!("unknown option '{other}' for 'fmt'"));
+            }
+            other => {
+                if path.is_some() {
+                    return usage_error("the 'fmt' command takes a single file path");
+                }
+                path = Some(other);
+            }
+        }
+    }
+
+    let Some(path) = path else {
+        return usage_error("the 'fmt' command needs a file path");
+    };
+
+    let source = match std::fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(err) => {
+            eprintln!("miru: cannot read '{path}': {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let formatted = match miruscriptx::format_source(&source) {
+        Ok(formatted) => formatted,
+        Err(err) => {
+            eprintln!("miru: {}", err.render(&source));
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if write {
+        match std::fs::write(path, &formatted) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("miru: cannot write '{path}': {err}");
+                ExitCode::FAILURE
+            }
+        }
+    } else {
+        print!("{formatted}");
+        ExitCode::SUCCESS
     }
 }
 
