@@ -35,6 +35,9 @@ pub fn register(env: &Env) {
     define(env, "slice", slice);
     define(env, "sort", sort);
     define(env, "reverse", reverse);
+    define(env, "abs", abs);
+    define(env, "min", min);
+    define(env, "max", max);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -451,6 +454,61 @@ fn reverse(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     }
 }
 
+/// `abs(x)` returns the absolute value of an int or float.
+fn abs(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("abs", &args, 1)?;
+    match &args[0] {
+        Value::Int(n) => n
+            .checked_abs()
+            .map(Value::Int)
+            .ok_or_else(|| "integer overflow in abs".to_string()),
+        Value::Float(f) => Ok(Value::Float(f.abs())),
+        other => Err(format!(
+            "abs expects a number but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// Shared implementation of `min` and `max`: pick the argument that compares as
+/// `want` against the running best. Preserves the winning value's own type.
+fn extreme(name: &str, args: Vec<Value>, want: Ordering) -> Result<Value, String> {
+    if args.is_empty() {
+        return Err(format!("{name} expects at least one argument"));
+    }
+    for value in &args {
+        if !matches!(value, Value::Int(_) | Value::Float(_)) {
+            return Err(format!(
+                "{name} expects numbers but got a {}",
+                value.type_name()
+            ));
+        }
+        if matches!(value, Value::Float(f) if f.is_nan()) {
+            return Err(format!("{name} cannot compare NaN"));
+        }
+    }
+    let mut best = args[0].clone();
+    for value in &args[1..] {
+        let ordering = number_as_f64(value)
+            .partial_cmp(&number_as_f64(&best))
+            .unwrap_or(Ordering::Equal);
+        if ordering == want {
+            best = value.clone();
+        }
+    }
+    Ok(best)
+}
+
+/// `min(...)` returns the smallest of its numeric arguments.
+fn min(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    extreme("min", args, Ordering::Less)
+}
+
+/// `max(...)` returns the largest of its numeric arguments.
+fn max(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    extreme("max", args, Ordering::Greater)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -571,5 +629,21 @@ mod tests {
             out("print(reverse([1, 2, 3]), reverse(\"abc\"))"),
             "[3, 2, 1] cba\n"
         );
+    }
+
+    #[test]
+    fn abs_of_ints_and_floats() {
+        assert_eq!(out("print(abs(-3), abs(-2.5), abs(4))"), "3 2.5 4\n");
+    }
+
+    #[test]
+    fn min_and_max_over_numbers() {
+        assert_eq!(out("print(min(3, 1, 2), max(3, 1, 2))"), "1 3\n");
+        assert_eq!(out("print(min(2, 1.5), max(2, 1.5))"), "1.5 2\n");
+    }
+
+    #[test]
+    fn min_requires_arguments() {
+        assert!(err("min()").contains("at least one"));
     }
 }
