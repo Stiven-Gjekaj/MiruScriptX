@@ -23,4 +23,4 @@ Explain how you verified the change. All of the following should pass locally:
 - [ ] I added or updated tests for my change.
 - [ ] I updated the docs (`wiki/`, `docs/`) if the language changed, and
       regenerated `docs/language-reference.md` with `scripts/build_reference.sh`.
-- [ ] My commits have clear messages, with no em-dashes or emoji.
+- [ ] My commits have clear messages.
