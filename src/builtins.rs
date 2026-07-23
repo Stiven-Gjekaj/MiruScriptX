@@ -38,6 +38,9 @@ pub fn register(env: &Env) {
     define(env, "abs", abs);
     define(env, "min", min);
     define(env, "max", max);
+    define(env, "floor", floor);
+    define(env, "ceil", ceil);
+    define(env, "round", round);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -509,6 +512,42 @@ fn max(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     extreme("max", args, Ordering::Greater)
 }
 
+/// Shared implementation of `floor`, `ceil`, and `round`. Ints pass through
+/// unchanged; a float is rounded by `apply` and returned as an int.
+fn round_like(name: &str, args: Vec<Value>, apply: fn(f64) -> f64) -> Result<Value, String> {
+    check_arity(name, &args, 1)?;
+    match &args[0] {
+        Value::Int(n) => Ok(Value::Int(*n)),
+        Value::Float(x) => {
+            let rounded = apply(*x);
+            if rounded.is_finite() {
+                Ok(Value::Int(rounded as i64))
+            } else {
+                Err(format!("{name} of a non-finite number"))
+            }
+        }
+        other => Err(format!(
+            "{name} expects a number but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `floor(x)` returns the largest integer not greater than `x`.
+fn floor(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    round_like("floor", args, f64::floor)
+}
+
+/// `ceil(x)` returns the smallest integer not less than `x`.
+fn ceil(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    round_like("ceil", args, f64::ceil)
+}
+
+/// `round(x)` returns `x` rounded to the nearest integer, halves away from zero.
+fn round(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    round_like("round", args, f64::round)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -645,5 +684,18 @@ mod tests {
     #[test]
     fn min_requires_arguments() {
         assert!(err("min()").contains("at least one"));
+    }
+
+    #[test]
+    fn floor_ceil_round_return_ints() {
+        assert_eq!(
+            out("print(floor(2.7), ceil(2.1), round(2.5), round(2.4))"),
+            "2 3 3 2\n"
+        );
+    }
+
+    #[test]
+    fn rounding_passes_ints_through() {
+        assert_eq!(out("print(floor(5), ceil(5), round(5))"), "5 5 5\n");
     }
 }
