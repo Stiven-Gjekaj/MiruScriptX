@@ -63,6 +63,7 @@ pub enum TokenKind {
     LBracket, // [
     RBracket, // ]
     Comma,    // ,
+    Colon,    // :
 
     // Structural.
     Newline, // a statement separator (also produced by ';')
@@ -112,6 +113,7 @@ impl TokenKind {
             TokenKind::LBracket => "'['".to_string(),
             TokenKind::RBracket => "']'".to_string(),
             TokenKind::Comma => "','".to_string(),
+            TokenKind::Colon => "':'".to_string(),
             TokenKind::Newline => "end of line".to_string(),
             TokenKind::Eof => "end of input".to_string(),
         }

@@ -130,6 +130,7 @@ impl Lexer {
                 TokenKind::RBracket
             }
             ',' => TokenKind::Comma,
+            ':' => TokenKind::Colon,
             ';' => TokenKind::Newline,
             '=' => {
                 if self.match_char('=') {
@@ -366,6 +367,11 @@ mod tests {
             kinds("break continue"),
             vec![TokenKind::Break, TokenKind::Continue, TokenKind::Eof]
         );
+    }
+
+    #[test]
+    fn tokenizes_colon() {
+        assert_eq!(kinds(":"), vec![TokenKind::Colon, TokenKind::Eof]);
     }
 
     #[test]
