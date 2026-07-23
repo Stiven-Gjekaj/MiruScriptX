@@ -46,6 +46,8 @@ pub fn run() -> ExitCode {
                 if source.trim().is_empty() {
                     continue;
                 }
+                // Record the input so the up arrow recalls it this session.
+                let _ = editor.add_history_entry(source.trim_end());
                 evaluate(&mut interpreter, &source);
             }
             // Ctrl-C discards the current (possibly multi-line) input.
