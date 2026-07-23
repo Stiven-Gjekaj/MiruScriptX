@@ -13,6 +13,14 @@ semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- Community and project documentation: contributing guidelines, a code of
+  conduct, a security policy, terms and conditions, a support guide, a code
+  owners file, and issue and pull request templates.
+- A restyled README with a project logo and badges, plus branded headers across
+  the documentation.
+
 Planned next: more general builtins (string, array, and math helpers, plus
 `input`) and richer error messages with a column and a caret. See
 `docs/milestones.md` for the full roadmap.

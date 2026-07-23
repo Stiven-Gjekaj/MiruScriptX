@@ -41,6 +41,11 @@ Deferred from this milestone, still planned:
 - More general builtins (string helpers, array helpers, `input`, basic math).
 - Error messages with a column and a caret under the offending token.
 
+Documentation and project infrastructure landed alongside this milestone: a
+guided wiki, a single-page reference, an architecture guide, community docs
+(contributing, code of conduct, security, support, terms), issue and pull
+request templates, and a branded README with a project logo.
+
 ## v0.3: more builtins and better errors
 
 - The general string, array, math, and `input` builtins deferred from v0.2.
