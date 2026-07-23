@@ -23,6 +23,8 @@ pub fn register(env: &Env) {
     define(env, "has", has);
     define(env, "upper", upper);
     define(env, "lower", lower);
+    define(env, "trim", trim);
+    define(env, "replace", replace);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -188,6 +190,30 @@ fn lower(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     }
 }
 
+/// `trim(s)` returns the string with leading and trailing whitespace removed.
+fn trim(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("trim", &args, 1)?;
+    match &args[0] {
+        Value::Str(s) => Ok(Value::Str(Rc::new(s.trim().to_string()))),
+        other => Err(format!(
+            "trim expects a string but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `replace(s, from, to)` returns `s` with every occurrence of `from` replaced
+/// by `to`.
+fn replace(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("replace", &args, 3)?;
+    match (&args[0], &args[1], &args[2]) {
+        (Value::Str(s), Value::Str(from), Value::Str(to)) => {
+            Ok(Value::Str(Rc::new(s.replace(from.as_str(), to.as_str()))))
+        }
+        _ => Err("replace expects three string arguments".to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -210,5 +236,15 @@ mod tests {
     #[test]
     fn upper_rejects_non_strings() {
         assert!(err("upper(1)").contains("expects a string"));
+    }
+
+    #[test]
+    fn trim_strips_surrounding_whitespace() {
+        assert_eq!(out("print(trim(\"  hi \"))"), "hi\n");
+    }
+
+    #[test]
+    fn replace_swaps_every_occurrence() {
+        assert_eq!(out("print(replace(\"a.b.c\", \".\", \"-\"))"), "a-b-c\n");
     }
 }
