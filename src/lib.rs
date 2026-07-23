@@ -124,28 +124,59 @@ fn strip_trailing_newline(mut line: String) -> String {
 }
 
 /// An error produced anywhere in the pipeline (lexing, parsing, or running),
-/// tagged with the 1-based source line where it occurred (0 when unknown).
+/// tagged with the 1-based source line and column where it occurred (0 when
+/// unknown).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MiruError {
     pub line: usize,
+    pub column: usize,
     pub message: String,
 }
 
 impl MiruError {
+    /// Create an error at a line, with an unknown column (`0`).
     pub fn new(line: usize, message: impl Into<String>) -> MiruError {
+        MiruError::with_column(line, 0, message)
+    }
+
+    /// Create an error at a specific line and column. A `column` of `0` means
+    /// the column is unknown.
+    pub fn with_column(line: usize, column: usize, message: impl Into<String>) -> MiruError {
         MiruError {
             line,
+            column,
             message: message.into(),
         }
+    }
+
+    /// Render the error with the offending source line and a caret under the
+    /// column. Falls back to the one-line [`Display`](std::fmt::Display) form
+    /// when the line or column is unknown or out of range.
+    pub fn render(&self, source: &str) -> String {
+        let header = self.to_string();
+        if self.line == 0 || self.column == 0 {
+            return header;
+        }
+        let Some(text) = source.lines().nth(self.line - 1) else {
+            return header;
+        };
+        // Build the caret indent from the source itself so that tabs before the
+        // column keep the caret aligned.
+        let mut caret = String::new();
+        for ch in text.chars().take(self.column - 1) {
+            caret.push(if ch == '\t' { '\t' } else { ' ' });
+        }
+        caret.push('^');
+        format!("{header}\n    {text}\n    {caret}")
     }
 }
 
 impl fmt::Display for MiruError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.line == 0 {
-            write!(f, "error: {}", self.message)
-        } else {
-            write!(f, "error (line {}): {}", self.line, self.message)
+        match (self.line, self.column) {
+            (0, _) => write!(f, "error: {}", self.message),
+            (line, 0) => write!(f, "error (line {line}): {}", self.message),
+            (line, column) => write!(f, "error (line {line}, column {column}): {}", self.message),
         }
     }
 }
@@ -163,6 +194,30 @@ mod tests {
     #[test]
     fn print_writes_a_line() {
         assert_eq!(out("print(1 + 2)"), "3\n");
+    }
+
+    #[test]
+    fn render_points_a_caret_at_the_column() {
+        let err = MiruError::with_column(1, 5, "boom");
+        assert_eq!(
+            err.render("abcdefg"),
+            "error (line 1, column 5): boom\n    abcdefg\n        ^"
+        );
+    }
+
+    #[test]
+    fn render_preserves_leading_tabs_in_the_caret() {
+        let err = MiruError::with_column(1, 2, "boom");
+        assert_eq!(
+            err.render("\tx"),
+            "error (line 1, column 2): boom\n    \tx\n    \t^"
+        );
+    }
+
+    #[test]
+    fn render_without_a_column_is_one_line() {
+        let err = MiruError::new(3, "oops");
+        assert_eq!(err.render("a\nb\nc"), "error (line 3): oops");
     }
 
     #[test]
