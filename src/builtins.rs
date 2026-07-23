@@ -5,6 +5,7 @@
 //! surfacing them.
 
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::rc::Rc;
 
 use crate::environment::{self, Env};
@@ -32,6 +33,8 @@ pub fn register(env: &Env) {
     define(env, "pop", pop);
     define(env, "index_of", index_of);
     define(env, "slice", slice);
+    define(env, "sort", sort);
+    define(env, "reverse", reverse);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -378,6 +381,76 @@ fn slice(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     }
 }
 
+/// The numeric value of an int or float, for ordering. Non-numbers map to 0.
+fn number_as_f64(value: &Value) -> f64 {
+    match value {
+        Value::Int(n) => *n as f64,
+        Value::Float(f) => *f,
+        _ => 0.0,
+    }
+}
+
+/// `sort(array)` returns a sorted copy. The array must hold all numbers or all
+/// strings; anything else is an error.
+fn sort(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("sort", &args, 1)?;
+    let mut sorted = match &args[0] {
+        Value::Array(items) => items.borrow().clone(),
+        other => {
+            return Err(format!(
+                "sort expects an array but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    if sorted.iter().all(|v| matches!(v, Value::Int(_))) {
+        sorted.sort_by_key(|v| match v {
+            Value::Int(n) => *n,
+            _ => 0,
+        });
+    } else if sorted.iter().all(|v| matches!(v, Value::Str(_))) {
+        sorted.sort_by(|a, b| match (a, b) {
+            (Value::Str(x), Value::Str(y)) => x.cmp(y),
+            _ => Ordering::Equal,
+        });
+    } else if sorted
+        .iter()
+        .all(|v| matches!(v, Value::Int(_) | Value::Float(_)))
+    {
+        if sorted
+            .iter()
+            .any(|v| matches!(v, Value::Float(f) if f.is_nan()))
+        {
+            return Err("sort cannot order NaN".to_string());
+        }
+        sorted.sort_by(|a, b| {
+            number_as_f64(a)
+                .partial_cmp(&number_as_f64(b))
+                .unwrap_or(Ordering::Equal)
+        });
+    } else {
+        return Err("sort expects an array of all numbers or all strings".to_string());
+    }
+    Ok(Value::Array(Rc::new(RefCell::new(sorted))))
+}
+
+/// `reverse(seq)` returns a reversed copy of an array or string.
+fn reverse(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("reverse", &args, 1)?;
+    match &args[0] {
+        Value::Array(items) => {
+            let mut copy = items.borrow().clone();
+            copy.reverse();
+            Ok(Value::Array(Rc::new(RefCell::new(copy))))
+        }
+        Value::Str(s) => Ok(Value::Str(Rc::new(s.chars().rev().collect()))),
+        other => Err(format!(
+            "reverse expects an array or string but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -475,6 +548,28 @@ mod tests {
         assert_eq!(
             out("print(slice([1, 2], 0, 99), slice([1, 2], 5, 9))"),
             "[1, 2] []\n"
+        );
+    }
+
+    #[test]
+    fn sort_orders_numbers_and_strings() {
+        assert_eq!(out("print(sort([3, 1, 2]))"), "[1, 2, 3]\n");
+        assert_eq!(
+            out("print(sort([\"c\", \"a\", \"b\"]))"),
+            "[\"a\", \"b\", \"c\"]\n"
+        );
+    }
+
+    #[test]
+    fn sort_rejects_mixed_types() {
+        assert!(err("sort([1, \"a\"])").contains("all numbers or all strings"));
+    }
+
+    #[test]
+    fn reverse_flips_arrays_and_strings() {
+        assert_eq!(
+            out("print(reverse([1, 2, 3]), reverse(\"abc\"))"),
+            "[3, 2, 1] cba\n"
         );
     }
 }
