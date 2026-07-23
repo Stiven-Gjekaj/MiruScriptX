@@ -25,6 +25,8 @@ pub fn register(env: &Env) {
     define(env, "lower", lower);
     define(env, "trim", trim);
     define(env, "replace", replace);
+    define(env, "split", split);
+    define(env, "join", join);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -214,6 +216,40 @@ fn replace(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
     }
 }
 
+/// `split(s, sep)` returns an array of the pieces of `s` between each `sep`.
+/// An empty separator splits the string into its individual characters.
+fn split(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("split", &args, 2)?;
+    match (&args[0], &args[1]) {
+        (Value::Str(s), Value::Str(sep)) => {
+            let parts: Vec<Value> = if sep.is_empty() {
+                s.chars()
+                    .map(|c| Value::Str(Rc::new(c.to_string())))
+                    .collect()
+            } else {
+                s.split(sep.as_str())
+                    .map(|part| Value::Str(Rc::new(part.to_string())))
+                    .collect()
+            };
+            Ok(Value::Array(Rc::new(RefCell::new(parts))))
+        }
+        _ => Err("split expects two string arguments".to_string()),
+    }
+}
+
+/// `join(array, sep)` returns the array's elements, displayed and joined by
+/// `sep` into a single string.
+fn join(_out: &mut dyn Output, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("join", &args, 2)?;
+    match (&args[0], &args[1]) {
+        (Value::Array(items), Value::Str(sep)) => {
+            let parts: Vec<String> = items.borrow().iter().map(Value::display).collect();
+            Ok(Value::Str(Rc::new(parts.join(sep.as_str()))))
+        }
+        _ => Err("join expects an array and a string separator".to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -246,5 +282,23 @@ mod tests {
     #[test]
     fn replace_swaps_every_occurrence() {
         assert_eq!(out("print(replace(\"a.b.c\", \".\", \"-\"))"), "a-b-c\n");
+    }
+
+    #[test]
+    fn split_breaks_on_separator() {
+        assert_eq!(
+            out("print(split(\"a,b,c\", \",\"))"),
+            "[\"a\", \"b\", \"c\"]\n"
+        );
+    }
+
+    #[test]
+    fn split_on_empty_separator_yields_characters() {
+        assert_eq!(out("print(split(\"hi\", \"\"))"), "[\"h\", \"i\"]\n");
+    }
+
+    #[test]
+    fn join_concatenates_with_separator() {
+        assert_eq!(out("print(join([1, 2, 3], \"-\"))"), "1-2-3\n");
     }
 }
