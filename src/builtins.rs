@@ -50,6 +50,7 @@ pub fn register(env: &Env) {
     define(env, "input", input);
     define_host(env, "map", map);
     define_host(env, "filter", filter);
+    define_host(env, "reduce", reduce);
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -747,6 +748,33 @@ fn filter(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError
     Ok(Value::Array(Rc::new(RefCell::new(result))))
 }
 
+/// `reduce(array, f, init)` folds the array from the left: starting with the
+/// accumulator `init`, it computes `f(acc, x)` for each element in order and
+/// returns the final accumulator.
+fn reduce(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError> {
+    if args.len() != 3 {
+        return Err(interp.error(format!(
+            "reduce expects 3 argument(s) but got {}",
+            args.len()
+        )));
+    }
+    let items = match &args[0] {
+        Value::Array(items) => items.borrow().clone(),
+        other => {
+            return Err(interp.error(format!(
+                "reduce expects an array but got a {}",
+                other.type_name()
+            )))
+        }
+    };
+    let func = args[1].clone();
+    let mut acc = args[2].clone();
+    for item in items {
+        acc = interp.call(func.clone(), vec![acc, item])?;
+    }
+    Ok(acc)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::run_capture;
@@ -1028,5 +1056,44 @@ mod tests {
     #[test]
     fn filter_checks_arity() {
         assert!(err("filter([1, 2])").contains("2 argument(s)"));
+    }
+
+    #[test]
+    fn reduce_folds_from_the_left() {
+        assert_eq!(
+            out("print(reduce([1, 2, 3, 4], fn(acc, x) { return acc + x }, 0))"),
+            "10\n"
+        );
+    }
+
+    #[test]
+    fn reduce_returns_the_initial_value_for_an_empty_array() {
+        assert_eq!(
+            out("print(reduce([], fn(acc, x) { return acc + x }, 42))"),
+            "42\n"
+        );
+    }
+
+    #[test]
+    fn reduce_can_build_up_a_non_number() {
+        assert_eq!(
+            out("print(reduce([\"a\", \"b\", \"c\"], fn(acc, x) { return acc + x }, \"\"))"),
+            "abc\n"
+        );
+    }
+
+    #[test]
+    fn reduce_rejects_non_arrays() {
+        assert!(err("reduce(5, fn(acc, x) { return acc }, 0)").contains("expects an array"));
+    }
+
+    #[test]
+    fn reduce_rejects_a_non_callable_function() {
+        assert!(err("reduce([1, 2], 3, 0)").contains("not callable"));
+    }
+
+    #[test]
+    fn reduce_checks_arity() {
+        assert!(err("reduce([1, 2], fn(acc, x) { return acc })").contains("3 argument(s)"));
     }
 }
