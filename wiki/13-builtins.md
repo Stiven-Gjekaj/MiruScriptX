@@ -43,7 +43,7 @@ print("total: " + str(42))   // total: 42
 ## type(value)
 
 Returns the name of a value's type, one of `int`, `float`, `bool`, `string`,
-`array`, `function`, or `nil`.
+`array`, `map`, `function`, or `nil`.
 
 ```
 print(type(3.14))   // float
@@ -156,6 +156,23 @@ newline). At end of input it returns `nil`.
 ```
 let name = input("What is your name? ")
 print("Hello,", name)
+```
+
+## Higher-order functions
+
+These apply a function across an array. The function can be a named function, a
+closure, or another builtin.
+
+- `map(array, f)` returns a new array of `f(x)` for each element.
+- `filter(array, f)` returns a new array of the elements for which `f(x)` is
+  truthy.
+- `reduce(array, f, init)` folds the array from the left: it starts from `init`
+  and combines each element with `f(acc, x)`, returning the final accumulator.
+
+```
+print(map([1, 2, 3], fn(x) { return x * 2 }))                 // [2, 4, 6]
+print(filter([1, 2, 3, 4], fn(x) { return x % 2 == 0 }))      // [2, 4]
+print(reduce([1, 2, 3, 4], fn(acc, x) { return acc + x }, 0)) // 10
 ```
 
 The standard library stays small on purpose; see the

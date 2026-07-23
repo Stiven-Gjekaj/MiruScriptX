@@ -103,7 +103,29 @@ miru> "Hello, " + name
 
 Definitions stay available for the rest of the session. To type something that
 spans several lines, such as a function, just keep typing: the prompt changes to
-`...` until the brackets are balanced. Press Ctrl-D to exit.
+`...` until the brackets are balanced.
+
+Use the up and down arrow keys to recall earlier lines; the history is saved to
+`~/.miru_history` and comes back the next time you start the REPL. Press Ctrl-C
+to cancel the current line, and Ctrl-D to exit.
+
+## Format your code
+
+`miru fmt` reprints a program in one canonical style: two-space indentation,
+consistent spacing, and one statement per line. By default it writes the result
+to standard output:
+
+```
+miru fmt hello.miru
+```
+
+Add `-w` (or `--write`) to reformat the file in place:
+
+```
+miru fmt -w hello.miru
+```
+
+Comments and single blank lines between sections are kept.
 
 
 # Syntax basics
@@ -702,7 +724,7 @@ print("total: " + str(42))   // total: 42
 ## type(value)
 
 Returns the name of a value's type, one of `int`, `float`, `bool`, `string`,
-`array`, `function`, or `nil`.
+`array`, `map`, `function`, or `nil`.
 
 ```
 print(type(3.14))   // float
@@ -817,6 +839,23 @@ let name = input("What is your name? ")
 print("Hello,", name)
 ```
 
+## Higher-order functions
+
+These apply a function across an array. The function can be a named function, a
+closure, or another builtin.
+
+- `map(array, f)` returns a new array of `f(x)` for each element.
+- `filter(array, f)` returns a new array of the elements for which `f(x)` is
+  truthy.
+- `reduce(array, f, init)` folds the array from the left: it starts from `init`
+  and combines each element with `f(acc, x)`, returning the final accumulator.
+
+```
+print(map([1, 2, 3], fn(x) { return x * 2 }))                 // [2, 4, 6]
+print(filter([1, 2, 3, 4], fn(x) { return x % 2 == 0 }))      // [2, 4]
+print(reduce([1, 2, 3, 4], fn(acc, x) { return acc + x }, 0)) // 10
+```
+
 The standard library stays small on purpose; see the
 [roadmap](../docs/milestones.md) for what is planned next.
 
@@ -881,7 +920,7 @@ status, so scripts and continuous integration can tell success from failure.
 
 # Next steps
 
-You now know all of MiruScriptX v0.2. Here is where to go from here.
+You now know all of MiruScriptX v0.3. Here is where to go from here.
 
 ## Practice
 
@@ -908,7 +947,7 @@ and evaluator.
 
 ## What is coming
 
-The [roadmap](../docs/milestones.md) lists what is planned next, from a source
-formatter to a bytecode virtual machine and a browser playground.
+The [roadmap](../docs/milestones.md) lists what is planned next, from a bytecode
+virtual machine to a browser playground.
 
 

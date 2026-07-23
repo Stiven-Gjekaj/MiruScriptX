@@ -44,7 +44,29 @@ miru> "Hello, " + name
 
 Definitions stay available for the rest of the session. To type something that
 spans several lines, such as a function, just keep typing: the prompt changes to
-`...` until the brackets are balanced. Press Ctrl-D to exit.
+`...` until the brackets are balanced.
+
+Use the up and down arrow keys to recall earlier lines; the history is saved to
+`~/.miru_history` and comes back the next time you start the REPL. Press Ctrl-C
+to cancel the current line, and Ctrl-D to exit.
+
+## Format your code
+
+`miru fmt` reprints a program in one canonical style: two-space indentation,
+consistent spacing, and one statement per line. By default it writes the result
+to standard output:
+
+```
+miru fmt hello.miru
+```
+
+Add `-w` (or `--write`) to reformat the file in place:
+
+```
+miru fmt -w hello.miru
+```
+
+Comments and single blank lines between sections are kept.
 
 ---
 Previous: [Introduction](01-introduction.md) | Next: [Syntax basics](03-syntax-basics.md)

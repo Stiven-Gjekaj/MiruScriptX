@@ -1,6 +1,6 @@
 # Next steps
 
-You now know all of MiruScriptX v0.2. Here is where to go from here.
+You now know all of MiruScriptX v0.3. Here is where to go from here.
 
 ## Practice
 
@@ -27,8 +27,8 @@ and evaluator.
 
 ## What is coming
 
-The [roadmap](../docs/milestones.md) lists what is planned next, from a source
-formatter to a bytecode virtual machine and a browser playground.
+The [roadmap](../docs/milestones.md) lists what is planned next, from a bytecode
+virtual machine to a browser playground.
 
 ---
 Previous: [Errors](14-errors.md)
