@@ -4,7 +4,7 @@
 
 ### A small, general-purpose scripting language, written in Rust
 
-_A tree-walking interpreter with zero dependencies: source -&gt; tokens -&gt; AST -&gt; values_
+_A tree-walking interpreter: source -&gt; tokens -&gt; AST -&gt; values_
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
@@ -33,7 +33,7 @@ _A tree-walking interpreter with zero dependencies: source -&gt; tokens -&gt; AS
 
 **MiruScriptX** is a minimalist, dynamically typed scripting language with a
 clean, modern syntax. It runs through a tree-walking interpreter written from
-scratch in Rust, using only the standard library. Write functions, closures,
+scratch in Rust. Write functions, closures,
 loops, arrays, and maps in familiar syntax, then run them from a file or an
 interactive REPL. Programs use the `.miru` extension.
 
@@ -75,7 +75,7 @@ for name in people {
 - A standard library of string, array, math, map, and I/O builtins
 - File runner and interactive REPL
 - Errors with a line, a column, and a caret under the problem
-- Zero dependencies (Rust standard library only)
+- Minimal dependencies: only rustyline, for REPL history
 - Unit and integration tests, plus CI
 
 </td>
@@ -160,7 +160,7 @@ abstract syntax tree, and the tree is evaluated directly.
 | **Interpreter** | value, environment, interpreter, builtins | 1969 | Tree-walking evaluation, scopes, closures, builtins |
 | **CLI and REPL** | main.rs, repl.rs | 173 | File runner and interactive REPL |
 | **Library** | lib.rs | 265 | Ties it together (`parse_program`, `run_source`) |
-| **Total** | **11 files** | **4106** | Zero-dependency interpreter |
+| **Total** | **11 files** | **4106** | Written from scratch in Rust |
 
 ```
 src/         the interpreter (lexer, parser, evaluator, builtins, CLI, REPL)
@@ -229,5 +229,5 @@ Released under the MIT License. See [LICENSE](LICENSE) for the full text, and
 [TERMS.md](TERMS.md) for the project terms.
 
 <div align="center">
-<sub>Built in Rust with zero dependencies. Start writing MiruScriptX with the <a href="wiki/01-introduction.md">wiki</a>.</sub>
+<sub>Built from scratch in Rust. Start writing MiruScriptX with the <a href="wiki/01-introduction.md">wiki</a>.</sub>
 </div>
