@@ -242,6 +242,8 @@ impl Lexer {
             "while" => TokenKind::While,
             "for" => TokenKind::For,
             "in" => TokenKind::In,
+            "break" => TokenKind::Break,
+            "continue" => TokenKind::Continue,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,
@@ -355,6 +357,14 @@ mod tests {
                 TokenKind::Ident("total".to_string()),
                 TokenKind::Eof,
             ]
+        );
+    }
+
+    #[test]
+    fn tokenizes_break_and_continue() {
+        assert_eq!(
+            kinds("break continue"),
+            vec![TokenKind::Break, TokenKind::Continue, TokenKind::Eof]
         );
     }
 
