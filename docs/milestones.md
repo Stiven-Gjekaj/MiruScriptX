@@ -22,7 +22,7 @@ The first milestone is a small but genuinely usable language, built end to end:
   - first-class functions and closures with `return`;
   - array literals, indexing, and index assignment.
 - Builtins: `print`, `len`, `push`, `str`, `type`, `range`.
-- A command line runner (`miru run file.msx`) and an interactive REPL.
+- A command line runner (`miru run file.miru`) and an interactive REPL.
 - Example programs, a unit and integration test suite, and this documentation.
 
 ## v0.2: maps, loop control, a bigger standard library, and better errors

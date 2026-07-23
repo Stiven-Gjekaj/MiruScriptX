@@ -23,25 +23,25 @@ fn run_example(name: &str) -> String {
 
 #[test]
 fn greet_example_output() {
-    assert_eq!(run_example("greet.msx"), "Hello, Aiko!\nHello, Ken!\n");
+    assert_eq!(run_example("greet.miru"), "Hello, Aiko!\nHello, Ken!\n");
 }
 
 #[test]
 fn fib_example_output() {
-    assert_eq!(run_example("fib.msx"), "0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n");
+    assert_eq!(run_example("fib.miru"), "0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n");
 }
 
 #[test]
 fn fizzbuzz_example_output() {
     let expected = "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n";
-    assert_eq!(run_example("fizzbuzz.msx"), expected);
+    assert_eq!(run_example("fizzbuzz.miru"), expected);
 }
 
 #[test]
 fn contacts_example_output() {
     let expected =
         "names:\n  Aiko: 555-0100\n  Ken: 555-0199\n  Mai: 555-0177\nKen is 555-0199\nentries: 3\n";
-    assert_eq!(run_example("contacts.msx"), expected);
+    assert_eq!(run_example("contacts.miru"), expected);
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn greeter_example_reads_stdin() {
 
     let mut child = miru()
         .arg("run")
-        .arg("examples/greeter.msx")
+        .arg("examples/greeter.miru")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -81,7 +81,7 @@ fn version_flag_prints_version() {
 fn missing_file_fails_with_nonzero_exit() {
     let output = miru()
         .arg("run")
-        .arg("examples/does_not_exist.msx")
+        .arg("examples/does_not_exist.miru")
         .output()
         .expect("runs");
     assert!(!output.status.success());
@@ -89,7 +89,7 @@ fn missing_file_fails_with_nonzero_exit() {
 
 #[test]
 fn runtime_error_reports_line_and_fails() {
-    let path = std::env::temp_dir().join("miru_integration_bad.msx");
+    let path = std::env::temp_dir().join("miru_integration_bad.miru");
     std::fs::write(&path, "let a = 1\nprint(b)\n").expect("write temp file");
     let output = miru().arg("run").arg(&path).output().expect("runs");
     let _ = std::fs::remove_file(&path);

@@ -29,7 +29,7 @@ semantic versioning.
 - Community and project documentation (contributing, code of conduct, security,
   terms, support, code owners, and issue and pull request templates), a restyled
   README with a project logo and badges, and branded headers across the docs.
-- New `contacts.msx` and `greeter.msx` examples, and Maps and Errors lessons in
+- New `contacts.miru` and `greeter.miru` examples, and Maps and Errors lessons in
   the wiki.
 
 ## 0.1 (2026-07-22)
@@ -44,6 +44,6 @@ semantic versioning.
   logic.
 - Array literals, indexing, and index assignment.
 - Builtins `print`, `len`, `push`, `str`, `type`, and `range`.
-- A command line runner (`miru run file.msx`) and an interactive REPL.
+- A command line runner (`miru run file.miru`) and an interactive REPL.
 - Example programs, a test suite, a guided wiki, a single-page reference, and a
   CI workflow.

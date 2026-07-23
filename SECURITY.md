@@ -25,7 +25,7 @@ acknowledged unless you prefer to remain anonymous.
 ## Scope
 
 MiruScriptX runs the programs you give it with the full trust of your user
-account. It is an interpreter, not a sandbox: a `.msx` program can do anything
+account. It is an interpreter, not a sandbox: a `.miru` program can do anything
 the `miru` process can do. Do not run untrusted MiruScriptX code expecting
 isolation. Reports about the lack of sandboxing are out of scope, since that is
 a known and documented property rather than a vulnerability.

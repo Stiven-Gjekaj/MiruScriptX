@@ -35,7 +35,7 @@ _A tree-walking interpreter with zero dependencies: source -&gt; tokens -&gt; AS
 clean, modern syntax. It runs through a tree-walking interpreter written from
 scratch in Rust, using only the standard library. Write functions, closures,
 loops, arrays, and maps in familiar syntax, then run them from a file or an
-interactive REPL. Programs use the `.msx` extension.
+interactive REPL. Programs use the `.miru` extension.
 
 ```
 fn greet(name) {
@@ -95,7 +95,7 @@ cargo build --release
 Run a program from a file:
 
 ```
-miru run examples/greet.msx
+miru run examples/greet.miru
 ```
 
 Or start the REPL and type expressions:
@@ -121,12 +121,12 @@ Runnable programs live in [examples/](examples):
 
 | Program | Shows off |
 | ------- | --------- |
-| [greet.msx](examples/greet.msx) | Functions, arrays, and a loop |
-| [fib.msx](examples/fib.msx) | Recursion |
-| [fizzbuzz.msx](examples/fizzbuzz.msx) | Control flow and the modulo operator |
-| [contacts.msx](examples/contacts.msx) | Maps, lookups, and iteration |
+| [greet.miru](examples/greet.miru) | Functions, arrays, and a loop |
+| [fib.miru](examples/fib.miru) | Recursion |
+| [fizzbuzz.miru](examples/fizzbuzz.miru) | Control flow and the modulo operator |
+| [contacts.miru](examples/contacts.miru) | Maps, lookups, and iteration |
 
-Run one with `miru run examples/contacts.msx`.
+Run one with `miru run examples/contacts.miru`.
 
 ---
 
@@ -164,7 +164,7 @@ abstract syntax tree, and the tree is evaluated directly.
 
 ```
 src/         the interpreter (lexer, parser, evaluator, builtins, CLI, REPL)
-examples/    runnable .msx programs
+examples/    runnable .miru programs
 wiki/        step-by-step learning lessons
 docs/        language reference, architecture, and roadmap
 tests/       end-to-end integration tests

@@ -11,8 +11,8 @@ Try writing a few small programs:
 - Compute the greatest common divisor of two numbers with a `while` loop.
 
 The programs in the [examples](../examples) folder are a good starting point.
-Run them with `miru run examples/greet.msx`, and try
-`miru run examples/greeter.msx` for one that reads your input.
+Run them with `miru run examples/greet.miru`, and try
+`miru run examples/greeter.miru` for one that reads your input.
 
 ## Look things up
 

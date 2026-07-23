@@ -13,7 +13,7 @@ A clear description of the bug.
 ## A small program that reproduces it
 
 ```
-// the smallest .msx program that shows the problem
+// the smallest .miru program that shows the problem
 ```
 
 ## What you expected

@@ -1,6 +1,6 @@
-// contacts.msx
+// contacts.miru
 // Build a small phone book (a map), then look people up.
-// Run with: miru run examples/contacts.msx
+// Run with: miru run examples/contacts.miru
 
 let book = {
   "Aiko": "555-0100",

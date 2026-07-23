@@ -1,4 +1,4 @@
-// A tiny interactive program. Run it with `miru run examples/greeter.msx`
+// A tiny interactive program. Run it with `miru run examples/greeter.miru`
 // and type your name when prompted. Reading from standard input uses input().
 
 let raw = input("What is your name? ")

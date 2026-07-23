@@ -12,7 +12,7 @@ This produces the `miru` binary at `target/release/miru`.
 
 ## Run a program
 
-Put some code in a file, for example `hello.msx`:
+Put some code in a file, for example `hello.miru`:
 
 ```
 print("Hello from a file!")
@@ -21,7 +21,7 @@ print("Hello from a file!")
 Then run it:
 
 ```
-miru run hello.msx
+miru run hello.miru
 ```
 
 ## Use the REPL

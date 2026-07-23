@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 const USAGE: &str = "\
 Usage:
-  miru run <file.msx>   Run a MiruScriptX program from a file
+  miru run <file.miru>   Run a MiruScriptX program from a file
   miru                  Start the interactive REPL
   miru repl             Start the interactive REPL
   miru --version        Print the version and exit

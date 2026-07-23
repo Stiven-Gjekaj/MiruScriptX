@@ -28,7 +28,7 @@ You need a recent stable Rust toolchain (via rustup). Then:
 
 Run a program:
 
-    cargo run -- run examples/greet.msx
+    cargo run -- run examples/greet.miru
 
 Start the REPL:
 

@@ -29,7 +29,7 @@ MiruScriptX is a small, general-purpose scripting language. If you have written
 a little JavaScript, Python, or Lua, it will feel familiar: dynamic types, a
 clean syntax, first-class functions, and arrays.
 
-Programs live in files with a `.msx` extension and run through a tree-walking
+Programs live in files with a `.miru` extension and run through a tree-walking
 interpreter written in Rust.
 
 ## Hello, world
@@ -71,7 +71,7 @@ This produces the `miru` binary at `target/release/miru`.
 
 ## Run a program
 
-Put some code in a file, for example `hello.msx`:
+Put some code in a file, for example `hello.miru`:
 
 ```
 print("Hello from a file!")
@@ -80,7 +80,7 @@ print("Hello from a file!")
 Then run it:
 
 ```
-miru run hello.msx
+miru run hello.miru
 ```
 
 ## Use the REPL
@@ -892,8 +892,8 @@ Try writing a few small programs:
 - Compute the greatest common divisor of two numbers with a `while` loop.
 
 The programs in the [examples](../examples) folder are a good starting point.
-Run them with `miru run examples/greet.msx`, and try
-`miru run examples/greeter.msx` for one that reads your input.
+Run them with `miru run examples/greet.miru`, and try
+`miru run examples/greeter.miru` for one that reads your input.
 
 ## Look things up
 

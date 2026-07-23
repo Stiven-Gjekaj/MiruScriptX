@@ -1,6 +1,6 @@
-// greet.msx
+// greet.miru
 // Say hello to every name in a list.
-// Run with: miru run examples/greet.msx
+// Run with: miru run examples/greet.miru
 
 fn greet(name) {
   return "Hello, " + name + "!"
