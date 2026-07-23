@@ -1,21 +1,31 @@
 //! The interactive read-eval-print loop for the `miru` binary.
 
-use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
+
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 
 use miruscriptx::interpreter::Interpreter;
 use miruscriptx::value::Value;
 
 /// Start the REPL. It reads a line (or a multi-line block) at a time, runs it,
 /// and echoes the value of each expression. State persists across inputs, so
-/// variables and functions you define stay available.
+/// variables and functions you define stay available. Line editing and history
+/// come from rustyline.
 pub fn run() -> ExitCode {
     println!(
         "MiruScriptX {} REPL. Press Ctrl-D to exit.",
         miruscriptx::VERSION
     );
-    let stdin = io::stdin();
-    let mut reader = stdin.lock();
+
+    let mut editor = match DefaultEditor::new() {
+        Ok(editor) => editor,
+        Err(err) => {
+            eprintln!("miru: could not start the REPL: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
     let mut interpreter = Interpreter::new();
     let mut buffer = String::new();
 
@@ -25,44 +35,44 @@ pub fn run() -> ExitCode {
         } else {
             "...   "
         };
-        print!("{prompt}");
-        let _ = io::stdout().flush();
-
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
-            Ok(0) => {
-                println!();
-                return ExitCode::SUCCESS;
+        match editor.readline(prompt) {
+            Ok(line) => {
+                buffer.push_str(&line);
+                buffer.push('\n');
+                if is_incomplete(&buffer) {
+                    continue; // wait for the block to be closed
+                }
+                let source = std::mem::take(&mut buffer);
+                if source.trim().is_empty() {
+                    continue;
+                }
+                evaluate(&mut interpreter, &source);
             }
-            Ok(_) => {}
+            // Ctrl-C discards the current (possibly multi-line) input.
+            Err(ReadlineError::Interrupted) => buffer.clear(),
+            // Ctrl-D exits.
+            Err(ReadlineError::Eof) => return ExitCode::SUCCESS,
             Err(err) => {
                 eprintln!("miru: input error: {err}");
                 return ExitCode::FAILURE;
             }
         }
+    }
+}
 
-        buffer.push_str(&line);
-        if is_incomplete(&buffer) {
-            continue; // wait for the block to be closed
-        }
-
-        let source = std::mem::take(&mut buffer);
-        if source.trim().is_empty() {
-            continue;
-        }
-
-        match miruscriptx::parse_program(&source) {
-            Ok(program) => match interpreter.run_program(&program) {
-                Ok(value) => {
-                    interpreter.flush();
-                    if !matches!(value, Value::Nil) {
-                        println!("{}", value.repr());
-                    }
+/// Parse and run one complete input, printing the result value or the error.
+fn evaluate(interpreter: &mut Interpreter, source: &str) {
+    match miruscriptx::parse_program(source) {
+        Ok(program) => match interpreter.run_program(&program) {
+            Ok(value) => {
+                interpreter.flush();
+                if !matches!(value, Value::Nil) {
+                    println!("{}", value.repr());
                 }
-                Err(err) => eprintln!("{}", err.render(&source)),
-            },
-            Err(err) => eprintln!("{}", err.render(&source)),
-        }
+            }
+            Err(err) => eprintln!("{}", err.render(source)),
+        },
+        Err(err) => eprintln!("{}", err.render(source)),
     }
 }
 
@@ -98,4 +108,27 @@ fn is_incomplete(source: &str) -> bool {
         }
     }
     depth > 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_incomplete;
+
+    #[test]
+    fn complete_input_is_not_incomplete() {
+        assert!(!is_incomplete("let x = 1\n"));
+        assert!(!is_incomplete("print(1)\n"));
+    }
+
+    #[test]
+    fn unclosed_brackets_are_incomplete() {
+        assert!(is_incomplete("fn f() {\n"));
+        assert!(is_incomplete("[1, 2,\n"));
+    }
+
+    #[test]
+    fn brackets_in_strings_and_comments_do_not_count() {
+        assert!(!is_incomplete("let s = \"{[(\"\n"));
+        assert!(!is_incomplete("print(1) // a ( comment\n"));
+    }
 }
