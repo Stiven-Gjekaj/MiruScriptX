@@ -9,12 +9,12 @@ _A tree-walking interpreter: source -&gt; tokens -&gt; AST -&gt; values_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-1_(15)-007ec6?style=for-the-badge" alt="1 direct dependency, 15 total crates"/>
-  <img src="https://img.shields.io/badge/tests-120_passing-427819?style=for-the-badge" alt="120 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-165_passing-427819?style=for-the-badge" alt="165 tests passing"/>
 </p>
 
 <p align="center">
   <a href="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml"><img src="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <img src="https://img.shields.io/badge/version-0.2-blue?style=flat-square" alt="Version 0.2"/>
+  <img src="https://img.shields.io/badge/version-0.3-blue?style=flat-square" alt="Version 0.3"/>
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"/>
 </p>
 
@@ -73,7 +73,8 @@ for name in people {
 
 - Lexer, Pratt parser, tree-walking evaluator
 - A standard library of string, array, math, map, and I/O builtins
-- File runner and interactive REPL
+- Higher-order builtins: `map`, `filter`, and `reduce`
+- File runner, a source formatter (`miru fmt`), and a REPL with history
 - Errors with a line, a column, and a caret under the problem
 - Minimal dependencies: only rustyline, for REPL history
 - Unit and integration tests, plus CI
@@ -110,6 +111,12 @@ miru> x * 2
 42
 ```
 
+Reformat a program in the canonical style (add `-w` to rewrite it in place):
+
+```
+miru fmt examples/greet.miru
+```
+
 For a step-by-step guide, start the wiki at
 [wiki/01-introduction.md](wiki/01-introduction.md).
 
@@ -125,6 +132,7 @@ Runnable programs live in [examples/](examples):
 | [fib.miru](examples/fib.miru) | Recursion |
 | [fizzbuzz.miru](examples/fizzbuzz.miru) | Control flow and the modulo operator |
 | [contacts.miru](examples/contacts.miru) | Maps, lookups, and iteration |
+| [transform.miru](examples/transform.miru) | Higher-order functions: map, filter, reduce |
 
 Run one with `miru run examples/contacts.miru`.
 
@@ -155,12 +163,13 @@ abstract syntax tree, and the tree is evaluated directly.
 
 | Stage | Files | Lines | Responsibility |
 | ----- | ----- | ----- | -------------- |
-| **Lexer** | token.rs, lexer.rs | 668 | Source text to tokens, with line and column tracking |
+| **Lexer** | token.rs, lexer.rs | 753 | Source text to tokens, with line and column tracking |
 | **Parser** | ast.rs, parser.rs | 1031 | Recursive descent plus a Pratt expression parser |
-| **Interpreter** | value, environment, interpreter, builtins | 1969 | Tree-walking evaluation, scopes, closures, builtins |
-| **CLI and REPL** | main.rs, repl.rs | 173 | File runner and interactive REPL |
-| **Library** | lib.rs | 265 | Ties it together (`parse_program`, `run_source`) |
-| **Total** | **11 files** | **4106** | Written from scratch in Rust |
+| **Interpreter** | value, environment, interpreter, builtins | 2195 | Tree-walking evaluation, scopes, closures, builtins |
+| **Formatter** | formatter.rs | 617 | Reprints a program in canonical form (`miru fmt`) |
+| **CLI and REPL** | main.rs, repl.rs | 284 | File runner, formatter command, and interactive REPL |
+| **Library** | lib.rs | 316 | Ties it together (`parse_program`, `run_source`, `format_source`) |
+| **Total** | **12 files** | **5196** | Written from scratch in Rust |
 
 ```
 src/         the interpreter (lexer, parser, evaluator, builtins, CLI, REPL)
