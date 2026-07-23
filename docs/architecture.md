@@ -1,3 +1,10 @@
+<div align="center">
+  <a href="../README.md"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/miru-dark.svg">
+    <img src="../assets/miru-light.svg" alt="MiruScriptX" height="44">
+  </picture></a>
+</div>
+
 # Architecture
 
 MiruScriptX is a tree-walking interpreter written in Rust with zero external

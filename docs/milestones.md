@@ -1,3 +1,10 @@
+<div align="center">
+  <a href="../README.md"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/miru-dark.svg">
+    <img src="../assets/miru-light.svg" alt="MiruScriptX" height="44">
+  </picture></a>
+</div>
+
 # Milestones and roadmap
 
 This is where MiruScriptX is today and where it is headed. It is kept out of the
