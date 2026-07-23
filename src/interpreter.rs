@@ -215,16 +215,22 @@ impl Interpreter {
             Expr::Index { target, index } => {
                 let target_value = self.eval(target, env)?;
                 let index_value = self.eval(index, env)?;
-                let Value::Array(items) = target_value else {
-                    return Err(self.error(format!(
-                        "cannot index-assign to a {}",
-                        target_value.type_name()
-                    )));
-                };
-                let len = items.borrow().len();
-                let idx = self.as_index(&index_value, len)?;
-                items.borrow_mut()[idx] = value;
-                Ok(())
+                match target_value {
+                    Value::Array(items) => {
+                        let len = items.borrow().len();
+                        let idx = self.as_index(&index_value, len)?;
+                        items.borrow_mut()[idx] = value;
+                        Ok(())
+                    }
+                    Value::Map(entries) => {
+                        let key = self.as_map_key(&index_value)?;
+                        entries.borrow_mut().insert(key, value);
+                        Ok(())
+                    }
+                    other => {
+                        Err(self.error(format!("cannot index-assign to a {}", other.type_name())))
+                    }
+                }
             }
             _ => Err(self.error("invalid assignment target")),
         }
@@ -325,13 +331,19 @@ impl Interpreter {
     fn eval_index(&mut self, target: &Expr, index: &Expr, env: &Env) -> Result<Value, MiruError> {
         let target_value = self.eval(target, env)?;
         let index_value = self.eval(index, env)?;
-        let Value::Array(items) = target_value else {
-            return Err(self.error(format!("cannot index a {}", target_value.type_name())));
-        };
-        let len = items.borrow().len();
-        let idx = self.as_index(&index_value, len)?;
-        let element = items.borrow()[idx].clone();
-        Ok(element)
+        match target_value {
+            Value::Array(items) => {
+                let len = items.borrow().len();
+                let idx = self.as_index(&index_value, len)?;
+                let element = items.borrow()[idx].clone();
+                Ok(element)
+            }
+            Value::Map(entries) => {
+                let key = self.as_map_key(&index_value)?;
+                Ok(entries.borrow().get(&key).cloned().unwrap_or(Value::Nil))
+            }
+            other => Err(self.error(format!("cannot index a {}", other.type_name()))),
+        }
     }
 
     fn as_index(&self, index: &Value, len: usize) -> Result<usize, MiruError> {
@@ -351,6 +363,16 @@ impl Interpreter {
             )));
         }
         Ok(idx)
+    }
+
+    fn as_map_key(&self, index: &Value) -> Result<String, MiruError> {
+        match index {
+            Value::Str(s) => Ok(s.to_string()),
+            other => Err(self.error(format!(
+                "map key must be a string, not a {}",
+                other.type_name()
+            ))),
+        }
     }
 
     fn eval_unary(&self, op: UnaryOp, value: Value) -> Result<Value, MiruError> {
@@ -679,5 +701,23 @@ mod tests {
     #[test]
     fn map_key_must_be_a_string() {
         assert!(error("{1: 2}").message.contains("map key must be a string"));
+    }
+
+    #[test]
+    fn reads_and_writes_map_values() {
+        let source = "let m = {\"a\": 1}\nm[\"b\"] = 2\nm[\"a\"] = 10\nm";
+        assert_eq!(repr(source), "{\"a\": 10, \"b\": 2}");
+    }
+
+    #[test]
+    fn missing_map_key_reads_as_nil() {
+        assert_eq!(repr("let m = {\"a\": 1}\nm[\"z\"]"), "nil");
+    }
+
+    #[test]
+    fn map_index_key_must_be_a_string() {
+        assert!(error("let m = {\"a\": 1}\nm[3]")
+            .message
+            .contains("map key must be a string"));
     }
 }
