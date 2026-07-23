@@ -27,13 +27,14 @@ Hello, Ken!
 
 ## Features
 
-- Integers, floats, booleans, strings, arrays, and nil
+- Integers, floats, booleans, strings, arrays, maps, and nil
 - Arithmetic with integer and float promotion, comparisons, and short-circuit logic
 - `let` bindings and reassignment
-- `if` / `else if` / `else`, `while`, and `for ... in`
+- `if` / `else if` / `else`, `while`, `for ... in`, and `break` / `continue`
 - First-class functions and closures with `return`
 - Array literals, indexing, and index assignment
-- Builtins: `print`, `len`, `push`, `str`, `type`, `range`
+- Maps with `{"key": value}` literals, reading, and writing by key
+- Builtins: `print`, `len`, `push`, `str`, `type`, `range`, `keys`, `values`, `has`
 - A file runner and an interactive REPL
 - Friendly error messages with line numbers
 - Zero dependencies: pure Rust standard library

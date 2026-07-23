@@ -3,7 +3,7 @@
 This is where MiruScriptX is today and where it is headed. It is kept out of the
 README on purpose, so the front page stays short.
 
-## v0.1 (current): a working core
+## v0.1: a working core
 
 The first milestone is a small but genuinely usable language, built end to end:
 
@@ -21,18 +21,24 @@ The first milestone is a small but genuinely usable language, built end to end:
 - A command line runner (`miru run file.msx`) and an interactive REPL.
 - Example programs, a unit and integration test suite, and this documentation.
 
-## v0.2: a richer language
+## v0.2 (current): maps and loop control
 
-- Maps / dictionaries with literal syntax and indexing.
-- `break` and `continue` in loops.
-- More builtins: string helpers, array helpers, `input`, basic math.
+- Maps / dictionaries: `{"key": value}` literals, reading and writing by key
+  (a missing key reads as `nil`), with deterministic sorted-key ordering.
+- Map builtins `keys`, `values`, and `has`, and `len` extended to maps.
+- `break` and `continue` in `while` and `for` loops, checked at parse time so
+  using them outside a loop is caught early.
+
+Deferred from this milestone, still planned:
+
+- More general builtins (string helpers, array helpers, `input`, basic math).
 - Error messages with a column and a caret under the offending token.
 
-## v0.3: better tooling
+## v0.3: more builtins and better errors
 
-- REPL history and nicer multi-line editing.
-- A source formatter (`miru fmt`).
-- More worked examples and a small standard prelude written in MiruScriptX.
+- The general string, array, math, and `input` builtins deferred from v0.2.
+- Column-and-caret error spans for both syntax and runtime errors.
+- REPL history and a source formatter (`miru fmt`).
 
 ## v0.4: performance
 
@@ -48,5 +54,5 @@ The first milestone is a small but genuinely usable language, built end to end:
 
 ## How versions are cut
 
-Within a milestone, work lands as small, numbered commits (for example `v0.1.1`
-through the final `v0.1.x`). The last commit of a milestone marks it complete.
+Within a milestone, work lands as small, numbered commits (for example `v0.2.1`
+through the final `v0.2.x`). The last commit of a milestone marks it complete.

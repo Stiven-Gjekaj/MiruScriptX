@@ -16,6 +16,7 @@ wiki/ and re-run the script.
 - [Control flow](#control-flow)
 - [Loops](#loops)
 - [Arrays](#arrays)
+- [Maps](#maps)
 - [Functions](#functions)
 - [Closures](#closures)
 - [Builtins](#builtins)
@@ -420,6 +421,21 @@ for i in range(1, 11) {
 print(total)   // 55
 ```
 
+## Loop control: break and continue
+
+Use `break` to stop a loop early, and `continue` to skip to the next iteration:
+
+```
+for n in range(1, 10) {
+  if n == 5 { break }        // stop the loop entirely
+  if n % 2 == 0 { continue } // skip the even numbers
+  print(n)                   // 1, then 3
+}
+```
+
+Both work in `while` loops too, and they always affect the nearest enclosing
+loop.
+
 
 # Arrays
 
@@ -475,6 +491,66 @@ let names = ["Aiko", "Ken"]
 for n in names {
   print("Hello, " + n)
 }
+```
+
+
+# Maps
+
+A map (also called a dictionary) holds a set of values, each stored under a
+string key. Maps are written with curly braces.
+
+## Creating and reading
+
+```
+let person = {"name": "Aiko", "age": 3}
+print(person["name"])   // Aiko
+print(person["age"])    // 3
+```
+
+Keys are strings. Reading a key that is not present gives `nil`:
+
+```
+print(person["email"])   // nil
+```
+
+## Adding and updating
+
+Assign to a key to insert it, or to change a value that is already there:
+
+```
+let scores = {}
+scores["ken"] = 10
+scores["ken"] = 12
+print(scores)   // {"ken": 12}
+```
+
+## Checking and counting
+
+Use `has` to test for a key and `len` for the number of entries:
+
+```
+let m = {"a": 1, "b": 2}
+print(has(m, "a"))   // true
+print(has(m, "z"))   // false
+print(len(m))        // 2
+```
+
+## Going over a map
+
+Get the keys or values as arrays with `keys` and `values`, then loop:
+
+```
+let ages = {"Aiko": 3, "Ken": 5}
+for name in keys(ages) {
+  print(name + " is " + str(ages[name]))
+}
+```
+
+Keys always come back in sorted order, so the output is stable:
+
+```
+Aiko is 3
+Ken is 5
 ```
 
 
@@ -582,7 +658,8 @@ print(add5(10))   // 15
 
 # Builtins
 
-These functions are always available. In v0.1 the set is deliberately small.
+These functions are always available. The set is small but grows with each
+release.
 
 ## print(...)
 
@@ -638,6 +715,32 @@ counts from `start`. The `end` value is never included.
 ```
 print(range(4))      // [0, 1, 2, 3]
 print(range(2, 6))   // [2, 3, 4, 5]
+```
+
+## keys(map)
+
+Returns an array of the map's keys, in sorted order.
+
+```
+print(keys({"b": 2, "a": 1}))   // ["a", "b"]
+```
+
+## values(map)
+
+Returns an array of the map's values, in key order.
+
+```
+print(values({"b": 2, "a": 1}))   // [1, 2]
+```
+
+## has(map, key)
+
+Reports whether the map contains a given string key.
+
+```
+let m = {"a": 1}
+print(has(m, "a"))   // true
+print(has(m, "z"))   // false
 ```
 
 More builtins are planned; see the [roadmap](../docs/milestones.md).
