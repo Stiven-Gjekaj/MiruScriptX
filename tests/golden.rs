@@ -17,7 +17,7 @@
 /// value it evaluated to (in inspect form) or the error it raised, with the
 /// position that error points at.
 fn outcome(source: &str) -> String {
-    match miruscriptx::eval_source_vm(source) {
+    match miruscriptx::eval_source(source) {
         Ok(value) => format!("ok {}", value.repr()),
         Err(error) => format!("err {} @ {}:{}", error.message, error.line, error.column),
     }
@@ -50,7 +50,7 @@ fn check_all(corpus: &[(&str, &str)]) {
 fn check_output(corpus: &[(&str, &str)]) {
     let mut failures = Vec::new();
     for (source, expected) in corpus {
-        let actual = match miruscriptx::run_capture_vm(source) {
+        let actual = match miruscriptx::run_capture(source) {
             Ok(output) => output,
             Err(error) => format!("<error: {}>", error.message),
         };
@@ -78,7 +78,7 @@ fn check_rendered(corpus: &[(&str, &str)]) {
     for (source, expected) in corpus {
         let actual = match miruscriptx::parse_program(source) {
             Err(error) => error.render(source),
-            Ok(_) => match miruscriptx::eval_source_vm(source) {
+            Ok(_) => match miruscriptx::eval_source(source) {
                 Ok(_) => "<no error>".to_string(),
                 Err(error) => error.render(source),
             },

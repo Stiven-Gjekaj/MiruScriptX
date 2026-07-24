@@ -1,6 +1,6 @@
 [package]
 name = "miruscriptx"
-version = "0.5.14"
+version = "0.5.15"
 edition = "2021"
 description = "MiruScriptX: a small, general-purpose scripting language written in Rust."
 license = "MIT"
@@ -22,7 +22,7 @@ name = "miru"
 path = "src/main.rs"
 
 [[bench]]
-name = "engines"
+name = "vm"
 harness = false
 
 [profile.release]

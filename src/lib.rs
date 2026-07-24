@@ -40,18 +40,9 @@ pub fn parse_program(source: &str) -> Result<Vec<ast::Stmt>, MiruError> {
     parser::Parser::parse(tokens)
 }
 
-/// Evaluate a program with the tree walker and return the value of its final
-/// expression (what the REPL echoes), discarding any output. This is the
-/// tree-walker side of the differential tests that keep the two engines in step.
+/// Run a program and return the value of its final expression (what the REPL
+/// echoes), discarding anything it printed.
 pub fn eval_source(source: &str) -> Result<value::Value, MiruError> {
-    let program = parse_program(source)?;
-    let mut interpreter = interpreter::Interpreter::with_output(Box::new(std::io::sink()));
-    interpreter.run_program(&program)
-}
-
-/// Evaluate a program with the bytecode VM and return the value left on the
-/// stack. The counterpart to [`eval_source`] for differential testing.
-pub fn eval_source_vm(source: &str) -> Result<value::Value, MiruError> {
     let program = parse_program(source)?;
     let script = compiler::Compiler::compile(&program)?;
     vm::Vm::with_output(Box::new(std::io::sink())).interpret(script)
@@ -66,20 +57,9 @@ pub fn format_source(source: &str) -> Result<String, MiruError> {
     Ok(formatter::format_program(&program, &trivia))
 }
 
-/// Lex, parse, and run a source string, sending `print` output to `out`.
+/// Lex, parse, compile, and run a source string, sending `print` output to
+/// `out` and reading `input()` from standard input.
 pub fn run_source(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
-    let program = parse_program(source)?;
-    let mut interpreter = interpreter::Interpreter::with_output(out);
-    interpreter.set_input(Box::new(StdinInput));
-    interpreter.run_program(&program)?;
-    interpreter.flush();
-    Ok(())
-}
-
-/// Lex, parse, compile, and run a source string on the bytecode VM, sending
-/// `print` output to `out`. The counterpart to [`run_source`], selected by
-/// `miru run --vm`.
-pub fn run_source_vm(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
     let program = parse_program(source)?;
     let script = compiler::Compiler::compile(&program)?;
     let mut vm = vm::Vm::with_output(out);
@@ -147,14 +127,8 @@ pub fn run_capture(source: &str) -> Result<String, MiruError> {
     run_capture_with_input(source, &[])
 }
 
-/// Like [`run_capture`], but runs the program on the bytecode VM. Used by the
-/// differential tests to compare the two engines' output.
-pub fn run_capture_vm(source: &str) -> Result<String, MiruError> {
-    run_capture_vm_with_input(source, &[])
-}
-
-/// Like [`run_capture_vm`], but feeds the given lines to `input()` in order.
-pub fn run_capture_vm_with_input(source: &str, input: &[&str]) -> Result<String, MiruError> {
+/// Like [`run_capture`], but feeds the given lines to `input()` in order.
+pub fn run_capture_with_input(source: &str, input: &[&str]) -> Result<String, MiruError> {
     let program = parse_program(source)?;
     let script = compiler::Compiler::compile(&program)?;
     let buffer = Rc::new(RefCell::new(Vec::<u8>::new()));
@@ -162,19 +136,6 @@ pub fn run_capture_vm_with_input(source: &str, input: &[&str]) -> Result<String,
     vm.set_input(Box::new(ScriptedInput::new(input)));
     vm.interpret(script)?;
     vm.flush();
-    let bytes = buffer.borrow();
-    Ok(String::from_utf8_lossy(bytes.as_slice()).into_owned())
-}
-
-/// Like [`run_capture`], but feeds the given lines to `input()` in order.
-pub fn run_capture_with_input(source: &str, input: &[&str]) -> Result<String, MiruError> {
-    let program = parse_program(source)?;
-    let buffer = Rc::new(RefCell::new(Vec::<u8>::new()));
-    let mut interpreter =
-        interpreter::Interpreter::with_output(Box::new(SharedBuffer(Rc::clone(&buffer))));
-    interpreter.set_input(Box::new(ScriptedInput::new(input)));
-    interpreter.run_program(&program)?;
-    interpreter.flush();
     let bytes = buffer.borrow();
     Ok(String::from_utf8_lossy(bytes.as_slice()).into_owned())
 }
@@ -416,7 +377,7 @@ mod tests {
         // indistinguishable on real programs, not just on unit-test snippets.
         for source in EXAMPLES {
             let tree = run_capture(source).expect("the tree walker runs the example");
-            let vm = run_capture_vm(source).expect("the VM runs the example");
+            let vm = run_capture(source).expect("the VM runs the example");
             assert_eq!(tree, vm, "the engines printed different output");
         }
     }
@@ -425,7 +386,7 @@ mod tests {
     fn both_engines_read_input_the_same_way() {
         let source = include_str!("../examples/greeter.miru");
         let tree = run_capture_with_input(source, &["Aiko"]).expect("tree walker runs");
-        let vm = run_capture_vm_with_input(source, &["Aiko"]).expect("VM runs");
+        let vm = run_capture_with_input(source, &["Aiko"]).expect("VM runs");
         assert_eq!(tree, vm);
     }
 
