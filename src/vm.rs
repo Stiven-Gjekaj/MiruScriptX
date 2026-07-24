@@ -177,10 +177,8 @@ impl Vm {
         loop {
             let chunk = &closure.function.chunk;
             let op_ip = ip;
-            let byte = chunk.code[ip];
+            let op = OpCode::decode(chunk.code[ip]);
             ip += 1;
-            let op = OpCode::from_u8(byte)
-                .ok_or_else(|| runtime_error(chunk, op_ip, format!("unknown opcode {byte}")))?;
             match op {
                 OpCode::Constant => {
                     let index = chunk.code[ip] as usize;

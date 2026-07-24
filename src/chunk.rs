@@ -164,12 +164,25 @@ const OPCODES: [OpCode; 40] = [
 impl OpCode {
     /// Decode a byte back into an opcode, or `None` if it is not a valid one.
     ///
-    /// This runs on every instruction, so it indexes a table. Written as a match,
-    /// each decode walked a chain of comparisons proportional to the number of
-    /// opcodes.
+    /// This indexes a table. Written as a match, each decode walked a chain of
+    /// comparisons proportional to the number of opcodes. The disassembler uses
+    /// this; the interpreter uses [`OpCode::decode`], which does not ask.
     #[inline]
     pub fn from_u8(byte: u8) -> Option<OpCode> {
         OPCODES.get(byte as usize).copied()
+    }
+
+    /// Decode a byte that the compiler emitted in an opcode position.
+    ///
+    /// The compiler is the only producer of chunks and there is no bytecode
+    /// reader, so such a byte is a valid opcode by construction. This panics
+    /// rather than reporting an error for the same reason the value stack panics
+    /// on underflow: a failure can only mean a bug in this crate, never anything
+    /// a program can do. It runs on every instruction, where the `Option` the
+    /// caller then has to answer for costs more than it can ever catch.
+    #[inline]
+    pub fn decode(byte: u8) -> OpCode {
+        OPCODES[byte as usize]
     }
 
     /// A short mnemonic used by the disassembler.
@@ -431,8 +444,18 @@ mod tests {
             OpCode::Modulo,
         ] {
             assert_eq!(OpCode::from_u8(op as u8), Some(op));
+            assert_eq!(OpCode::decode(op as u8), op);
         }
         assert_eq!(OpCode::from_u8(250), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn decoding_a_byte_that_is_not_an_opcode_panics() {
+        // The interpreter's decode does not check, because only the compiler
+        // writes chunks. Pin the behaviour so the trade is deliberate rather
+        // than something a later change quietly turns into reading garbage.
+        let _ = OpCode::decode(250);
     }
 
     #[test]
