@@ -118,9 +118,21 @@ impl Vm {
         let _ = self.out.flush();
     }
 
-    /// Execute a compiled program. The whole program is itself a function (an
-    /// anonymous script), so running it is just calling that function and reading
-    /// back the value it returns.
+    /// Compile a program and run it, returning the value of its final
+    /// expression.
+    ///
+    /// Compiling happens here, inside the VM, rather than in the caller, because
+    /// the compiler and the VM share state that has to outlive a single program:
+    /// a session compiles one input at a time, and the second input must resolve
+    /// names the first defined.
+    pub fn run(&mut self, program: &[crate::ast::Stmt]) -> Result<Value, MiruError> {
+        let script = crate::compiler::Compiler::compile(program)?;
+        self.interpret(script)
+    }
+
+    /// Execute an already compiled program. The whole program is itself a
+    /// function (an anonymous script), so running it is just calling that
+    /// function and reading back the value it returns.
     ///
     /// Globals persist across calls, which is what lets a session such as the
     /// REPL build up state over many inputs. Everything else is transient: this

@@ -42,8 +42,7 @@ pub fn parse_program(source: &str) -> Result<Vec<ast::Stmt>, MiruError> {
 /// echoes), discarding anything it printed.
 pub fn eval_source(source: &str) -> Result<value::Value, MiruError> {
     let program = parse_program(source)?;
-    let script = compiler::Compiler::compile(&program)?;
-    vm::Vm::with_output(Box::new(std::io::sink())).interpret(script)
+    vm::Vm::with_output(Box::new(std::io::sink())).run(&program)
 }
 
 /// Lex, parse, and reprint a source string in the canonical `miru fmt` style,
@@ -59,10 +58,9 @@ pub fn format_source(source: &str) -> Result<String, MiruError> {
 /// `out` and reading `input()` from standard input.
 pub fn run_source(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
     let program = parse_program(source)?;
-    let script = compiler::Compiler::compile(&program)?;
     let mut vm = vm::Vm::with_output(out);
     vm.set_input(Box::new(StdinInput));
-    vm.interpret(script)?;
+    vm.run(&program)?;
     vm.flush();
     Ok(())
 }
@@ -107,8 +105,7 @@ impl Session {
     /// state, returning the value of its final expression (or `nil`).
     pub fn eval(&mut self, source: &str) -> Result<value::Value, MiruError> {
         let program = parse_program(source)?;
-        let script = compiler::Compiler::compile(&program)?;
-        let value = self.vm.interpret(script)?;
+        let value = self.vm.run(&program)?;
         self.vm.flush();
         Ok(value)
     }
@@ -128,11 +125,10 @@ pub fn run_capture(source: &str) -> Result<String, MiruError> {
 /// Like [`run_capture`], but feeds the given lines to `input()` in order.
 pub fn run_capture_with_input(source: &str, input: &[&str]) -> Result<String, MiruError> {
     let program = parse_program(source)?;
-    let script = compiler::Compiler::compile(&program)?;
     let buffer = Rc::new(RefCell::new(Vec::<u8>::new()));
     let mut vm = vm::Vm::with_output(Box::new(SharedBuffer(Rc::clone(&buffer))));
     vm.set_input(Box::new(ScriptedInput::new(input)));
-    vm.interpret(script)?;
+    vm.run(&program)?;
     vm.flush();
     let bytes = buffer.borrow();
     Ok(String::from_utf8_lossy(bytes.as_slice()).into_owned())
