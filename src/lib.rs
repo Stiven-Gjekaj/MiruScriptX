@@ -28,6 +28,7 @@ pub mod ops;
 pub mod parser;
 pub mod token;
 pub mod value;
+pub mod vm;
 
 /// The MiruScriptX version, taken from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
