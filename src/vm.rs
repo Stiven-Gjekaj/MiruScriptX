@@ -248,16 +248,22 @@ impl Vm {
                     self.stack.push(Value::Map(Rc::new(RefCell::new(entries))));
                 }
                 OpCode::Index => {
+                    // The operand byte holds no value; its position entry is the
+                    // target expression's, used when the target is not indexable.
+                    let target_ip = ip;
+                    ip += 1;
                     let index = self.pop();
                     let target = self.pop();
-                    let element = index_get(target, &index, chunk, op_ip)?;
+                    let element = index_get(target, &index, chunk, op_ip, target_ip)?;
                     self.stack.push(element);
                 }
                 OpCode::SetIndex => {
+                    let target_ip = ip;
+                    ip += 1;
                     let index = self.pop();
                     let target = self.pop();
                     let value = self.pop();
-                    index_set(target, &index, value, chunk, op_ip)?;
+                    index_set(target, &index, value, chunk, op_ip, target_ip)?;
                 }
                 OpCode::IterSnapshot => {
                     let value = self.pop();
@@ -593,58 +599,65 @@ fn binary_op(op: OpCode) -> BinaryOp {
 }
 
 /// Read `target[index]` for an array or map, or fail for anything else.
+///
+/// A bad index or key is the index expression's fault and is reported at
+/// `index_ip`; an unindexable target is the target's fault and is reported at
+/// `target_ip`, so the caret lands under the part actually at fault.
 fn index_get(
     target: Value,
     index: &Value,
     chunk: &Chunk,
-    offset: usize,
+    index_ip: usize,
+    target_ip: usize,
 ) -> Result<Value, MiruError> {
     match target {
         Value::Array(items) => {
             let len = items.borrow().len();
             let idx = crate::ops::array_index(index, len)
-                .map_err(|message| runtime_error(chunk, offset, message))?;
+                .map_err(|message| runtime_error(chunk, index_ip, message))?;
             let element = items.borrow()[idx].clone();
             Ok(element)
         }
         Value::Map(entries) => {
             let key = crate::ops::map_key(index)
-                .map_err(|message| runtime_error(chunk, offset, message))?;
+                .map_err(|message| runtime_error(chunk, index_ip, message))?;
             Ok(entries.borrow().get(&key).cloned().unwrap_or(Value::Nil))
         }
         other => Err(runtime_error(
             chunk,
-            offset,
+            target_ip,
             format!("cannot index a {}", other.type_name()),
         )),
     }
 }
 
-/// Assign `target[index] = value` for an array or map, or fail for anything else.
+/// Assign `target[index] = value` for an array or map, or fail for anything
+/// else, attributing each error as [`index_get`] does.
 fn index_set(
     target: Value,
     index: &Value,
     value: Value,
     chunk: &Chunk,
-    offset: usize,
+    index_ip: usize,
+    target_ip: usize,
 ) -> Result<(), MiruError> {
     match target {
         Value::Array(items) => {
             let len = items.borrow().len();
             let idx = crate::ops::array_index(index, len)
-                .map_err(|message| runtime_error(chunk, offset, message))?;
+                .map_err(|message| runtime_error(chunk, index_ip, message))?;
             items.borrow_mut()[idx] = value;
             Ok(())
         }
         Value::Map(entries) => {
             let key = crate::ops::map_key(index)
-                .map_err(|message| runtime_error(chunk, offset, message))?;
+                .map_err(|message| runtime_error(chunk, index_ip, message))?;
             entries.borrow_mut().insert(key, value);
             Ok(())
         }
         other => Err(runtime_error(
             chunk,
-            offset,
+            target_ip,
             format!("cannot index-assign to a {}", other.type_name()),
         )),
     }

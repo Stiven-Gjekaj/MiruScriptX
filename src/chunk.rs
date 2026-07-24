@@ -74,9 +74,16 @@ pub enum OpCode {
     Map,
     /// Index into an array or map: pop the index and the target, push the element
     /// (or `nil` for a missing map key).
+    ///
+    /// Carries one operand byte that holds no value. It exists so the position
+    /// table records two positions for this instruction: the index expression
+    /// (on the opcode byte), which out-of-range and bad-key errors point at, and
+    /// the target expression (on the operand byte), which "cannot index" points
+    /// at. Each error then lands its caret under the part actually at fault.
     Index,
     /// Assign through an index: pop the index, the target, and the value, and
-    /// store the value at that index or key.
+    /// store the value at that index or key. Carries the same position-only
+    /// operand byte as [`OpCode::Index`].
     SetIndex,
     /// Pop the iterable, check it is an array, and push a snapshot to iterate. A
     /// runtime error otherwise.
@@ -312,6 +319,12 @@ impl Chunk {
             ) => {
                 let operand = self.code.get(offset + 1).copied().unwrap_or(0);
                 let _ = writeln!(out, "{:<14}{operand}", op.name());
+                offset + 2
+            }
+            Some(op @ (OpCode::Index | OpCode::SetIndex)) => {
+                // The operand byte carries only a source position, so there is
+                // no value to show for it.
+                let _ = writeln!(out, "{}", op.name());
                 offset + 2
             }
             Some(OpCode::Closure) => {

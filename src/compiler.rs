@@ -162,6 +162,7 @@ impl Compiler {
                         self.expression(index)?;
                         self.chunk
                             .write_op(OpCode::SetIndex, index.line, index.column);
+                        self.chunk.write(0, object.line, object.column);
                     }
                     _ => {
                         return Err(MiruError::with_column(
@@ -566,7 +567,10 @@ impl Compiler {
             ExprKind::Index { target, index } => {
                 self.expression(target)?;
                 self.expression(index)?;
+                // The opcode carries the index's position and its operand byte
+                // the target's, so each index error points at the part at fault.
                 self.chunk.write_op(OpCode::Index, index.line, index.column);
+                self.chunk.write(0, target.line, target.column);
             }
             ExprKind::Identifier(name) => {
                 if let Some(slot) = self.resolve_local(name) {
