@@ -23,7 +23,6 @@ pub mod chunk;
 pub mod compiler;
 pub mod environment;
 pub mod formatter;
-pub mod interpreter;
 pub mod lexer;
 pub mod ops;
 pub mod parser;
