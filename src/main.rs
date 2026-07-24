@@ -9,6 +9,7 @@ Usage:
   miru run <file.miru>      Run a MiruScriptX program from a file
   miru fmt <file.miru>      Format a program and print it to standard output
   miru fmt -w <file.miru>   Format a program and rewrite the file in place
+  miru disasm <file.miru>   Show the bytecode a program compiles to
   miru                      Start the interactive REPL
   miru repl                 Start the interactive REPL
   miru --version            Print the version and exit
@@ -21,6 +22,7 @@ fn main() -> ExitCode {
         Some((command, rest)) => match command.as_str() {
             "run" => run_file(rest),
             "fmt" => fmt_file(rest),
+            "disasm" => disasm_file(rest),
             "repl" => {
                 if rest.is_empty() {
                     repl::run()
@@ -134,6 +136,34 @@ fn fmt_file(args: &[String]) -> ExitCode {
     } else {
         print!("{formatted}");
         ExitCode::SUCCESS
+    }
+}
+
+fn disasm_file(args: &[String]) -> ExitCode {
+    let path = match args {
+        [path] if !path.starts_with('-') => path,
+        [] => return usage_error("the 'disasm' command needs a file path"),
+        [other] => return usage_error(&format!("unknown option '{other}' for 'disasm'")),
+        _ => return usage_error("the 'disasm' command takes a single file path"),
+    };
+
+    let source = match std::fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(err) => {
+            eprintln!("miru: cannot read '{path}': {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match miruscriptx::disassemble_source(&source) {
+        Ok(listing) => {
+            print!("{listing}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("miru: {}", err.render(&source));
+            ExitCode::FAILURE
+        }
     }
 }
 

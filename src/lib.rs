@@ -46,6 +46,21 @@ pub fn eval_source(source: &str) -> Result<value::Value, MiruError> {
     vm::Vm::with_output(Box::new(std::io::sink())).run(&program)
 }
 
+/// Compile a source string and return its bytecode as readable assembly: the
+/// top-level script followed by every function nested inside it. This is what
+/// the `disasm` command prints, and it is the only way to see what the compiler
+/// actually produced.
+pub fn disassemble_source(source: &str) -> Result<String, MiruError> {
+    let program = parse_program(source)?;
+    // Compiling needs a global table to resolve names against. Nothing runs, so
+    // a throwaway one seeded with the builtins gives the same slots a real run
+    // would.
+    let mut globals = globals::Globals::new();
+    builtins::register(&mut globals);
+    let script = compiler::Compiler::compile(&program, &mut globals)?;
+    Ok(chunk::disassemble_program(&script))
+}
+
 /// Lex, parse, and reprint a source string in the canonical `miru fmt` style,
 /// preserving comments and single blank lines. This is what the `fmt` command
 /// runs on a file.

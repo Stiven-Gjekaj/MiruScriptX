@@ -153,6 +153,38 @@ fn fmt_reports_a_syntax_error_and_fails() {
 }
 
 #[test]
+fn disasm_prints_bytecode_for_a_program() {
+    let output = miru()
+        .arg("disasm")
+        .arg("examples/greet.miru")
+        .output()
+        .expect("runs");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf-8");
+
+    // The top-level script, then each function nested inside it.
+    assert!(stdout.contains("== script =="), "stdout was:\n{stdout}");
+    assert!(stdout.contains("== fn greet =="), "stdout was:\n{stdout}");
+    // Instructions carry the source line they came from.
+    assert!(stdout.contains("CLOSURE"), "stdout was:\n{stdout}");
+    assert!(stdout.contains("GET_LOCAL"), "stdout was:\n{stdout}");
+    // A constant shows the value it holds, not just its index.
+    assert!(stdout.contains("(\"Hello, \")"), "stdout was:\n{stdout}");
+}
+
+#[test]
+fn disasm_reports_a_syntax_error_and_fails() {
+    let path = std::env::temp_dir().join("miru_integration_disasm_bad.miru");
+    std::fs::write(&path, "let = 1\n").expect("write temp file");
+    let output = miru().arg("disasm").arg(&path).output().expect("runs");
+    let _ = std::fs::remove_file(&path);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf-8");
+    assert!(stderr.contains("miru:"), "stderr was: {stderr}");
+}
+
+#[test]
 fn version_flag_prints_version() {
     let output = miru().arg("--version").output().expect("runs");
     assert!(output.status.success());
