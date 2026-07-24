@@ -268,9 +268,22 @@ impl Chunk {
     /// Render the whole chunk as human-readable assembly, one instruction per
     /// line. Used for debugging the compiler and the VM.
     pub fn disassemble(&self, name: &str) -> String {
+        use std::fmt::Write;
+
         let mut out = format!("== {name} ==\n");
         let mut offset = 0;
+        let mut previous_line = 0;
         while offset < self.code.len() {
+            // Show the source line an instruction came from, and a bar when it
+            // continues the line above, so a statement's instructions read as one
+            // group rather than a column of repeated numbers.
+            let line = self.position(offset).0;
+            if line == previous_line {
+                let _ = write!(out, "   |  ");
+            } else {
+                let _ = write!(out, "{line:>4}  ");
+                previous_line = line;
+            }
             offset = self.disassemble_instruction(&mut out, offset);
         }
         out
@@ -365,6 +378,28 @@ impl Chunk {
     }
 }
 
+/// Disassemble a whole program: the top-level script followed by every function
+/// nested inside it, depth first, each under its own heading.
+pub fn disassemble_program(script: &CompiledFunction) -> String {
+    let mut out = String::new();
+    disassemble_function(script, "script", &mut out);
+    out
+}
+
+fn disassemble_function(function: &CompiledFunction, label: &str, out: &mut String) {
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(&function.chunk.disassemble(label));
+    for nested in &function.chunk.functions {
+        let label = match &nested.name {
+            Some(name) => format!("fn {name}"),
+            None => "fn <anonymous>".to_string(),
+        };
+        disassemble_function(nested, &label, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,13 +468,15 @@ mod tests {
         chunk.write_op(OpCode::Add, 1, 3);
         chunk.write_op(OpCode::Return, 1, 1);
         let text = chunk.disassemble("test");
+        // The first instruction of a line shows the line number; the rest of
+        // that line's instructions show a bar, so a statement reads as a group.
         assert_eq!(
             text,
             "== test ==\n\
-             0000 CONSTANT      0 (1)\n\
-             0002 CONSTANT      1 (2)\n\
-             0004 ADD\n\
-             0005 RETURN\n"
+             \x20  1  0000 CONSTANT      0 (1)\n\
+             \x20  |  0002 CONSTANT      1 (2)\n\
+             \x20  |  0004 ADD\n\
+             \x20  |  0005 RETURN\n"
         );
     }
 }
