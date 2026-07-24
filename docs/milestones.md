@@ -79,10 +79,33 @@ request templates, and a branded README with a project logo.
 
 ## v0.5: one engine, and optimization
 
-- Retire the tree walker, make the VM the only engine, and drop the `--vm` flag
-  along with the duplicate function representation in `Value`.
-- Optimize now that there is a single target: faster global lookup, fewer stack
-  copies, and a constant-folding pass.
+- The tree walker is retired. The VM is the only engine, `src/interpreter.rs`
+  and `src/environment.rs` are gone, and `Value` has one function
+  representation instead of two. `run --vm` is still accepted so a command
+  written against v0.4 does not break, but it selects the only engine there is.
+- Behavior was frozen into `tests/golden.rs` before any of that was removed: a
+  corpus pairing each program with the exact outcome it must produce, written
+  as literals so a test cannot absorb a change silently. Freezing first found a
+  real bug, where `5[0]` put the caret under the index rather than the target.
+  Deleting the differential tests was then shown lossless by diffing the source
+  strings of both suites, which turned up eighteen uncovered cases.
+- `miru disasm` prints the bytecode for a program, nested functions and all.
+- Optimization, each change measured against a baseline taken immediately
+  before it: globals resolved to slots at compile time, constant folding, an
+  integer fast path for binary operators, an unchecked opcode decode, the
+  running chunk derived once per frame instead of once per instruction, and a
+  constant right operand folded into the operator. Loop and global workloads
+  came down by a factor of about 4.4, strings 2.6, arrays 2.4, `fib` 1.7.
+- Constant pool entries are now reused. The pool is capped at 256 by its
+  one-byte operand, and every *occurrence* of a literal used to take a slot, so
+  a three-hundred-line program that added 1 to a counter failed to compile.
+- The benchmark harness documents its own noise floor. A public function that
+  no benchmark calls measures as a 3.9% improvement at p = 0.00, because a
+  rebuild moves where the dispatch loop lands; anything under five percent from
+  this harness is unmeasured rather than small.
+- Two recursion limits, since heap frames and nested host calls run out of
+  different resources: 10,000 call frames, and 64 levels of calls made from
+  inside a builtin.
 
 ## v0.6: better errors, and reach
 

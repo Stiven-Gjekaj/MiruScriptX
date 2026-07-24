@@ -8,6 +8,54 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 0.5 (2026-07-24)
+
+### Added
+
+- `miru disasm <file>` prints the bytecode a program compiles to, walking into
+  nested functions, with each instruction's source line and the value behind
+  each constant index.
+- `tests/golden.rs`, a corpus pairing programs with the exact outcome each must
+  produce, values and errors alike, down to the line and column a caret points
+  at. Expectations are literals rather than regenerated, so a test cannot
+  quietly absorb a change in behavior.
+- A limit on call depth, as two separate caps because deep recursion can exhaust
+  two different resources: 10,000 heap call frames, and 64 levels of calls made
+  from inside a builtin, which run on nested bytecode loops that cost real
+  machine stack.
+- `BinaryConst`, an instruction carrying a constant right operand, and a
+  `constants` benchmark workload for the folding pass that had no coverage.
+
+### Changed
+
+- The virtual machine is now the only engine. `src/interpreter.rs` and
+  `src/environment.rs` are gone, and `Value` carries one function
+  representation rather than two. `run --vm` is still accepted, so a command
+  written against v0.4 keeps working, but it selects the only engine there is.
+- Globals resolve to a slot at compile time in a table shared by the compiler
+  and the VM, replacing a hash lookup by name on every access.
+- Constant expressions are folded at compile time. A fold that fails is
+  abandoned rather than reported, so a runtime error keeps its position.
+- Performance, with every change measured against a baseline taken immediately
+  before it. Relative to the start of v0.5: loop and global workloads about
+  4.4x faster, strings 2.6x, arrays 2.4x, recursive `fib` 1.7x, maps 1.4x. The
+  higher-order workload did not move, because its cost is in the builtin
+  bridge, which none of this touched.
+
+### Fixed
+
+- A program could fail to compile with "too many constants in one chunk" for
+  wanting the *same* literal too often. The pool is capped at 256 by its
+  one-byte operand, and each occurrence took a slot, so a three-hundred-line
+  program that added 1 to a counter on each line failed at line 257. Entries are
+  now reused, and the cap counts distinct values.
+- `5[0]` put its caret under the index rather than under the unindexable target.
+  Found by freezing behavior into golden tests before removing the engine that
+  had it right.
+- A runtime error inside a session left its call frame behind, and the next
+  program pushed onto the abandoned stack and resumed into it. A failed program
+  now returns with the value stack, frame stack, and open upvalues empty.
+
 ## 0.4 (2026-07-24)
 
 ### Added
