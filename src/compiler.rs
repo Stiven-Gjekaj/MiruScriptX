@@ -539,6 +539,14 @@ impl<'g> Compiler<'g> {
     fn expression(&mut self, expr: &Expr) -> Result<(), MiruError> {
         let line = expr.line;
         let column = expr.column;
+        // An operator applied to literals is computed here rather than every
+        // time the program runs. Only compound expressions are worth folding: a
+        // bare literal already compiles to a single instruction.
+        if matches!(expr.kind, ExprKind::Unary { .. } | ExprKind::Binary { .. }) {
+            if let Some(value) = fold(expr) {
+                return self.emit_value(value, line, column);
+            }
+        }
         match &expr.kind {
             ExprKind::Int(n) => self.constant(Value::Int(*n), line, column)?,
             ExprKind::Float(f) => self.constant(Value::Float(*f), line, column)?,
@@ -674,6 +682,19 @@ impl<'g> Compiler<'g> {
         Ok(())
     }
 
+    /// Push a known value using the cheapest encoding: `true`, `false`, and
+    /// `nil` have dedicated single-byte opcodes, so folding to one of those must
+    /// not turn it into a two-byte constant load.
+    fn emit_value(&mut self, value: Value, line: usize, column: usize) -> Result<(), MiruError> {
+        match value {
+            Value::Bool(true) => self.chunk.write_op(OpCode::True, line, column),
+            Value::Bool(false) => self.chunk.write_op(OpCode::False, line, column),
+            Value::Nil => self.chunk.write_op(OpCode::Nil, line, column),
+            other => self.constant(other, line, column)?,
+        }
+        Ok(())
+    }
+
     /// Emit a `Constant` instruction that pushes `value`.
     fn constant(&mut self, value: Value, line: usize, column: usize) -> Result<(), MiruError> {
         let index = self.constant_index(value, line, column)?;
@@ -699,6 +720,28 @@ impl<'g> Compiler<'g> {
         self.chunk.write((slot >> 8) as u8, line, column);
         self.chunk.write((slot & 0xff) as u8, line, column);
         Ok(())
+    }
+}
+
+/// Try to evaluate an expression at compile time.
+///
+/// Returns `None` when the expression is not made only of literals, and also
+/// when evaluating it *fails*. That second case matters: `1 / 0` and an
+/// overflowing sum have to stay runtime errors reported at their own position,
+/// so a fold that would raise is abandoned and the instructions are emitted as
+/// usual, leaving the failure to happen where it always did.
+fn fold(expr: &Expr) -> Option<Value> {
+    match &expr.kind {
+        ExprKind::Int(n) => Some(Value::Int(*n)),
+        ExprKind::Float(f) => Some(Value::Float(*f)),
+        ExprKind::Str(s) => Some(Value::Str(Rc::new(s.clone()))),
+        ExprKind::Bool(b) => Some(Value::Bool(*b)),
+        ExprKind::Nil => Some(Value::Nil),
+        ExprKind::Unary { op, operand } => crate::ops::unary(*op, fold(operand)?).ok(),
+        ExprKind::Binary { op, left, right } => {
+            crate::ops::binary(*op, fold(left)?, fold(right)?).ok()
+        }
+        _ => None,
     }
 }
 

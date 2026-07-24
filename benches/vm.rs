@@ -117,8 +117,22 @@ for k in keys(m) { total = total + m[k] }
 total
 ";
 
+/// Arithmetic over constant subexpressions inside a loop, the pattern constant
+/// folding exists for. Written the way a person would rather than pre-reduced:
+/// a unit conversion spelled out for readability, recomputed every iteration.
+const CONSTANTS: &str = "
+let total = 0
+let i = 0
+while i < 20000 {
+  total = total + i * (24 * 60 * 60) + (2 * 3 + 4)
+  i = i + 1
+}
+total
+";
+
 fn workloads(c: &mut Criterion) {
     for (name, source) in [
+        ("constants", CONSTANTS),
         ("fib", FIB),
         ("loop_sum", LOOP_SUM),
         ("arrays", ARRAYS),
