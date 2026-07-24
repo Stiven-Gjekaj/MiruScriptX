@@ -84,7 +84,26 @@ request templates, and a branded README with a project logo.
 - Optimize now that there is a single target: faster global lookup, fewer stack
   copies, and a constant-folding pass.
 
-## v0.6: reach
+## v0.6: better errors, and reach
+
+- Call stack traces on runtime errors. An error raised three functions deep
+  currently reports only the innermost position, so the caret shows where the
+  program broke but not how it got there. The VM already keeps a frame stack
+  with a position per frame, so the information exists; what is missing is
+  carrying it out of the failure and rendering it, something like:
+
+  ```
+  error (line 2, column 12): cannot add a nil and a int
+      return a + 1
+             ^
+    in add, called from line 6
+    in total, called from line 9
+  ```
+
+  This wants a little care rather than a little code: the position saved in a
+  frame is where that frame will resume, not where the call was written, and a
+  deeply recursive failure needs the middle of the trace elided rather than ten
+  thousand identical lines printed.
 
 - Compile the interpreter to WebAssembly.
 - Ship a live in-browser playground on GitHub Pages so anyone can try
