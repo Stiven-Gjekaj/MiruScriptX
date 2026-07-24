@@ -46,21 +46,40 @@
 //! says. Re-running is legitimate for shaking out interference, but re-running
 //! until a number flatters the change is how benchmarks come to mean nothing.
 //!
-//! # Baseline
+//! # What the v0.5 optimization work came to
 //!
-//! Measured at the start of the v0.5 optimization work, on the machine used for
-//! development. Absolute numbers are only comparable against other runs on the
-//! same machine; the point is the relative movement each change produces.
+//! Both columns were measured on the machine used for development, the first
+//! before any of it and the second after all of it. Absolute numbers are only
+//! comparable against other runs on the same machine; the point is the ratio.
 //!
 //! ```text
-//! fib             1.108 ms
-//! loop_sum        5.276 ms
-//! arrays        786.35 us
-//! higher_order  638.72 us
-//! globals         3.222 ms
-//! strings       605.68 us
-//! maps            1.775 ms
+//!                  before        after     speedup
+//! loop_sum        5.276 ms     1.218 ms      4.33x
+//! globals         3.222 ms   722.13 us       4.46x
+//! strings       605.68 us    233.88 us       2.59x
+//! arrays        786.35 us    334.09 us       2.35x
+//! fib             1.108 ms   644.59 us       1.72x
+//! maps            1.775 ms     1.255 ms      1.41x
+//! higher_order  638.72 us    624.78 us       1.02x
 //! ```
+//!
+//! Five changes account for that: an integer fast path for binary operators,
+//! decoding opcodes without checking them, deriving the running chunk once per
+//! frame instead of once per instruction, resolving globals to slots at compile
+//! time, and folding a constant right operand into the operator. Each was kept
+//! because it moved a number by well more than the floor described above, and
+//! because there was a mechanism to explain the movement.
+//!
+//! `higher_order` is the one that barely moved, and that is the honest reading
+//! rather than a disappointment: it spends its time in `map`, `filter`, and
+//! `reduce`, which allocate a result array and call back into a nested
+//! bytecode loop per element. None of the five touched either cost. Making it
+//! faster means going after the builtin bridge, which is a different piece of
+//! work.
+//!
+//! `constants` is absent because it did not exist before this work; it was
+//! added partway through, when constant folding turned out not to be exercised
+//! by any of the others.
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;
