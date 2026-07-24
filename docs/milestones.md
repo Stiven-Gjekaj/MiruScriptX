@@ -131,6 +131,12 @@ request templates, and a branded README with a project logo.
 - Compile the interpreter to WebAssembly.
 - Ship a live in-browser playground on GitHub Pages so anyone can try
   MiruScriptX without installing anything.
+- The builtin bridge is the next thing worth optimizing, and v0.5 says so with
+  a number rather than a guess. Every other benchmark workload came down by
+  somewhere between 1.4x and 4.4x; `higher_order` did not move at all, because
+  its cost is not in the dispatch loop. `map`, `filter`, and `reduce` allocate a
+  result array and call back into a nested bytecode loop once per element, and
+  nothing in v0.5 touched either.
 
 ## How versions are cut
 
