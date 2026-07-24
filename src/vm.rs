@@ -167,274 +167,277 @@ impl Vm {
     /// result. `base_depth` is 0 for a whole program; a higher value runs a single
     /// nested call made from a host builtin.
     fn run_frames(&mut self, base_depth: usize) -> Result<Value, MiruError> {
-        // Keep the current frame's closure, instruction pointer, and stack base in
-        // locals. `closure` is a cloned handle, so `chunk` borrows it rather than
-        // `self`, leaving `self` free to mutate as instructions execute. The three
-        // are resynced from the frame stack whenever a call or return changes it.
-        let mut closure = Rc::clone(&self.frames.last().expect("a call frame").closure);
-        let mut ip = self.frames.last().expect("a call frame").ip;
-        let mut slot_base = self.frames.last().expect("a call frame").slot_base;
-        loop {
+        // Two loops, one per frame and one per instruction. The outer loop keeps
+        // the current frame's closure, instruction pointer, stack base, and chunk
+        // in locals; the inner one runs until a call or return changes frames and
+        // jumps back out to pick up the new ones. `closure` is a cloned handle, so
+        // `chunk` borrows it rather than `self`, leaving `self` free to mutate as
+        // instructions execute.
+        //
+        // The split is what makes `chunk` a local. Reaching it means following an
+        // Rc to the closure and another to its function, and the inner loop would
+        // otherwise pay for both on every instruction to arrive at something that
+        // only changes when the frame does.
+        'frames: loop {
+            let frame = self.frames.last().expect("a call frame");
+            let closure = Rc::clone(&frame.closure);
+            let mut ip = frame.ip;
+            let slot_base = frame.slot_base;
             let chunk = &closure.function.chunk;
-            let op_ip = ip;
-            let op = OpCode::decode(chunk.code[ip]);
-            ip += 1;
-            match op {
-                OpCode::Constant => {
-                    let index = chunk.code[ip] as usize;
-                    ip += 1;
-                    self.stack.push(chunk.constants[index].clone());
-                }
-                OpCode::Nil => self.stack.push(Value::Nil),
-                OpCode::True => self.stack.push(Value::Bool(true)),
-                OpCode::False => self.stack.push(Value::Bool(false)),
-                OpCode::Negate => self.unary(UnaryOp::Negate, chunk, op_ip)?,
-                OpCode::Not => self.unary(UnaryOp::Not, chunk, op_ip)?,
-                OpCode::Add
-                | OpCode::Subtract
-                | OpCode::Multiply
-                | OpCode::Divide
-                | OpCode::Modulo
-                | OpCode::Equal
-                | OpCode::NotEqual
-                | OpCode::Less
-                | OpCode::Greater
-                | OpCode::LessEqual
-                | OpCode::GreaterEqual => self.binary(binary_op(op), chunk, op_ip)?,
-                OpCode::DefineGlobal => {
-                    let slot = read_u16(chunk, ip);
-                    ip += 2;
-                    let value = self.pop();
-                    self.globals.define(slot, value);
-                }
-                OpCode::GetGlobal => {
-                    let slot = read_u16(chunk, ip);
-                    ip += 2;
-                    match self.globals.get(slot) {
-                        Some(value) => self.stack.push(value.clone()),
-                        None => {
+            loop {
+                let op_ip = ip;
+                let op = OpCode::decode(chunk.code[ip]);
+                ip += 1;
+                match op {
+                    OpCode::Constant => {
+                        let index = chunk.code[ip] as usize;
+                        ip += 1;
+                        self.stack.push(chunk.constants[index].clone());
+                    }
+                    OpCode::Nil => self.stack.push(Value::Nil),
+                    OpCode::True => self.stack.push(Value::Bool(true)),
+                    OpCode::False => self.stack.push(Value::Bool(false)),
+                    OpCode::Negate => self.unary(UnaryOp::Negate, chunk, op_ip)?,
+                    OpCode::Not => self.unary(UnaryOp::Not, chunk, op_ip)?,
+                    OpCode::Add
+                    | OpCode::Subtract
+                    | OpCode::Multiply
+                    | OpCode::Divide
+                    | OpCode::Modulo
+                    | OpCode::Equal
+                    | OpCode::NotEqual
+                    | OpCode::Less
+                    | OpCode::Greater
+                    | OpCode::LessEqual
+                    | OpCode::GreaterEqual => self.binary(binary_op(op), chunk, op_ip)?,
+                    OpCode::DefineGlobal => {
+                        let slot = read_u16(chunk, ip);
+                        ip += 2;
+                        let value = self.pop();
+                        self.globals.define(slot, value);
+                    }
+                    OpCode::GetGlobal => {
+                        let slot = read_u16(chunk, ip);
+                        ip += 2;
+                        match self.globals.get(slot) {
+                            Some(value) => self.stack.push(value.clone()),
+                            None => {
+                                let name = self.globals.name(slot);
+                                return Err(runtime_error(
+                                    chunk,
+                                    op_ip,
+                                    format!("undefined variable '{name}'"),
+                                ));
+                            }
+                        }
+                    }
+                    OpCode::SetGlobal => {
+                        let slot = read_u16(chunk, ip);
+                        ip += 2;
+                        let value = self.pop();
+                        if !self.globals.assign(slot, value) {
                             let name = self.globals.name(slot);
                             return Err(runtime_error(
                                 chunk,
                                 op_ip,
-                                format!("undefined variable '{name}'"),
+                                format!("cannot assign to undefined variable '{name}'"),
                             ));
                         }
                     }
-                }
-                OpCode::SetGlobal => {
-                    let slot = read_u16(chunk, ip);
-                    ip += 2;
-                    let value = self.pop();
-                    if !self.globals.assign(slot, value) {
-                        let name = self.globals.name(slot);
-                        return Err(runtime_error(
-                            chunk,
-                            op_ip,
-                            format!("cannot assign to undefined variable '{name}'"),
-                        ));
+                    OpCode::Jump => {
+                        let offset = read_u16(chunk, ip);
+                        ip += 2 + offset as usize;
                     }
-                }
-                OpCode::Jump => {
-                    let offset = read_u16(chunk, ip);
-                    ip += 2 + offset as usize;
-                }
-                OpCode::JumpIfFalse => {
-                    let offset = read_u16(chunk, ip);
-                    ip += 2;
-                    if !self.peek().is_truthy() {
-                        ip += offset as usize;
-                    }
-                }
-                OpCode::JumpIfTrue => {
-                    let offset = read_u16(chunk, ip);
-                    ip += 2;
-                    if self.peek().is_truthy() {
-                        ip += offset as usize;
-                    }
-                }
-                OpCode::Loop => {
-                    let offset = read_u16(chunk, ip);
-                    ip = ip + 2 - offset as usize;
-                }
-                OpCode::Truthy => {
-                    let value = self.pop();
-                    self.stack.push(Value::Bool(value.is_truthy()));
-                }
-                OpCode::GetLocal => {
-                    let slot = chunk.code[ip] as usize;
-                    ip += 1;
-                    let value = self.stack[slot_base + slot].clone();
-                    self.stack.push(value);
-                }
-                OpCode::SetLocal => {
-                    let slot = chunk.code[ip] as usize;
-                    ip += 1;
-                    let value = self.pop();
-                    self.stack[slot_base + slot] = value;
-                }
-                OpCode::Array => {
-                    let count = chunk.code[ip] as usize;
-                    ip += 1;
-                    let start = self.stack.len() - count;
-                    let items = self.stack.split_off(start);
-                    self.stack.push(Value::Array(Rc::new(RefCell::new(items))));
-                }
-                OpCode::Map => {
-                    let count = chunk.code[ip] as usize;
-                    ip += 1;
-                    let start = self.stack.len() - count * 2;
-                    let pairs = self.stack.split_off(start);
-                    let mut entries = BTreeMap::new();
-                    let mut pairs = pairs.into_iter();
-                    while let Some(key) = pairs.next() {
-                        let value = pairs.next().expect("a value for every map key");
-                        let key = crate::ops::map_key(&key)
-                            .map_err(|message| runtime_error(chunk, op_ip, message))?;
-                        entries.insert(key, value);
-                    }
-                    self.stack.push(Value::Map(Rc::new(RefCell::new(entries))));
-                }
-                OpCode::Index => {
-                    // The operand byte holds no value; its position entry is the
-                    // target expression's, used when the target is not indexable.
-                    let target_ip = ip;
-                    ip += 1;
-                    let index = self.pop();
-                    let target = self.pop();
-                    let element = index_get(target, &index, chunk, op_ip, target_ip)?;
-                    self.stack.push(element);
-                }
-                OpCode::SetIndex => {
-                    let target_ip = ip;
-                    ip += 1;
-                    let index = self.pop();
-                    let target = self.pop();
-                    let value = self.pop();
-                    index_set(target, &index, value, chunk, op_ip, target_ip)?;
-                }
-                OpCode::IterSnapshot => {
-                    let value = self.pop();
-                    match value {
-                        Value::Array(items) => {
-                            let snapshot = items.borrow().clone();
-                            self.stack
-                                .push(Value::Array(Rc::new(RefCell::new(snapshot))));
-                        }
-                        other => {
-                            return Err(runtime_error(
-                                chunk,
-                                op_ip,
-                                format!("cannot iterate over a {}", other.type_name()),
-                            ))
+                    OpCode::JumpIfFalse => {
+                        let offset = read_u16(chunk, ip);
+                        ip += 2;
+                        if !self.peek().is_truthy() {
+                            ip += offset as usize;
                         }
                     }
-                }
-                OpCode::ForNext => {
-                    let seq_slot = slot_base + chunk.code[ip] as usize;
-                    let jump = read_u16(chunk, ip + 1);
-                    ip += 3;
-                    let index = match &self.stack[seq_slot + 1] {
-                        Value::Int(n) => *n,
-                        _ => unreachable!("for-in index is not an integer"),
-                    };
-                    let length = match &self.stack[seq_slot] {
-                        Value::Array(items) => items.borrow().len() as i64,
-                        _ => unreachable!("for-in sequence is not an array"),
-                    };
-                    if index >= length {
-                        ip += jump as usize;
-                    } else {
-                        let element = match &self.stack[seq_slot] {
-                            Value::Array(items) => items.borrow()[index as usize].clone(),
+                    OpCode::JumpIfTrue => {
+                        let offset = read_u16(chunk, ip);
+                        ip += 2;
+                        if self.peek().is_truthy() {
+                            ip += offset as usize;
+                        }
+                    }
+                    OpCode::Loop => {
+                        let offset = read_u16(chunk, ip);
+                        ip = ip + 2 - offset as usize;
+                    }
+                    OpCode::Truthy => {
+                        let value = self.pop();
+                        self.stack.push(Value::Bool(value.is_truthy()));
+                    }
+                    OpCode::GetLocal => {
+                        let slot = chunk.code[ip] as usize;
+                        ip += 1;
+                        let value = self.stack[slot_base + slot].clone();
+                        self.stack.push(value);
+                    }
+                    OpCode::SetLocal => {
+                        let slot = chunk.code[ip] as usize;
+                        ip += 1;
+                        let value = self.pop();
+                        self.stack[slot_base + slot] = value;
+                    }
+                    OpCode::Array => {
+                        let count = chunk.code[ip] as usize;
+                        ip += 1;
+                        let start = self.stack.len() - count;
+                        let items = self.stack.split_off(start);
+                        self.stack.push(Value::Array(Rc::new(RefCell::new(items))));
+                    }
+                    OpCode::Map => {
+                        let count = chunk.code[ip] as usize;
+                        ip += 1;
+                        let start = self.stack.len() - count * 2;
+                        let pairs = self.stack.split_off(start);
+                        let mut entries = BTreeMap::new();
+                        let mut pairs = pairs.into_iter();
+                        while let Some(key) = pairs.next() {
+                            let value = pairs.next().expect("a value for every map key");
+                            let key = crate::ops::map_key(&key)
+                                .map_err(|message| runtime_error(chunk, op_ip, message))?;
+                            entries.insert(key, value);
+                        }
+                        self.stack.push(Value::Map(Rc::new(RefCell::new(entries))));
+                    }
+                    OpCode::Index => {
+                        // The operand byte holds no value; its position entry is the
+                        // target expression's, used when the target is not indexable.
+                        let target_ip = ip;
+                        ip += 1;
+                        let index = self.pop();
+                        let target = self.pop();
+                        let element = index_get(target, &index, chunk, op_ip, target_ip)?;
+                        self.stack.push(element);
+                    }
+                    OpCode::SetIndex => {
+                        let target_ip = ip;
+                        ip += 1;
+                        let index = self.pop();
+                        let target = self.pop();
+                        let value = self.pop();
+                        index_set(target, &index, value, chunk, op_ip, target_ip)?;
+                    }
+                    OpCode::IterSnapshot => {
+                        let value = self.pop();
+                        match value {
+                            Value::Array(items) => {
+                                let snapshot = items.borrow().clone();
+                                self.stack
+                                    .push(Value::Array(Rc::new(RefCell::new(snapshot))));
+                            }
+                            other => {
+                                return Err(runtime_error(
+                                    chunk,
+                                    op_ip,
+                                    format!("cannot iterate over a {}", other.type_name()),
+                                ))
+                            }
+                        }
+                    }
+                    OpCode::ForNext => {
+                        let seq_slot = slot_base + chunk.code[ip] as usize;
+                        let jump = read_u16(chunk, ip + 1);
+                        ip += 3;
+                        let index = match &self.stack[seq_slot + 1] {
+                            Value::Int(n) => *n,
+                            _ => unreachable!("for-in index is not an integer"),
+                        };
+                        let length = match &self.stack[seq_slot] {
+                            Value::Array(items) => items.borrow().len() as i64,
                             _ => unreachable!("for-in sequence is not an array"),
                         };
-                        self.stack.push(element);
-                        self.stack[seq_slot + 1] = Value::Int(index + 1);
-                    }
-                }
-                OpCode::Closure => {
-                    let index = chunk.code[ip] as usize;
-                    ip += 1;
-                    let function = Rc::clone(&chunk.functions[index]);
-                    let upvalue_count = chunk.code[ip] as usize;
-                    ip += 1;
-                    let mut upvalues = Vec::with_capacity(upvalue_count);
-                    for _ in 0..upvalue_count {
-                        let is_local = chunk.code[ip] != 0;
-                        let operand = chunk.code[ip + 1] as usize;
-                        ip += 2;
-                        let upvalue = if is_local {
-                            self.capture_upvalue(slot_base + operand)
+                        if index >= length {
+                            ip += jump as usize;
                         } else {
-                            Rc::clone(&closure.upvalues[operand])
+                            let element = match &self.stack[seq_slot] {
+                                Value::Array(items) => items.borrow()[index as usize].clone(),
+                                _ => unreachable!("for-in sequence is not an array"),
+                            };
+                            self.stack.push(element);
+                            self.stack[seq_slot + 1] = Value::Int(index + 1);
+                        }
+                    }
+                    OpCode::Closure => {
+                        let index = chunk.code[ip] as usize;
+                        ip += 1;
+                        let function = Rc::clone(&chunk.functions[index]);
+                        let upvalue_count = chunk.code[ip] as usize;
+                        ip += 1;
+                        let mut upvalues = Vec::with_capacity(upvalue_count);
+                        for _ in 0..upvalue_count {
+                            let is_local = chunk.code[ip] != 0;
+                            let operand = chunk.code[ip + 1] as usize;
+                            ip += 2;
+                            let upvalue = if is_local {
+                                self.capture_upvalue(slot_base + operand)
+                            } else {
+                                Rc::clone(&closure.upvalues[operand])
+                            };
+                            upvalues.push(upvalue);
+                        }
+                        self.stack
+                            .push(Value::Closure(Rc::new(Closure { function, upvalues })));
+                    }
+                    OpCode::GetUpvalue => {
+                        let index = chunk.code[ip] as usize;
+                        ip += 1;
+                        let value = match &*closure.upvalues[index].borrow() {
+                            Upvalue::Open(slot) => self.stack[*slot].clone(),
+                            Upvalue::Closed(value) => value.clone(),
                         };
-                        upvalues.push(upvalue);
+                        self.stack.push(value);
                     }
-                    self.stack
-                        .push(Value::Closure(Rc::new(Closure { function, upvalues })));
-                }
-                OpCode::GetUpvalue => {
-                    let index = chunk.code[ip] as usize;
-                    ip += 1;
-                    let value = match &*closure.upvalues[index].borrow() {
-                        Upvalue::Open(slot) => self.stack[*slot].clone(),
-                        Upvalue::Closed(value) => value.clone(),
-                    };
-                    self.stack.push(value);
-                }
-                OpCode::SetUpvalue => {
-                    let index = chunk.code[ip] as usize;
-                    ip += 1;
-                    let value = self.pop();
-                    let upvalue = Rc::clone(&closure.upvalues[index]);
-                    match &mut *upvalue.borrow_mut() {
-                        Upvalue::Open(slot) => self.stack[*slot] = value,
-                        Upvalue::Closed(cell) => *cell = value,
-                    };
-                }
-                OpCode::CloseUpvalue => {
-                    self.close_upvalues_from(self.stack.len() - 1);
-                    self.pop();
-                }
-                OpCode::Call => {
-                    let argcount = chunk.code[ip] as usize;
-                    ip += 1;
-                    // Save where to resume, then enter the callee. A builtin runs
-                    // in place and leaves the frame stack untouched.
-                    self.frames.last_mut().expect("a call frame").ip = ip;
-                    if self.call_at_stack(argcount, chunk, op_ip)? {
-                        let frame = self.frames.last().expect("a call frame");
-                        closure = Rc::clone(&frame.closure);
-                        ip = frame.ip;
-                        slot_base = frame.slot_base;
+                    OpCode::SetUpvalue => {
+                        let index = chunk.code[ip] as usize;
+                        ip += 1;
+                        let value = self.pop();
+                        let upvalue = Rc::clone(&closure.upvalues[index]);
+                        match &mut *upvalue.borrow_mut() {
+                            Upvalue::Open(slot) => self.stack[*slot] = value,
+                            Upvalue::Closed(cell) => *cell = value,
+                        };
                     }
-                    continue;
-                }
-                OpCode::Pop => {
-                    self.pop();
-                }
-                OpCode::Return => {
-                    let result = self.pop();
-                    let frame = self.frames.pop().expect("a call frame");
-                    // Close any upvalues that captured this frame's locals before
-                    // they leave the stack.
-                    self.close_upvalues_from(frame.slot_base);
-                    if self.frames.len() == base_depth {
-                        // Drop the callee and its arguments; the result goes back
-                        // to whoever started this loop.
-                        self.stack.truncate(frame.slot_base.saturating_sub(1));
-                        return Ok(result);
+                    OpCode::CloseUpvalue => {
+                        self.close_upvalues_from(self.stack.len() - 1);
+                        self.pop();
                     }
-                    // Drop the callee and its arguments and locals, then leave the
-                    // return value where the call expression's result belongs.
-                    self.stack.truncate(frame.slot_base - 1);
-                    self.stack.push(result);
-                    let caller = self.frames.last().expect("a call frame");
-                    closure = Rc::clone(&caller.closure);
-                    ip = caller.ip;
-                    slot_base = caller.slot_base;
-                    continue;
+                    OpCode::Call => {
+                        let argcount = chunk.code[ip] as usize;
+                        ip += 1;
+                        // Save where to resume, then enter the callee. A builtin runs
+                        // in place and leaves the frame stack untouched.
+                        self.frames.last_mut().expect("a call frame").ip = ip;
+                        if self.call_at_stack(argcount, chunk, op_ip)? {
+                            continue 'frames;
+                        }
+                        continue;
+                    }
+                    OpCode::Pop => {
+                        self.pop();
+                    }
+                    OpCode::Return => {
+                        let result = self.pop();
+                        let frame = self.frames.pop().expect("a call frame");
+                        // Close any upvalues that captured this frame's locals before
+                        // they leave the stack.
+                        self.close_upvalues_from(frame.slot_base);
+                        if self.frames.len() == base_depth {
+                            // Drop the callee and its arguments; the result goes back
+                            // to whoever started this loop.
+                            self.stack.truncate(frame.slot_base.saturating_sub(1));
+                            return Ok(result);
+                        }
+                        // Drop the callee and its arguments and locals, then leave the
+                        // return value where the call expression's result belongs.
+                        self.stack.truncate(frame.slot_base - 1);
+                        self.stack.push(result);
+                        continue 'frames;
+                    }
                 }
             }
         }
