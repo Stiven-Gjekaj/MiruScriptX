@@ -1,10 +1,9 @@
-//! The arithmetic, comparison, and unary operations at the heart of the
-//! language, shared by the tree-walking interpreter and the bytecode VM so both
-//! engines compute identical results and report identical errors.
+//! The arithmetic, comparison, and indexing rules at the heart of the language.
 //!
-//! Each function returns the bare error message on failure; the caller attaches
-//! the source position (from the AST in the interpreter, from the chunk's
-//! position table in the VM).
+//! Keeping them here rather than inline in the virtual machine means numeric
+//! promotion, overflow checks, and index bounds are each defined exactly once.
+//! Every function returns the bare error message on failure; the VM attaches
+//! the source position from the chunk's position table.
 
 use std::cmp::Ordering;
 use std::rc::Rc;

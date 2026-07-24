@@ -370,25 +370,6 @@ mod tests {
     }
 
     #[test]
-    fn both_engines_produce_the_same_output_for_every_example() {
-        // The whole point of running two engines in v0.4: they must be
-        // indistinguishable on real programs, not just on unit-test snippets.
-        for source in EXAMPLES {
-            let tree = run_capture(source).expect("the tree walker runs the example");
-            let vm = run_capture(source).expect("the VM runs the example");
-            assert_eq!(tree, vm, "the engines printed different output");
-        }
-    }
-
-    #[test]
-    fn both_engines_read_input_the_same_way() {
-        let source = include_str!("../examples/greeter.miru");
-        let tree = run_capture_with_input(source, &["Aiko"]).expect("tree walker runs");
-        let vm = run_capture_with_input(source, &["Aiko"]).expect("VM runs");
-        assert_eq!(tree, vm);
-    }
-
-    #[test]
     fn format_source_preserves_comments() {
         let source = include_str!("../examples/contacts.miru");
         let formatted = format_source(source).expect("formats");

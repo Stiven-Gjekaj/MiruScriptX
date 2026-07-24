@@ -1,6 +1,6 @@
-//! The abstract syntax tree (AST) that the parser produces and the interpreter
-//! walks. Statements carry the source line they begin on so runtime errors can
-//! point at the right place.
+//! The abstract syntax tree (AST) that the parser produces and the compiler
+//! turns into bytecode. Nodes carry the source position they begin at, which
+//! the compiler records so runtime errors can point at the right place.
 
 /// A statement, tagged with its 1-based starting line.
 #[derive(Debug, Clone, PartialEq)]

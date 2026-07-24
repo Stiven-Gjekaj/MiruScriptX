@@ -7,9 +7,9 @@ use std::rc::Rc;
 use crate::chunk::Chunk;
 use crate::MiruError;
 
-/// A sink that side-effecting builtins such as `print` write to. The
-/// interpreter implements this, so the very same builtins can target real
-/// stdout in the binary or an in-memory buffer in tests.
+/// A sink that side-effecting builtins such as `print` write to. The virtual
+/// machine implements this, so the very same builtins can target real stdout
+/// in the binary or an in-memory buffer in tests.
 pub trait Output {
     fn write(&mut self, text: &str);
 }

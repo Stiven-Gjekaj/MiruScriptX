@@ -2,9 +2,9 @@
 //!
 //! A [`Chunk`] is a flat stream of bytes (opcodes and their operands), a pool of
 //! constant [`Value`]s referred to by index, and a parallel table of source
-//! positions. The position table has one `(line, column)` entry per byte, so the
-//! VM can point a caret at the exact place a runtime error happened, just as the
-//! tree walker does from the AST.
+//! positions. The position table has one `(line, column)` entry per byte, so a
+//! runtime error can point a caret at the exact place it happened even though
+//! the syntax tree is long gone by then.
 
 use std::rc::Rc;
 
