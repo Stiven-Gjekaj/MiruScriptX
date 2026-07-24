@@ -19,6 +19,7 @@ use crate::value::Input;
 
 pub mod ast;
 pub mod builtins;
+pub mod chunk;
 pub mod environment;
 pub mod formatter;
 pub mod interpreter;
