@@ -94,6 +94,28 @@ impl Vm {
                         ));
                     }
                 }
+                OpCode::Jump => {
+                    let offset = read_u16(chunk, ip);
+                    ip += 2 + offset as usize;
+                }
+                OpCode::JumpIfFalse => {
+                    let offset = read_u16(chunk, ip);
+                    ip += 2;
+                    if !self.peek().is_truthy() {
+                        ip += offset as usize;
+                    }
+                }
+                OpCode::JumpIfTrue => {
+                    let offset = read_u16(chunk, ip);
+                    ip += 2;
+                    if self.peek().is_truthy() {
+                        ip += offset as usize;
+                    }
+                }
+                OpCode::Truthy => {
+                    let value = self.pop();
+                    self.stack.push(Value::Bool(value.is_truthy()));
+                }
                 OpCode::Pop => {
                     self.pop();
                 }
@@ -124,6 +146,16 @@ impl Vm {
     fn pop(&mut self) -> Value {
         self.stack.pop().expect("value stack underflow")
     }
+
+    /// Look at the top of the stack without removing it.
+    fn peek(&self) -> &Value {
+        self.stack.last().expect("value stack underflow")
+    }
+}
+
+/// Read a big-endian two-byte operand at `ip`.
+fn read_u16(chunk: &Chunk, ip: usize) -> u16 {
+    ((chunk.code[ip] as u16) << 8) | (chunk.code[ip + 1] as u16)
 }
 
 /// Map a binary opcode to its AST operator. Panics on a non-binary opcode, which

@@ -10,7 +10,7 @@
 
 use std::rc::Rc;
 
-use crate::ast::{BinaryOp, Expr, ExprKind, Stmt, StmtKind, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
 use crate::value::Value;
 use crate::MiruError;
@@ -18,6 +18,8 @@ use crate::MiruError;
 /// Compiles an AST into a [`Chunk`].
 pub struct Compiler {
     chunk: Chunk,
+    /// 0 at the top level (where variables are globals), higher inside blocks.
+    scope_depth: usize,
 }
 
 impl Compiler {
@@ -27,6 +29,7 @@ impl Compiler {
     pub fn compile(program: &[Stmt]) -> Result<Chunk, MiruError> {
         let mut compiler = Compiler {
             chunk: Chunk::new(),
+            scope_depth: 0,
         };
         compiler.program(program)?;
         let (line, column) = program.last().map(|stmt| (stmt.line, 1)).unwrap_or((0, 0));
@@ -35,35 +38,40 @@ impl Compiler {
     }
 
     fn program(&mut self, program: &[Stmt]) -> Result<(), MiruError> {
-        if program.is_empty() {
+        let Some((last, rest)) = program.split_last() else {
             self.chunk.write_op(OpCode::Nil, 0, 0);
             return Ok(());
+        };
+        for stmt in rest {
+            self.statement(stmt)?;
         }
-        let last = program.len() - 1;
-        for (index, stmt) in program.iter().enumerate() {
-            self.statement(stmt, index == last)?;
+        // The program's value is that of a trailing expression, or nil otherwise,
+        // matching the tree walker's run_program.
+        if let StmtKind::Expr(expr) = &last.kind {
+            self.expression(expr)?;
+        } else {
+            self.statement(last)?;
+            self.chunk.write_op(OpCode::Nil, last.line, 1);
         }
         Ok(())
     }
 
-    /// Compile one statement. When it is the program's last, it leaves exactly one
-    /// value on the stack (the expression's value, or `nil`); otherwise it leaves
-    /// the stack unchanged. This makes the VM return the same value the tree
-    /// walker's `run_program` does.
-    fn statement(&mut self, stmt: &Stmt, is_last: bool) -> Result<(), MiruError> {
+    /// Compile a statement for its side effects, leaving the stack unchanged.
+    fn statement(&mut self, stmt: &Stmt) -> Result<(), MiruError> {
         match &stmt.kind {
             StmtKind::Expr(expr) => {
                 self.expression(expr)?;
-                if !is_last {
-                    self.chunk.write_op(OpCode::Pop, stmt.line, 1);
-                }
+                self.chunk.write_op(OpCode::Pop, stmt.line, 1);
             }
             StmtKind::Let { name, value } => {
+                if self.scope_depth != 0 {
+                    return Err(MiruError::new(
+                        stmt.line,
+                        "the bytecode VM does not support local variables yet",
+                    ));
+                }
                 self.expression(value)?;
                 self.named_global(OpCode::DefineGlobal, name, stmt.line, 1)?;
-                if is_last {
-                    self.chunk.write_op(OpCode::Nil, stmt.line, 1);
-                }
             }
             StmtKind::Assign { target, value } => {
                 self.expression(value)?;
@@ -79,10 +87,12 @@ impl Compiler {
                         ));
                     }
                 }
-                if is_last {
-                    self.chunk.write_op(OpCode::Nil, stmt.line, 1);
-                }
             }
+            StmtKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.if_statement(condition, then_branch, else_branch.as_deref())?,
             _ => {
                 return Err(MiruError::new(
                     stmt.line,
@@ -90,6 +100,41 @@ impl Compiler {
                 ));
             }
         }
+        Ok(())
+    }
+
+    /// Compile a block of statements in a nested scope. Local declarations are
+    /// not supported yet, so the scope depth only guards against them.
+    fn block(&mut self, statements: &[Stmt]) -> Result<(), MiruError> {
+        self.scope_depth += 1;
+        for stmt in statements {
+            self.statement(stmt)?;
+        }
+        self.scope_depth -= 1;
+        Ok(())
+    }
+
+    /// Compile `if cond { .. } else { .. }`. The condition is left on the stack
+    /// for `JumpIfFalse` to test, then discarded on whichever branch runs.
+    fn if_statement(
+        &mut self,
+        condition: &Expr,
+        then_branch: &[Stmt],
+        else_branch: Option<&[Stmt]>,
+    ) -> Result<(), MiruError> {
+        let line = condition.line;
+        let column = condition.column;
+        self.expression(condition)?;
+        let else_jump = self.emit_jump(OpCode::JumpIfFalse, line, column);
+        self.chunk.write_op(OpCode::Pop, line, column);
+        self.block(then_branch)?;
+        let end_jump = self.emit_jump(OpCode::Jump, line, column);
+        self.patch_jump(else_jump)?;
+        self.chunk.write_op(OpCode::Pop, line, column);
+        if let Some(else_branch) = else_branch {
+            self.block(else_branch)?;
+        }
+        self.patch_jump(end_jump)?;
         Ok(())
     }
 
@@ -119,6 +164,21 @@ impl Compiler {
                 self.expression(right)?;
                 self.chunk.write_op(binary_opcode(*op), line, column);
             }
+            ExprKind::Logical { op, left, right } => {
+                // MiruScriptX's && and || yield a bool, and short-circuit: the
+                // right side is skipped when the left already decides the result.
+                self.expression(left)?;
+                self.chunk.write_op(OpCode::Truthy, line, column);
+                let short_circuit = match op {
+                    LogicalOp::And => OpCode::JumpIfFalse,
+                    LogicalOp::Or => OpCode::JumpIfTrue,
+                };
+                let jump = self.emit_jump(short_circuit, line, column);
+                self.chunk.write_op(OpCode::Pop, line, column);
+                self.expression(right)?;
+                self.chunk.write_op(OpCode::Truthy, line, column);
+                self.patch_jump(jump)?;
+            }
             _ => {
                 return Err(MiruError::with_column(
                     line,
@@ -141,6 +201,25 @@ impl Compiler {
         let index = self.chunk.add_constant(value);
         u8::try_from(index)
             .map_err(|_| MiruError::with_column(line, column, "too many constants in one chunk"))
+    }
+
+    /// Emit a jump instruction with a placeholder operand, returning the offset
+    /// of that operand so it can be patched once the target is known.
+    fn emit_jump(&mut self, op: OpCode, line: usize, column: usize) -> usize {
+        self.chunk.write_op(op, line, column);
+        self.chunk.write(0xff, line, column);
+        self.chunk.write(0xff, line, column);
+        self.chunk.code.len() - 2
+    }
+
+    /// Fill in a jump emitted earlier so it lands at the current end of the code.
+    fn patch_jump(&mut self, operand: usize) -> Result<(), MiruError> {
+        let distance = self.chunk.code.len() - (operand + 2);
+        let distance = u16::try_from(distance)
+            .map_err(|_| MiruError::new(0, "the compiled body is too large to jump over"))?;
+        self.chunk.code[operand] = (distance >> 8) as u8;
+        self.chunk.code[operand + 1] = (distance & 0xff) as u8;
+        Ok(())
     }
 
     /// Emit a `Constant` instruction that pushes `value`.
@@ -266,6 +345,46 @@ mod tests {
             // Errors: reading and assigning an undefined variable.
             "missing",
             "missing = 5",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_control_flow() {
+        let corpus = [
+            "let x = 0\nif true { x = 1 }\nx",
+            "let x = 0\nif false { x = 1 }\nx",
+            "let x = 0\nif false { x = 1 } else { x = 2 }\nx",
+            "let x = 5\nlet r = 0\nif x > 10 { r = 1 } else if x > 3 { r = 2 } else { r = 3 }\nr",
+            "let n = 7\nlet label = \"\"\nif n % 2 == 0 { label = \"even\" } else { label = \"odd\" }\nlabel",
+            "let x = 3\nif x > 0 { if x > 2 { x = 100 } }\nx",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_logical_operators() {
+        let corpus = [
+            "true && true",
+            "true && false",
+            "false && true",
+            "true || false",
+            "false || false",
+            "false || true",
+            "1 && 2",
+            "0 && 1",
+            "nil || 5",
+            "1 < 2 && 3 < 4",
+            "!(true && false)",
+            // Short-circuit: the right side would divide by zero if evaluated.
+            "false && (1 / 0 == 0)",
+            "true || (1 / 0 == 0)",
+            // Not short-circuited: the error must surface.
+            "true && (1 / 0 == 0)",
         ];
         for source in corpus {
             agree(source);

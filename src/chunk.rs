@@ -46,6 +46,16 @@ pub enum OpCode {
     /// Pop a value and assign it to an existing global. One operand byte: the
     /// name's constant index.
     SetGlobal,
+    /// Jump forward unconditionally. Two operand bytes: a big-endian distance.
+    Jump,
+    /// Jump forward if the top of the stack is falsy (peeked, not popped). Two
+    /// operand bytes.
+    JumpIfFalse,
+    /// Jump forward if the top of the stack is truthy (peeked, not popped). Two
+    /// operand bytes.
+    JumpIfTrue,
+    /// Replace the top of the stack with its truthiness as a bool.
+    Truthy,
     /// Discard the value on top of the stack.
     Pop,
     /// Return from the current function (or end the program).
@@ -77,6 +87,10 @@ impl OpCode {
             b if b == DefineGlobal as u8 => DefineGlobal,
             b if b == GetGlobal as u8 => GetGlobal,
             b if b == SetGlobal as u8 => SetGlobal,
+            b if b == Jump as u8 => Jump,
+            b if b == JumpIfFalse as u8 => JumpIfFalse,
+            b if b == JumpIfTrue as u8 => JumpIfTrue,
+            b if b == Truthy as u8 => Truthy,
             b if b == Pop as u8 => Pop,
             b if b == Return as u8 => Return,
             _ => return None,
@@ -107,6 +121,10 @@ impl OpCode {
             OpCode::DefineGlobal => "DEFINE_GLOBAL",
             OpCode::GetGlobal => "GET_GLOBAL",
             OpCode::SetGlobal => "SET_GLOBAL",
+            OpCode::Jump => "JUMP",
+            OpCode::JumpIfFalse => "JUMP_IF_FALSE",
+            OpCode::JumpIfTrue => "JUMP_IF_TRUE",
+            OpCode::Truthy => "TRUTHY",
             OpCode::Pop => "POP",
             OpCode::Return => "RETURN",
         }
@@ -183,6 +201,13 @@ impl Chunk {
                     .unwrap_or_else(|| "?".to_string());
                 let _ = writeln!(out, "{:<14}{index} ({value})", op.name());
                 offset + 2
+            }
+            Some(op @ (OpCode::Jump | OpCode::JumpIfFalse | OpCode::JumpIfTrue)) => {
+                let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let target = offset + 3 + ((high << 8) | low);
+                let _ = writeln!(out, "{:<14}{offset} -> {target}", op.name());
+                offset + 3
             }
             Some(op) => {
                 let _ = writeln!(out, "{}", op.name());
