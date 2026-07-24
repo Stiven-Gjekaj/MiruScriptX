@@ -115,54 +115,61 @@ pub enum OpCode {
     Return,
 }
 
+/// Every opcode in declaration order, so a byte decodes by indexing rather than
+/// by comparison. The order must match the enum, which `opcodes_match_their_byte`
+/// checks.
+const OPCODES: [OpCode; 40] = [
+    OpCode::Constant,
+    OpCode::Nil,
+    OpCode::True,
+    OpCode::False,
+    OpCode::Negate,
+    OpCode::Not,
+    OpCode::Add,
+    OpCode::Subtract,
+    OpCode::Multiply,
+    OpCode::Divide,
+    OpCode::Modulo,
+    OpCode::Equal,
+    OpCode::NotEqual,
+    OpCode::Less,
+    OpCode::Greater,
+    OpCode::LessEqual,
+    OpCode::GreaterEqual,
+    OpCode::DefineGlobal,
+    OpCode::GetGlobal,
+    OpCode::SetGlobal,
+    OpCode::Jump,
+    OpCode::JumpIfFalse,
+    OpCode::JumpIfTrue,
+    OpCode::Loop,
+    OpCode::Truthy,
+    OpCode::GetLocal,
+    OpCode::SetLocal,
+    OpCode::Array,
+    OpCode::Map,
+    OpCode::Index,
+    OpCode::SetIndex,
+    OpCode::IterSnapshot,
+    OpCode::ForNext,
+    OpCode::Closure,
+    OpCode::GetUpvalue,
+    OpCode::SetUpvalue,
+    OpCode::CloseUpvalue,
+    OpCode::Call,
+    OpCode::Pop,
+    OpCode::Return,
+];
+
 impl OpCode {
     /// Decode a byte back into an opcode, or `None` if it is not a valid one.
+    ///
+    /// This runs on every instruction, so it indexes a table. Written as a match,
+    /// each decode walked a chain of comparisons proportional to the number of
+    /// opcodes.
+    #[inline]
     pub fn from_u8(byte: u8) -> Option<OpCode> {
-        use OpCode::*;
-        let op = match byte {
-            b if b == Constant as u8 => Constant,
-            b if b == Nil as u8 => Nil,
-            b if b == True as u8 => True,
-            b if b == False as u8 => False,
-            b if b == Negate as u8 => Negate,
-            b if b == Not as u8 => Not,
-            b if b == Add as u8 => Add,
-            b if b == Subtract as u8 => Subtract,
-            b if b == Multiply as u8 => Multiply,
-            b if b == Divide as u8 => Divide,
-            b if b == Modulo as u8 => Modulo,
-            b if b == Equal as u8 => Equal,
-            b if b == NotEqual as u8 => NotEqual,
-            b if b == Less as u8 => Less,
-            b if b == Greater as u8 => Greater,
-            b if b == LessEqual as u8 => LessEqual,
-            b if b == GreaterEqual as u8 => GreaterEqual,
-            b if b == DefineGlobal as u8 => DefineGlobal,
-            b if b == GetGlobal as u8 => GetGlobal,
-            b if b == SetGlobal as u8 => SetGlobal,
-            b if b == Jump as u8 => Jump,
-            b if b == JumpIfFalse as u8 => JumpIfFalse,
-            b if b == JumpIfTrue as u8 => JumpIfTrue,
-            b if b == Loop as u8 => Loop,
-            b if b == Truthy as u8 => Truthy,
-            b if b == GetLocal as u8 => GetLocal,
-            b if b == SetLocal as u8 => SetLocal,
-            b if b == Array as u8 => Array,
-            b if b == Map as u8 => Map,
-            b if b == Index as u8 => Index,
-            b if b == SetIndex as u8 => SetIndex,
-            b if b == IterSnapshot as u8 => IterSnapshot,
-            b if b == ForNext as u8 => ForNext,
-            b if b == Closure as u8 => Closure,
-            b if b == GetUpvalue as u8 => GetUpvalue,
-            b if b == SetUpvalue as u8 => SetUpvalue,
-            b if b == CloseUpvalue as u8 => CloseUpvalue,
-            b if b == Call as u8 => Call,
-            b if b == Pop as u8 => Pop,
-            b if b == Return as u8 => Return,
-            _ => return None,
-        };
-        Some(op)
+        OPCODES.get(byte as usize).copied()
     }
 
     /// A short mnemonic used by the disassembler.
@@ -361,6 +368,23 @@ impl Chunk {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opcodes_match_their_byte() {
+        // The decode table is positional, so a variant added to the enum without
+        // being added here (or added in the wrong place) would silently decode
+        // every later opcode as its neighbour. This catches that.
+        for (index, op) in OPCODES.iter().enumerate() {
+            assert_eq!(
+                *op as usize,
+                index,
+                "{} sits at index {index} but its discriminant is {}",
+                op.name(),
+                *op as usize
+            );
+        }
+        assert_eq!(OpCode::from_u8(OPCODES.len() as u8), None);
+    }
 
     #[test]
     fn opcodes_round_trip_through_bytes() {
