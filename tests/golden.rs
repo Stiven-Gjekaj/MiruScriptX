@@ -179,6 +179,43 @@ fn syntax_errors_render_with_a_caret() {
 }
 
 #[test]
+fn runaway_recursion_is_an_error_rather_than_a_hang() {
+    check_all(&[
+        // Direct and mutual recursion both hit the frame cap.
+        (
+            "fn r(n) { return r(n + 1) }\nr(1)",
+            "err call depth limit of 10000 exceeded @ 1:18",
+        ),
+        (
+            "fn a(n) { return b(n) }\nfn b(n) { return a(n) }\na(1)",
+            "err call depth limit of 10000 exceeded @ 1:18",
+        ),
+        // Recursing back through a builtin costs machine stack per level, so a
+        // much lower cap catches it first.
+        (
+            "fn r(n) { return map([1], fn(x) { return r(n + 1) })[0] }\nr(1)",
+            "err call depth limit of 64 exceeded through a builtin @ 1:18",
+        ),
+    ]);
+}
+
+#[test]
+fn recursion_well_within_the_limit_still_works() {
+    check_all(&[
+        // A thousand frames is ordinary; the cap must not interfere.
+        (
+            "fn count(n) {\n  if n == 0 { return 0 }\n  return 1 + count(n - 1)\n}\ncount(1000)",
+            "ok 1000",
+        ),
+        // Nested higher-order calls, comfortably under the builtin cap.
+        (
+            "fn depth(n) {\n  if n == 0 { return 0 }\n  return map([1], fn(x) { return 1 + depth(n - 1) })[0]\n}\ndepth(20)",
+            "ok 20",
+        ),
+    ]);
+}
+
+#[test]
 fn literals_and_their_inspect_forms() {
     check_all(&[
         ("1", "ok 1"),

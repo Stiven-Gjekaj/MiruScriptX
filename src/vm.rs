@@ -20,6 +20,31 @@ use crate::chunk::{Chunk, OpCode};
 use crate::value::{Closure, CompiledFunction, EmptyInput, Input, Output, Upvalue, Value};
 use crate::MiruError;
 
+/// How deep calls may nest before the VM gives up.
+///
+/// Frames live on the heap, so runaway recursion does not overflow the machine
+/// stack the way a tree walker would; left alone it simply grows until memory
+/// runs out, which is a worse failure than an error. This cap turns it into an
+/// ordinary runtime error with a line, a column, and a caret. It is far beyond
+/// what real code nests, so only genuinely unbounded recursion reaches it.
+const MAX_CALL_DEPTH: usize = 10_000;
+
+/// How deep calls made *from a builtin* may nest.
+///
+/// A user function called by a builtin (as `map` calls the function it is given)
+/// runs on a nested bytecode loop, which is a real Rust call, so each level
+/// costs machine stack that [`MAX_CALL_DEPTH`] does not account for. Recursion
+/// that goes back through a builtin every time would exhaust that stack long
+/// before ten thousand frames accumulate, so it needs its own, much lower cap.
+///
+/// The number is chosen for the *smallest* stack this may run on, not the
+/// roomiest. A level costs roughly eleven kilobytes in a debug build, and a Rust
+/// test thread gets two megabytes, where nesting fails somewhere past 180. Sixty
+/// four leaves close to threefold margin there and far more in a release binary
+/// on the main thread. Legitimate code does not nest higher-order builtins
+/// anywhere near this deep.
+const MAX_HOST_CALL_DEPTH: usize = 64;
+
 /// A single active function call: which closure is running, where its
 /// instruction pointer sits, and where its window of stack slots begins.
 struct CallFrame {
@@ -39,10 +64,13 @@ pub struct Vm {
     open_upvalues: Vec<(usize, Rc<RefCell<Upvalue>>)>,
     out: Box<dyn Write>,
     input: Box<dyn Input>,
-    /// The position of the instruction being executed, so builtins called
-    /// through the [`Caller`] trait can report errors where they happened.
+    /// The position of the instruction being executed, so a builtin can report
+    /// an error where the call to it happened.
     line: usize,
     column: usize,
+    /// How many nested bytecode loops are running, one per call made from inside
+    /// a builtin. Each costs machine stack, so it is capped separately.
+    host_depth: usize,
 }
 
 impl Default for Vm {
@@ -76,6 +104,7 @@ impl Vm {
             input: Box::new(EmptyInput),
             line: 0,
             column: 0,
+            host_depth: 0,
         }
     }
 
@@ -114,6 +143,7 @@ impl Vm {
             self.frames.clear();
             self.stack.clear();
             self.open_upvalues.clear();
+            self.host_depth = 0;
         }
         debug_assert!(self.frames.is_empty(), "frames left after a program");
         debug_assert!(self.stack.is_empty(), "stack values left after a program");
@@ -424,6 +454,13 @@ impl Vm {
                         ),
                     ));
                 }
+                if self.frames.len() >= MAX_CALL_DEPTH {
+                    return Err(runtime_error(
+                        chunk,
+                        op_ip,
+                        format!("call depth limit of {MAX_CALL_DEPTH} exceeded"),
+                    ));
+                }
                 let slot_base = self.stack.len() - argcount;
                 self.frames.push(CallFrame {
                     closure,
@@ -510,6 +547,16 @@ impl Vm {
                         args.len()
                     )));
                 }
+                if self.frames.len() >= MAX_CALL_DEPTH {
+                    return Err(
+                        self.call_error(format!("call depth limit of {MAX_CALL_DEPTH} exceeded"))
+                    );
+                }
+                if self.host_depth >= MAX_HOST_CALL_DEPTH {
+                    return Err(self.call_error(format!(
+                        "call depth limit of {MAX_HOST_CALL_DEPTH} exceeded through a builtin"
+                    )));
+                }
                 // Mirror the bytecode layout: the callee sits beneath its args.
                 let callee_slot = self.stack.len();
                 self.stack.push(Value::Closure(Rc::clone(&closure)));
@@ -523,7 +570,9 @@ impl Vm {
                     ip: 0,
                     slot_base,
                 });
+                self.host_depth += 1;
                 let result = self.run_frames(depth);
+                self.host_depth -= 1;
                 if result.is_err() {
                     // Unwind the partial call so the stack stays consistent.
                     self.frames.truncate(depth);
