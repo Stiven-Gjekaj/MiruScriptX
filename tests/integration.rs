@@ -76,38 +76,21 @@ fn greeter_example_reads_stdin() {
     );
 }
 
-/// Run an example on the tree walker, which `--tree-walk` still selects while
-/// it is being retired. The default path (used by `run_example`) is the VM.
-fn run_example_tree_walk(name: &str) -> String {
+#[test]
+fn the_retired_vm_flag_is_still_accepted() {
+    // v0.4 offered --vm to opt into the bytecode engine. It is now the only
+    // engine, but a command written back then should not fail.
     let output = miru()
         .arg("run")
-        .arg("--tree-walk")
-        .arg(format!("examples/{name}"))
+        .arg("--vm")
+        .arg("examples/greet.miru")
         .output()
-        .expect("failed to launch the miru binary");
-    assert!(
-        output.status.success(),
-        "running {name} on the tree walker failed: {}",
-        String::from_utf8_lossy(&output.stderr)
+        .expect("runs");
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("utf-8"),
+        "Hello, Aiko!\nHello, Ken!\n"
     );
-    String::from_utf8(output.stdout).expect("output should be valid utf-8")
-}
-
-#[test]
-fn both_engines_still_agree_on_every_example() {
-    for name in [
-        "greet.miru",
-        "fib.miru",
-        "fizzbuzz.miru",
-        "contacts.miru",
-        "transform.miru",
-    ] {
-        assert_eq!(
-            run_example(name),
-            run_example_tree_walk(name),
-            "engines differ on {name}"
-        );
-    }
 }
 
 #[test]

@@ -74,15 +74,7 @@ Comments and single blank lines between sections are kept.
 machine. You do not have to do anything to get this; it is simply how the
 language runs.
 
-MiruScriptX also still contains the older tree-walking interpreter it started
-with, which you can select with `--tree-walk`:
-
-```
-miru run --tree-walk hello.miru
-```
-
-Both produce exactly the same results, and the tree walker is only there while
-it is being retired. There is no reason to reach for it.
+This is the only way programs run: there is no engine to choose between.
 
 ---
 Previous: [Introduction](01-introduction.md) | Next: [Syntax basics](03-syntax-basics.md)

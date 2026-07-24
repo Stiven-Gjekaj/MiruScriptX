@@ -122,12 +122,6 @@ Reformat a program in the canonical style (add `-w` to rewrite it in place):
 miru fmt examples/greet.miru
 ```
 
-Run it on the older tree-walking interpreter (being retired) instead:
-
-```
-miru run --tree-walk examples/greet.miru
-```
-
 For a step-by-step guide, start the wiki at
 [wiki/01-introduction.md](wiki/01-introduction.md).
 

@@ -44,15 +44,13 @@ fn main() -> ExitCode {
 }
 
 fn run_file(args: &[String]) -> ExitCode {
-    // The bytecode VM is the default engine. --tree-walk selects the older
-    // tree-walking interpreter, which is being retired; --vm is accepted as a
-    // no-op so existing commands keep working.
-    let mut use_tree_walker = false;
     let mut path: Option<&str> = None;
     for arg in args {
         match arg.as_str() {
-            "--vm" => use_tree_walker = false,
-            "--tree-walk" => use_tree_walker = true,
+            // Accepted and ignored: v0.4 offered --vm to opt into the bytecode
+            // engine, which is now the only one, so commands written then keep
+            // working rather than failing on an unknown option.
+            "--vm" => {}
             other if other.starts_with("--") => {
                 return usage_error(&format!("unknown option '{other}' for 'run'"));
             }
@@ -78,12 +76,7 @@ fn run_file(args: &[String]) -> ExitCode {
     };
 
     let out = Box::new(std::io::stdout());
-    let result = if use_tree_walker {
-        miruscriptx::run_source(&source, out)
-    } else {
-        miruscriptx::run_source_vm(&source, out)
-    };
-    match result {
+    match miruscriptx::run_source_vm(&source, out) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("miru: {}", err.render(&source));
