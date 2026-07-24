@@ -48,13 +48,22 @@ Every change must keep the project green. Run these locally, exactly as CI does:
 - `cargo test` runs the unit tests (next to each module) and the end-to-end
   tests in `tests/`. Add tests for anything you change.
 
+MiruScriptX has two execution engines, the tree-walking interpreter and the
+bytecode VM, and they must behave identically. If you change how programs are
+evaluated, extend the differential tests in `src/compiler.rs`, which run the same
+source on both engines and compare the value and any error. Benchmarks live in
+`benches/`; run them with `cargo bench`.
+
 ## Coding style
 
 - Match the surrounding code. The project favors small, focused functions and
   clear names over cleverness.
-- Add dependencies sparingly. MiruScriptX keeps a small, curated dependency set
-  (currently just rustyline, for REPL history); a pull request that adds one
-  should justify the need and prefer the standard library where practical.
+- Add dependencies sparingly. MiruScriptX keeps a small, curated dependency set:
+  rustyline for REPL history at runtime, and criterion for benchmarks as a
+  dev-dependency (it never ships to anyone running a MiruScriptX program). The
+  README badge counts both, so a viewer sees the real total. A pull request that
+  adds a dependency should justify the need and prefer the standard library
+  where practical.
 - Write documentation and comments in plain prose. Do not use em-dashes or
   emoji in source, docs, commit messages, or examples.
 

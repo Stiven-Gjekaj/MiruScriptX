@@ -8,7 +8,7 @@ _A tree-walking interpreter: source -&gt; tokens -&gt; AST -&gt; values_
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
-  <img src="https://img.shields.io/badge/dependencies-1_(15)-007ec6?style=for-the-badge" alt="1 direct dependency, 15 total crates"/>
+  <img src="https://img.shields.io/badge/dependencies-2_(66),_1_dev-007ec6?style=for-the-badge" alt="2 direct dependencies, 66 total crates, 1 of them a dev dependency"/>
   <img src="https://img.shields.io/badge/tests-165_passing-427819?style=for-the-badge" alt="165 tests passing"/>
 </p>
 
@@ -76,8 +76,9 @@ for name in people {
 - Higher-order builtins: `map`, `filter`, and `reduce`
 - File runner, a source formatter (`miru fmt`), and a REPL with history
 - Errors with a line, a column, and a caret under the problem
-- Minimal dependencies: only rustyline, for REPL history
-- Unit and integration tests, plus CI
+- A bytecode compiler and stack VM, opt in with `run --vm`
+- Minimal dependencies: rustyline at runtime, criterion for benchmarks
+- Unit, integration, and cross-engine differential tests, plus CI
 
 </td>
 </tr>
