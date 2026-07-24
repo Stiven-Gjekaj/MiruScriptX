@@ -86,30 +86,52 @@ higher minimum power to get left associativity. Prefix operators, calls, and
 indexing are handled by `unary` and `postfix`. This keeps operator precedence in
 one readable place instead of a deep cascade of functions.
 
-### Environments are reference counted
+### Names are resolved at compile time, not at run time
 
-A `Scope` (in `src/environment.rs`) maps names to values and points at an
-optional parent. Scopes are shared through `Rc<RefCell<Scope>>`. When a function
-value is created it captures a clone of the current scope handle in its
-`closure` field, which is exactly what makes closures and recursion work: the
-captured scope stays alive as long as the function does, and a recursive
-function can find itself in the scope it was defined in.
+Nothing looks a variable up by name while a program runs.
 
-### Return uses a control-flow signal
+A local lives in a stack slot. The compiler tracks the locals in scope
+(`Compiler::locals`) and turns each mention into the slot number it resolves to,
+so `GetLocal` is an index into the stack rather than a search. A frame's slots
+are a window into the shared value stack starting at `slot_base`, so entering a
+function is a frame push rather than a heap-allocated scope.
 
-Executing a statement returns a `Flow` value: `Flow::Normal`,
-`Flow::Return(value)`, or `Flow::Break` / `Flow::Continue` for loop control.
-Blocks and loops propagate these upward; a function call catches `Flow::Return`
-to produce its result, and a loop catches `Break` and `Continue`. This avoids
-threading special cases through every statement.
+A global lives in a slot too, in the table in `src/globals.rs`. The compiler
+hands each name a slot the first time it sees it and emits that number. The
+table is shared with the VM and outlives any one program, which is what lets a
+REPL session define `x` in one input and read it in the next.
+
+The table separates "a name has a slot" from "that slot holds a value": slots
+are `Option<Value>`, and reading an empty one is the "undefined variable" error.
+
+### Closures capture upvalues
+
+A closure that outlives the function it came from cannot keep pointing at that
+function's stack slots. An *upvalue* is a shared cell that starts out `Open`,
+naming a live slot, and is `Closed` into an owned value when the slot leaves the
+stack. Closures over the same variable share one upvalue
+(`Vm::capture_upvalue` looks for an existing one before making a new one), so a
+write through either is seen by both.
+
+### Control flow is jumps, and `return` is an opcode
+
+There is no `Flow` enum threading break, continue, and return up through every
+statement. `if` and `while` compile to conditional and unconditional jumps;
+`break` and `continue` compile to jumps that the compiler patches once it knows
+where the loop ends (`Compiler::loops` holds the pending ones); and `return`
+compiles to `Return`, which pops the frame.
 
 ### Numbers are integers or floats
 
 `Value` has separate `Int(i64)` and `Float(f64)` variants. Arithmetic promotes
-an integer to a float when the other operand is a float (`numeric_pair` in the
-interpreter). Integer division and modulo truncate; division or modulo by zero
+an integer to a float when the other operand is a float (`numeric_pair` in
+`src/ops.rs`). Integer division and modulo truncate; division or modulo by zero
 is a runtime error; integer operations use checked arithmetic and report
 overflow rather than panicking.
+
+The VM has a fast path for two integers, but it *declines* rather than guesses:
+overflow and zero divisors fall through to `src/ops.rs`, so there is exactly one
+definition of what each operator means and which error it raises.
 
 ### Two engines, one language
 
