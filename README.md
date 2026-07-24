@@ -8,7 +8,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
-  <img src="https://img.shields.io/badge/dependencies-2_(66),_1_dev-007ec6?style=for-the-badge" alt="2 direct dependencies, 66 total crates, 1 of them a dev dependency"/>
+  <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="2 direct dependencies, 57 total crates, 1 of them a dev dependency"/>
   <img src="https://img.shields.io/badge/tests-221_passing-427819?style=for-the-badge" alt="221 tests passing"/>
 </p>
 

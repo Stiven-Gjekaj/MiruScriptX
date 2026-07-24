@@ -41,6 +41,10 @@ semantic versioning.
   4.4x faster, strings 2.6x, arrays 2.4x, recursive `fib` 1.7x, maps 1.4x. The
   higher-order workload did not move, because its cost is in the builtin
   bridge, which none of this touched.
+- The dependency badge reads `2 (57), 1 dev`, recounted from the resolved tree.
+  It said 66 through v0.4. The direct dependencies are unchanged, rustyline at
+  runtime and criterion for benchmarks; running a MiruScriptX program still
+  pulls in only rustyline and its 15 crates.
 
 ### Fixed
 
