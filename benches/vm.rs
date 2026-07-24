@@ -61,16 +61,20 @@ reduce(evens, fn(a, b) { return a + b }, 0)
 ";
 
 /// Repeated global reads and writes, which resolve by name.
+///
+/// The values are deliberately kept bounded (they cycle with period seven)
+/// rather than accumulating, so the loop measures the cost of reaching globals
+/// and not the arithmetic, and cannot overflow however long it runs.
 const GLOBALS: &str = "
 let a = 0
-let b = 1
+let b = 0
 let i = 0
 while i < 10000 {
-  a = a + b
-  b = a - b
+  a = b + 1
+  b = a % 7
   i = i + 1
 }
-a
+a + b
 ";
 
 /// String building, which allocates on every concatenation.
