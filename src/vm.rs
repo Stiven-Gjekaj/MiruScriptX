@@ -9,7 +9,7 @@
 //! lookups that make a tree walker slow.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use crate::ast::{BinaryOp, UnaryOp};
@@ -173,6 +173,33 @@ impl Vm {
                     let start = self.stack.len() - count;
                     let items = self.stack.split_off(start);
                     self.stack.push(Value::Array(Rc::new(RefCell::new(items))));
+                }
+                OpCode::Map => {
+                    let count = chunk.code[ip] as usize;
+                    ip += 1;
+                    let start = self.stack.len() - count * 2;
+                    let pairs = self.stack.split_off(start);
+                    let mut entries = BTreeMap::new();
+                    let mut pairs = pairs.into_iter();
+                    while let Some(key) = pairs.next() {
+                        let value = pairs.next().expect("a value for every map key");
+                        let key = crate::ops::map_key(&key)
+                            .map_err(|message| runtime_error(chunk, op_ip, message))?;
+                        entries.insert(key, value);
+                    }
+                    self.stack.push(Value::Map(Rc::new(RefCell::new(entries))));
+                }
+                OpCode::Index => {
+                    let index = self.pop();
+                    let target = self.pop();
+                    let element = index_get(target, &index, chunk, op_ip)?;
+                    self.stack.push(element);
+                }
+                OpCode::SetIndex => {
+                    let index = self.pop();
+                    let target = self.pop();
+                    let value = self.pop();
+                    index_set(target, &index, value, chunk, op_ip)?;
                 }
                 OpCode::IterSnapshot => {
                     let value = self.pop();
@@ -411,6 +438,64 @@ fn binary_op(op: OpCode) -> BinaryOp {
         OpCode::LessEqual => BinaryOp::LessEqual,
         OpCode::GreaterEqual => BinaryOp::GreaterEqual,
         other => unreachable!("not a binary opcode: {}", other.name()),
+    }
+}
+
+/// Read `target[index]` for an array or map, or fail for anything else.
+fn index_get(
+    target: Value,
+    index: &Value,
+    chunk: &Chunk,
+    offset: usize,
+) -> Result<Value, MiruError> {
+    match target {
+        Value::Array(items) => {
+            let len = items.borrow().len();
+            let idx = crate::ops::array_index(index, len)
+                .map_err(|message| runtime_error(chunk, offset, message))?;
+            let element = items.borrow()[idx].clone();
+            Ok(element)
+        }
+        Value::Map(entries) => {
+            let key = crate::ops::map_key(index)
+                .map_err(|message| runtime_error(chunk, offset, message))?;
+            Ok(entries.borrow().get(&key).cloned().unwrap_or(Value::Nil))
+        }
+        other => Err(runtime_error(
+            chunk,
+            offset,
+            format!("cannot index a {}", other.type_name()),
+        )),
+    }
+}
+
+/// Assign `target[index] = value` for an array or map, or fail for anything else.
+fn index_set(
+    target: Value,
+    index: &Value,
+    value: Value,
+    chunk: &Chunk,
+    offset: usize,
+) -> Result<(), MiruError> {
+    match target {
+        Value::Array(items) => {
+            let len = items.borrow().len();
+            let idx = crate::ops::array_index(index, len)
+                .map_err(|message| runtime_error(chunk, offset, message))?;
+            items.borrow_mut()[idx] = value;
+            Ok(())
+        }
+        Value::Map(entries) => {
+            let key = crate::ops::map_key(index)
+                .map_err(|message| runtime_error(chunk, offset, message))?;
+            entries.borrow_mut().insert(key, value);
+            Ok(())
+        }
+        other => Err(runtime_error(
+            chunk,
+            offset,
+            format!("cannot index-assign to a {}", other.type_name()),
+        )),
     }
 }
 

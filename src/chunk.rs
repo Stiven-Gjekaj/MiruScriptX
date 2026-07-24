@@ -69,6 +69,15 @@ pub enum OpCode {
     /// Build an array from the top values on the stack. One operand byte: the
     /// element count. Pops that many values and pushes the array.
     Array,
+    /// Build a map from the top values on the stack. One operand byte: the entry
+    /// count. Pops that many key/value pairs and pushes the map.
+    Map,
+    /// Index into an array or map: pop the index and the target, push the element
+    /// (or `nil` for a missing map key).
+    Index,
+    /// Assign through an index: pop the index, the target, and the value, and
+    /// store the value at that index or key.
+    SetIndex,
     /// Pop the iterable, check it is an array, and push a snapshot to iterate. A
     /// runtime error otherwise.
     IterSnapshot,
@@ -132,6 +141,9 @@ impl OpCode {
             b if b == GetLocal as u8 => GetLocal,
             b if b == SetLocal as u8 => SetLocal,
             b if b == Array as u8 => Array,
+            b if b == Map as u8 => Map,
+            b if b == Index as u8 => Index,
+            b if b == SetIndex as u8 => SetIndex,
             b if b == IterSnapshot as u8 => IterSnapshot,
             b if b == ForNext as u8 => ForNext,
             b if b == Closure as u8 => Closure,
@@ -177,6 +189,9 @@ impl OpCode {
             OpCode::GetLocal => "GET_LOCAL",
             OpCode::SetLocal => "SET_LOCAL",
             OpCode::Array => "ARRAY",
+            OpCode::Map => "MAP",
+            OpCode::Index => "INDEX",
+            OpCode::SetIndex => "SET_INDEX",
             OpCode::IterSnapshot => "ITER_SNAPSHOT",
             OpCode::ForNext => "FOR_NEXT",
             OpCode::Closure => "CLOSURE",
@@ -288,7 +303,13 @@ impl Chunk {
                 let _ = writeln!(out, "{:<14}slot {slot}", op.name());
                 offset + 2
             }
-            Some(op @ (OpCode::Array | OpCode::Call | OpCode::GetUpvalue | OpCode::SetUpvalue)) => {
+            Some(
+                op @ (OpCode::Array
+                | OpCode::Map
+                | OpCode::Call
+                | OpCode::GetUpvalue
+                | OpCode::SetUpvalue),
+            ) => {
                 let operand = self.code.get(offset + 1).copied().unwrap_or(0);
                 let _ = writeln!(out, "{:<14}{operand}", op.name());
                 offset + 2

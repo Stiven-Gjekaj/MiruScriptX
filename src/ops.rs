@@ -122,6 +122,38 @@ fn numeric_pair(left: &Value, right: &Value, verb: &str) -> Result<Num, String> 
     }
 }
 
+/// Validate an array index: it must be a non-negative integer within bounds.
+/// Returns the usize index, or a message naming the problem.
+pub fn array_index(index: &Value, len: usize) -> Result<usize, String> {
+    let Value::Int(n) = index else {
+        return Err(format!(
+            "array index must be an int, not a {}",
+            index.type_name()
+        ));
+    };
+    if *n < 0 {
+        return Err(format!("index {n} is out of range (negative)"));
+    }
+    let index = *n as usize;
+    if index >= len {
+        return Err(format!(
+            "index {index} is out of range for an array of length {len}"
+        ));
+    }
+    Ok(index)
+}
+
+/// Validate a map key: it must be a string.
+pub fn map_key(index: &Value) -> Result<String, String> {
+    match index {
+        Value::Str(s) => Ok(s.to_string()),
+        other => Err(format!(
+            "map key must be a string, not a {}",
+            other.type_name()
+        )),
+    }
+}
+
 /// Order two values: integers and strings compare directly, mixed numbers are
 /// promoted, and NaN is rejected.
 fn ordering(left: Value, right: Value) -> Result<Ordering, String> {

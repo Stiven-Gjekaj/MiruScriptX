@@ -152,6 +152,17 @@ impl Compiler {
                             self.named_global(OpCode::SetGlobal, name, target.line, target.column)?;
                         }
                     }
+                    ExprKind::Index {
+                        target: object,
+                        index,
+                    } => {
+                        // The value is already on the stack; push the target and
+                        // index above it, then store through them.
+                        self.expression(object)?;
+                        self.expression(index)?;
+                        self.chunk
+                            .write_op(OpCode::SetIndex, index.line, index.column);
+                    }
                     _ => {
                         return Err(MiruError::with_column(
                             target.line,
@@ -541,6 +552,22 @@ impl Compiler {
                 self.chunk.write_op(OpCode::Array, line, column);
                 self.chunk.write(count, line, column);
             }
+            ExprKind::Map(entries) => {
+                let count = u8::try_from(entries.len()).map_err(|_| {
+                    MiruError::with_column(line, column, "map literal has too many entries")
+                })?;
+                for (key, value) in entries {
+                    self.expression(key)?;
+                    self.expression(value)?;
+                }
+                self.chunk.write_op(OpCode::Map, line, column);
+                self.chunk.write(count, line, column);
+            }
+            ExprKind::Index { target, index } => {
+                self.expression(target)?;
+                self.expression(index)?;
+                self.chunk.write_op(OpCode::Index, index.line, index.column);
+            }
             ExprKind::Identifier(name) => {
                 if let Some(slot) = self.resolve_local(name) {
                     self.chunk.write_op(OpCode::GetLocal, line, column);
@@ -592,13 +619,6 @@ impl Compiler {
             }
             ExprKind::Function { params, body } => {
                 self.function(None, params, body, line, column)?;
-            }
-            _ => {
-                return Err(MiruError::with_column(
-                    line,
-                    column,
-                    "the bytecode VM does not support this expression yet",
-                ));
             }
         }
         Ok(())
@@ -946,6 +966,38 @@ mod tests {
             "fn f() {\n  let x = 1\n  let g = fn() { return x }\n  x = 99\n  return g()\n}\nf()",
             // A closure that captures and assigns the outer variable.
             "fn f() {\n  let x = 1\n  let bump = fn() { x = x + 10 }\n  bump()\n  return x\n}\nf()",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_indexing_and_maps() {
+        let corpus = [
+            // Array and map reads.
+            "[10, 20, 30][1]",
+            "let a = [1, 2, 3]\na[0] + a[2]",
+            "{\"a\": 1, \"b\": 2}[\"a\"]",
+            "let m = {\"x\": 10}\nm[\"x\"]",
+            // A missing map key reads as nil.
+            "{\"a\": 1}[\"missing\"]",
+            // Map literals print sorted, computed keys work.
+            "{\"b\": 2, \"a\": 1}",
+            "let k = \"name\"\nlet m = {k: \"Aiko\"}\nm[\"name\"]",
+            // Nested indexing.
+            "[[1, 2], [3, 4]][1][0]",
+            // Index assignment into arrays and maps.
+            "let a = [1, 2, 3]\na[1] = 99\na",
+            "let m = {\"a\": 1}\nm[\"b\"] = 2\nm",
+            // Iterating over an array built and indexed inline.
+            "let sum = 0\nlet a = [5, 6, 7]\nfor x in a { sum = sum + x }\nsum",
+            // Errors reported at the index, matching the tree walker.
+            "[1, 2, 3][5]",
+            "[1, 2, 3][-1]",
+            "[1, 2][\"x\"]",
+            "{\"a\": 1}[5]",
+            "let a = [1, 2, 3]\na[9] = 0",
         ];
         for source in corpus {
             agree(source);

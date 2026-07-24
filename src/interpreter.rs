@@ -376,32 +376,11 @@ impl Interpreter {
     }
 
     fn as_index(&self, index: &Value, len: usize) -> Result<usize, MiruError> {
-        let Value::Int(n) = index else {
-            return Err(self.error(format!(
-                "array index must be an int, not a {}",
-                index.type_name()
-            )));
-        };
-        if *n < 0 {
-            return Err(self.error(format!("index {n} is out of range (negative)")));
-        }
-        let idx = *n as usize;
-        if idx >= len {
-            return Err(self.error(format!(
-                "index {idx} is out of range for an array of length {len}"
-            )));
-        }
-        Ok(idx)
+        crate::ops::array_index(index, len).map_err(|message| self.error(message))
     }
 
     fn as_map_key(&self, index: &Value) -> Result<String, MiruError> {
-        match index {
-            Value::Str(s) => Ok(s.to_string()),
-            other => Err(self.error(format!(
-                "map key must be a string, not a {}",
-                other.type_name()
-            ))),
-        }
+        crate::ops::map_key(index).map_err(|message| self.error(message))
     }
 
     fn eval_unary(&self, op: UnaryOp, value: Value) -> Result<Value, MiruError> {
