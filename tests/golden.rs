@@ -732,6 +732,33 @@ fn a_program_evaluates_to_its_last_expression() {
 }
 
 #[test]
+fn cases_inherited_from_the_differential_suite() {
+    // v0.4 verified the VM by running these against the tree walker. They are
+    // kept here so retiring that engine loses no coverage: every case its
+    // corpus exercised is now pinned to a literal expectation.
+    check_all(&[
+        ("!!0", "ok true"),
+        ("!nil", "ok true"),
+        ("!true", "ok false"),
+        ("\"x\" < \"y\"", "ok true"),
+        ("false || true", "ok true"),
+        ("abs(-5) + min(3, 1) + max(2, 7)", "ok 13"),
+        ("floor(2.7) + ceil(2.1) + round(2.5)", "ok 8"),
+        ("int(\"42\") + int(2.9)", "ok 44"),
+        ("pow(2, 8)", "ok 256"),
+        ("slice([1, 2, 3, 4], 1, 3)", "ok [2, 3]"),
+        ("type(1) + type(\"a\")", "ok \"intstring\""),
+        ("upper(\"abc\") + lower(\"DEF\")", "ok \"ABCdef\""),
+        ("reduce([], fn(acc, x) { return acc + x }, 42)", "ok 42"),
+        ("fn total(xs) {\n  let sum = 0\n  for x in xs { sum = sum + x }\n  return sum\n}\ntotal(range(5))", "ok 10"),
+        ("let n = 7\nlet label = \"\"\nif n % 2 == 0 { label = \"even\" } else { label = \"odd\" }\nlabel", "ok \"odd\""),
+        ("let sum = 0\nlet a = [5, 6, 7]\nfor x in a { sum = sum + x }\nsum", "ok 18"),
+        ("map([1, 2], fn(x) { return reduce([1, 2, 3], fn(a, b) { return a + b }, x) })", "ok [7, 8]"),
+        ("reduce(map(filter([1, 2, 3, 4, 5], fn(x) { return x % 2 == 1 }), fn(x) { return x * x }), fn(a, b) { return a + b }, 0)", "ok 35"),
+    ]);
+}
+
+#[test]
 fn printing_writes_display_forms() {
     check_output(&[
         ("print(1)", "1\n"),
