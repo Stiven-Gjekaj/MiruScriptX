@@ -184,12 +184,29 @@ into the operator.
 ### Input and output go through traits
 
 Builtins that print do not write to stdout directly. Instead they receive a
-`&mut dyn Output` (defined in `src/value.rs`), which the interpreter implements.
-The binary points that at stdout, while `run_capture` in `src/lib.rs` points it
-at an in-memory buffer. That is why the test suite can assert on program output
+`&mut dyn Output` (defined in `src/value.rs`), which the VM implements. The
+binary points that at stdout, while `run_capture` in `src/lib.rs` points it at
+an in-memory buffer. That is why the test suite can assert on program output
 without spawning a process. A parallel `Input` trait feeds `input()` the same
 way: real standard input in the binary, a scripted buffer in
 `run_capture_with_input`.
+
+### Recursion has two different limits
+
+Runaway recursion cannot be allowed to take the process down, and there are two
+distinct ways it could.
+
+Call frames live on the heap, so deep recursion does not overflow the machine
+stack the way a tree walker's would; left alone it grows until memory runs out.
+`MAX_CALL_DEPTH` (10,000) turns that into an ordinary runtime error with a line,
+a column, and a caret.
+
+A user function called *by a builtin*, as `map` calls the function it is given,
+runs on a nested bytecode loop, which is a real Rust call consuming real machine
+stack that the frame count does not account for. That needs its own, much lower
+cap: `MAX_HOST_CALL_DEPTH` is 64, chosen against the smallest stack this may run
+on (a Rust test thread gets two megabytes, where nesting fails somewhere past
+180) rather than the roomiest.
 
 ## How to extend it
 
@@ -197,34 +214,50 @@ way: real standard input in the binary, a scripted buffer in
 
 Write a function in `src/builtins.rs` with the signature
 `fn(&mut dyn Output, &mut dyn Input, Vec<Value>) -> Result<Value, String>`, then
-register it in `register`. Return an `Err(String)` for bad arguments; the
-interpreter attaches the current line and column automatically.
+register it in `register`. Return an `Err(String)` for bad arguments; the VM
+attaches the current line and column automatically.
 
 ### Add an operator
 
 Add a `TokenKind` and lex it in `src/lexer.rs`, add a `BinaryOp` (or `UnaryOp`)
 in `src/ast.rs`, give it a binding power in `infix_binding_power` and a mapping
-in `make_infix` (both in `src/parser.rs`), then handle it in `eval_binary` in
-`src/interpreter.rs`.
+in `make_infix` (both in `src/parser.rs`), then give it a rule in `src/ops.rs`
+and an opcode (see below).
 
 ### Add a statement
 
-Add a `StmtKind` in `src/ast.rs`, parse it in `Parser::statement`, execute it in
-`Interpreter::execute`, and compile it in `Compiler::statement`. Add a
-differential test so both engines are checked against each other.
+Add a `StmtKind` in `src/ast.rs`, parse it in `Parser::statement`, and compile it
+in `Compiler::statement`. Add golden cases in `tests/golden.rs` pinning what it
+evaluates to and where its errors point.
 
 ### Add an opcode
 
-Add a variant to `OpCode` in `src/chunk.rs` (with its `from_u8` and `name`
-arms, and a disassembler case if it takes operands), emit it from
-`src/compiler.rs`, and execute it in the `run_frames` loop in `src/vm.rs`.
+Add a variant to `OpCode` in `src/chunk.rs`, append it to the `OPCODES` table in
+the same order (a byte decodes by indexing that table, and `opcodes_match_their_byte`
+checks the two agree), give it a `name` arm and a disassembler case if it takes
+operands, emit it from `src/compiler.rs`, and execute it in the `run_frames` loop
+in `src/vm.rs`.
+
+Mind the position table while you are there. It holds one `(line, column)` entry
+per *byte*, so an instruction's operand bytes can carry positions of their own.
+`Index` uses this deliberately: it has an operand byte holding no value, purely
+so a "cannot index" error can point at the target expression while an
+out-of-range error points at the index.
 
 ## Testing
 
 Each stage has unit tests next to it (`#[cfg(test)] mod tests`), covering the
-lexer, parser, interpreter, formatter, compiler, and builtins. The differential
-tests in `src/compiler.rs` run the same programs on both engines and compare
-results and errors, and `src/lib.rs` compares their printed output across the
-example programs. End-to-end tests in `tests/integration.rs` run the compiled
-`miru` binary, on both engines, against the examples and check output and exit
-codes. Run everything with `cargo test`, and the benchmarks with `cargo bench`.
+lexer, parser, formatter, compiler, chunk, globals, VM, operators, and builtins.
+
+Beyond those, the suites in `tests/` each do a different job:
+
+| File                   | What it checks                                          |
+| ---------------------- | ------------------------------------------------------- |
+| `tests/golden.rs`      | A corpus of programs against literal expected outcomes, values and errors alike, with the exact line and column each error points at |
+| `tests/language.rs`    | One behavior each, in prose, through the public API      |
+| `tests/session.rs`     | That state carries across inputs, and that a failed input does not poison the next one |
+| `tests/integration.rs` | The compiled `miru` binary end to end: `run`, `fmt`, `disasm`, exit codes |
+
+Run everything with `cargo test`, and the benchmarks with `cargo bench`. Read
+the module docs in `benches/vm.rs` before drawing conclusions from a benchmark
+number.
