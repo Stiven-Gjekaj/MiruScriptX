@@ -328,6 +328,111 @@ fn for_in_loops_over_arrays() {
 }
 
 #[test]
+fn functions_calls_and_recursion() {
+    check_all(&[
+        ("fn add(a, b) { return a + b }\nadd(2, 3)", "ok 5"),
+        ("fn square(x) { return x * x }\nsquare(9)", "ok 81"),
+        // A function is a first-class value with an inspect form.
+        ("fn greet() { return \"hi\" }\ngreet", "ok <fn greet>"),
+        // Falling off the end, and a bare return, both yield nil.
+        ("fn nothing() { }\nnothing()", "ok nil"),
+        ("fn early() { return }\nearly()", "ok nil"),
+        (
+            "fn fib(n) {\n  if n < 2 { return n }\n  return fib(n - 1) + fib(n - 2)\n}\nfib(10)",
+            "ok 55",
+        ),
+        (
+            "fn fact(n) {\n  if n < 2 { return 1 }\n  return n * fact(n - 1)\n}\nfact(6)",
+            "ok 720",
+        ),
+        (
+            "fn double(x) { return x * 2 }\nlet sum = 0\nfor x in [1, 2, 3] { sum = sum + double(x) }\nsum",
+            "ok 12",
+        ),
+        ("let inc = fn(x) { return x + 1 }\ninc(41)", "ok 42"),
+        ("(fn(x) { return x * 3 })(5)", "ok 15"),
+        (
+            "fn sign(n) {\n  if n > 0 { return 1 }\n  if n < 0 { return -1 }\n  return 0\n}\nsign(-8)",
+            "ok -1",
+        ),
+        ("fn use_it(p) { return p * 10 }\nlet r = use_it(4)\nr", "ok 40"),
+        // A function may call one declared after it, since both are globals.
+        (
+            "fn outer() { return inner() }\nfn inner() { return 7 }\nouter()",
+            "ok 7",
+        ),
+        // Functions passed as arguments.
+        (
+            "fn apply(f, x) { return f(x) }\napply(fn(n) { return n + 100 }, 5)",
+            "ok 105",
+        ),
+    ]);
+}
+
+#[test]
+fn call_errors_report_the_call_site() {
+    check_all(&[
+        (
+            "fn one(a) { return a }\none(1, 2)",
+            "err function one expects 1 argument(s) but received 2 @ 2:1",
+        ),
+        (
+            "fn one(a) { return a }\none()",
+            "err function one expects 1 argument(s) but received 0 @ 2:1",
+        ),
+        ("let x = 5\nx(1)", "err a int is not callable @ 2:1"),
+        ("nil()", "err a nil is not callable @ 1:1"),
+    ]);
+}
+
+#[test]
+fn closures_capture_by_reference_and_outlive_their_scope() {
+    check_all(&[
+        // Captured parameter, called after the enclosing function returned.
+        (
+            "fn make_adder(n) { return fn(x) { return x + n } }\nlet add5 = make_adder(5)\nadd5(10)",
+            "ok 15",
+        ),
+        // A closed-over variable persists and mutates across calls (1 + 2).
+        (
+            "fn make_counter() {\n  let count = 0\n  return fn() { count = count + 1\nreturn count }\n}\nlet c = make_counter()\nlet a = c()\nlet b = c()\na + b",
+            "ok 3",
+        ),
+        // Each closure instance captures its own variable (1 + 2 + 1).
+        (
+            "fn make_counter() {\n  let count = 0\n  return fn() { count = count + 1\nreturn count }\n}\nlet c1 = make_counter()\nlet c2 = make_counter()\nlet a = c1()\nlet b = c1()\nlet d = c2()\na + b + d",
+            "ok 4",
+        ),
+        // Capturing an outer local while it is still live.
+        (
+            "fn outer() {\n  let base = 100\n  fn inner() { return base + 1 }\n  return inner()\n}\nouter()",
+            "ok 101",
+        ),
+        // Capture threaded through two levels of nesting.
+        (
+            "fn a() {\n  let x = 10\n  fn b() {\n    fn c() { return x }\n    return c()\n  }\n  return b()\n}\na()",
+            "ok 10",
+        ),
+        // Capture is by reference, so a later write is visible.
+        (
+            "fn f() {\n  let x = 1\n  let g = fn() { return x }\n  x = 99\n  return g()\n}\nf()",
+            "ok 99",
+        ),
+        // And a write through the closure is visible outside it.
+        (
+            "fn f() {\n  let x = 1\n  let bump = fn() { x = x + 10 }\n  bump()\n  return x\n}\nf()",
+            "ok 11",
+        ),
+        // Each iteration's loop variable is captured separately, so the three
+        // closures add 1, 2, and 3 rather than all sharing the last value.
+        (
+            "fn adders() {\n  let fs = []\n  for i in [1, 2, 3] { push(fs, fn(x) { return x + i }) }\n  return fs\n}\nlet fs = adders()\nfs[0](10) + fs[1](10) + fs[2](10)",
+            "ok 36",
+        ),
+    ]);
+}
+
+#[test]
 fn a_program_evaluates_to_its_last_expression() {
     check_all(&[("1\n2\n3", "ok 3"), ("1 + 1\n2 + 2", "ok 4")]);
 }
