@@ -6,8 +6,8 @@ use std::process::ExitCode;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
-use miruscriptx::interpreter::Interpreter;
 use miruscriptx::value::Value;
+use miruscriptx::Session;
 
 /// Start the REPL. It reads a line (or a multi-line block) at a time, runs it,
 /// and echoes the value of each expression. State persists across inputs, so
@@ -33,7 +33,7 @@ pub fn run() -> ExitCode {
         let _ = editor.load_history(path);
     }
 
-    let mut interpreter = Interpreter::new();
+    let mut session = Session::new();
     let mut buffer = String::new();
 
     let exit_code = loop {
@@ -56,7 +56,7 @@ pub fn run() -> ExitCode {
                 // Record the input so the up arrow recalls it, this session and
                 // future ones.
                 let _ = editor.add_history_entry(source.trim_end());
-                evaluate(&mut interpreter, &source);
+                evaluate(&mut session, &source);
             }
             // Ctrl-C discards the current (possibly multi-line) input.
             Err(ReadlineError::Interrupted) => buffer.clear(),
@@ -83,18 +83,17 @@ fn history_path() -> Option<PathBuf> {
         .map(|home| PathBuf::from(home).join(".miru_history"))
 }
 
-/// Parse and run one complete input, printing the result value or the error.
-fn evaluate(interpreter: &mut Interpreter, source: &str) {
-    match miruscriptx::parse_program(source) {
-        Ok(program) => match interpreter.run_program(&program) {
-            Ok(value) => {
-                interpreter.flush();
-                if !matches!(value, Value::Nil) {
-                    println!("{}", value.repr());
-                }
+/// Run one complete input, echoing the value it produced or reporting the error
+/// it raised. Either way the session stays usable for the next input.
+fn evaluate(session: &mut Session, source: &str) {
+    match session.eval(source) {
+        Ok(value) => {
+            // A statement such as `let x = 1` yields nil, and echoing that on
+            // every input would be noise.
+            if !matches!(value, Value::Nil) {
+                println!("{}", value.repr());
             }
-            Err(err) => eprintln!("{}", err.render(source)),
-        },
+        }
         Err(err) => eprintln!("{}", err.render(source)),
     }
 }
