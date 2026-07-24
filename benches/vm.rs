@@ -21,20 +21,30 @@
 //! depending on what else the machine is doing, so only a paired before and
 //! after taken minutes apart compares like with like.
 //!
-//! # Re-run a lone regression before believing it
+//! # Anything under five percent is not a result
 //!
-//! The short workloads (`arrays`, `strings`, `higher_order`, all well under a
-//! millisecond) report a regression from interference often enough that it
-//! happened three times over the v0.5 optimization work, each time on a change
-//! with no mechanism to explain it and each time reversing on a clean re-run.
-//! A regression is worth acting on when the change gives some reason to expect
-//! one, or when it survives running that workload again on a quiet machine.
-//! Criterion's own signal for this is the confidence interval: the spurious
-//! ones came with intervals several times wider than the same workload's usual.
+//! Rebuilding the crate moves these numbers on its own. Adding a public
+//! function that no benchmark calls, and changing nothing else, measured as a
+//! 3.9% improvement on `fib` and 3.2% on `loop_sum`, at p = 0.00 and with
+//! confidence intervals as tight as any real change produced. A function that
+//! is never called cannot make the interpreter faster. What moved was the
+//! layout of the binary: where the dispatch loop falls relative to cache lines
+//! and branch predictor entries shifts on any rebuild, and a tight interpreter
+//! loop is unusually sensitive to it.
 //!
-//! This cuts the other way too. Re-running until a number flatters the change
-//! is how benchmarks come to mean nothing, so re-run once and take what it
-//! says.
+//! So this harness has a floor of roughly four percent that looks exactly like
+//! a real effect, statistics and all. Treat a change under five percent as
+//! unmeasured rather than as small, and do not report it as an effect. Above
+//! that, the further from the floor the more it is worth believing: the
+//! twenty percent results in v0.5 are safely clear of it, an eight percent one
+//! is worth a second build before it is trusted.
+//!
+//! The most useful check is not statistical. Ask what mechanism the change
+//! gives for the number to move, and prefer evidence outside the timer when
+//! there is any: a change that leaves the emitted opcode stream identical
+//! cannot have changed what the VM does at runtime, whatever the benchmark
+//! says. Re-running is legitimate for shaking out interference, but re-running
+//! until a number flatters the change is how benchmarks come to mean nothing.
 //!
 //! # Baseline
 //!
