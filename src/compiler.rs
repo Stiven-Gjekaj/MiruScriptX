@@ -15,11 +15,20 @@ use crate::chunk::{Chunk, OpCode};
 use crate::value::Value;
 use crate::MiruError;
 
+/// A local variable in scope during compilation, at a known stack slot (its
+/// index in the list) and the block depth where it was declared.
+struct Local {
+    name: String,
+    depth: usize,
+}
+
 /// Compiles an AST into a [`Chunk`].
 pub struct Compiler {
     chunk: Chunk,
     /// 0 at the top level (where variables are globals), higher inside blocks.
     scope_depth: usize,
+    /// Locals currently in scope, in stack order.
+    locals: Vec<Local>,
 }
 
 impl Compiler {
@@ -30,6 +39,7 @@ impl Compiler {
         let mut compiler = Compiler {
             chunk: Chunk::new(),
             scope_depth: 0,
+            locals: Vec::new(),
         };
         compiler.program(program)?;
         let (line, column) = program.last().map(|stmt| (stmt.line, 1)).unwrap_or((0, 0));
@@ -64,20 +74,27 @@ impl Compiler {
                 self.chunk.write_op(OpCode::Pop, stmt.line, 1);
             }
             StmtKind::Let { name, value } => {
-                if self.scope_depth != 0 {
-                    return Err(MiruError::new(
-                        stmt.line,
-                        "the bytecode VM does not support local variables yet",
-                    ));
-                }
+                // Compile the value first, so a right-hand reference to the same
+                // name resolves to the outer binding, not the one being declared.
                 self.expression(value)?;
-                self.named_global(OpCode::DefineGlobal, name, stmt.line, 1)?;
+                if self.scope_depth == 0 {
+                    self.named_global(OpCode::DefineGlobal, name, stmt.line, 1)?;
+                } else {
+                    // A local's value stays on the stack as the slot's storage.
+                    self.declare_local(name, stmt.line)?;
+                }
             }
             StmtKind::Assign { target, value } => {
                 self.expression(value)?;
                 match &target.kind {
                     ExprKind::Identifier(name) => {
-                        self.named_global(OpCode::SetGlobal, name, target.line, target.column)?;
+                        if let Some(slot) = self.resolve_local(name) {
+                            self.chunk
+                                .write_op(OpCode::SetLocal, target.line, target.column);
+                            self.chunk.write(slot, target.line, target.column);
+                        } else {
+                            self.named_global(OpCode::SetGlobal, name, target.line, target.column)?;
+                        }
                     }
                     _ => {
                         return Err(MiruError::with_column(
@@ -103,15 +120,53 @@ impl Compiler {
         Ok(())
     }
 
-    /// Compile a block of statements in a nested scope. Local declarations are
-    /// not supported yet, so the scope depth only guards against them.
+    /// Compile a block of statements in a nested scope, popping any locals it
+    /// declares off the stack when the scope ends.
     fn block(&mut self, statements: &[Stmt]) -> Result<(), MiruError> {
-        self.scope_depth += 1;
+        self.begin_scope();
         for stmt in statements {
             self.statement(stmt)?;
         }
-        self.scope_depth -= 1;
+        let (line, column) = statements
+            .last()
+            .map(|stmt| (stmt.line, 1))
+            .unwrap_or((0, 0));
+        self.end_scope(line, column);
         Ok(())
+    }
+
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    /// Leave the current scope, emitting a `Pop` for every local it declared.
+    fn end_scope(&mut self, line: usize, column: usize) {
+        self.scope_depth -= 1;
+        while matches!(self.locals.last(), Some(local) if local.depth > self.scope_depth) {
+            self.chunk.write_op(OpCode::Pop, line, column);
+            self.locals.pop();
+        }
+    }
+
+    /// Record a new local at the current scope depth. Its slot is its position in
+    /// the list, which is where its value already sits on the stack.
+    fn declare_local(&mut self, name: &str, line: usize) -> Result<(), MiruError> {
+        if self.locals.len() > u8::MAX as usize {
+            return Err(MiruError::new(line, "too many local variables in scope"));
+        }
+        self.locals.push(Local {
+            name: name.to_string(),
+            depth: self.scope_depth,
+        });
+        Ok(())
+    }
+
+    /// Find a local variable's stack slot by name, searching innermost first.
+    fn resolve_local(&self, name: &str) -> Option<u8> {
+        self.locals
+            .iter()
+            .rposition(|local| local.name == name)
+            .map(|slot| slot as u8)
     }
 
     /// Compile `if cond { .. } else { .. }`. The condition is left on the stack
@@ -149,7 +204,12 @@ impl Compiler {
             ExprKind::Bool(false) => self.chunk.write_op(OpCode::False, line, column),
             ExprKind::Nil => self.chunk.write_op(OpCode::Nil, line, column),
             ExprKind::Identifier(name) => {
-                self.named_global(OpCode::GetGlobal, name, line, column)?
+                if let Some(slot) = self.resolve_local(name) {
+                    self.chunk.write_op(OpCode::GetLocal, line, column);
+                    self.chunk.write(slot, line, column);
+                } else {
+                    self.named_global(OpCode::GetGlobal, name, line, column)?;
+                }
             }
             ExprKind::Unary { op, operand } => {
                 self.expression(operand)?;
@@ -385,6 +445,27 @@ mod tests {
             "true || (1 / 0 == 0)",
             // Not short-circuited: the error must surface.
             "true && (1 / 0 == 0)",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_local_variables() {
+        let corpus = [
+            // A block-local declaration does not leak out.
+            "let x = 1\nif true { let x = 2 }\nx",
+            // Locals compute a value assigned back to a global.
+            "let result = 0\nif true {\n  let a = 10\n  let b = 20\n  result = a + b\n}\nresult",
+            // A local shadows an outer name inside the block only.
+            "let n = 5\nlet out = 0\nif n > 0 {\n  let n = 100\n  out = n\n}\nout",
+            // A right-hand reference resolves to the outer binding.
+            "let out = 0\nif true {\n  let a = 3\n  let a = a + 1\n  out = a\n}\nout",
+            // Nested blocks with their own locals.
+            "let total = 0\nif true {\n  let a = 1\n  if true {\n    let b = 2\n    total = a + b\n  }\n}\ntotal",
+            // Assigning to a local inside the block.
+            "let out = 0\nif true {\n  let c = 1\n  c = c + 5\n  out = c\n}\nout",
         ];
         for source in corpus {
             agree(source);

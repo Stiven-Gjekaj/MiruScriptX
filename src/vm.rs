@@ -116,6 +116,18 @@ impl Vm {
                     let value = self.pop();
                     self.stack.push(Value::Bool(value.is_truthy()));
                 }
+                OpCode::GetLocal => {
+                    let slot = chunk.code[ip] as usize;
+                    ip += 1;
+                    let value = self.stack[slot].clone();
+                    self.stack.push(value);
+                }
+                OpCode::SetLocal => {
+                    let slot = chunk.code[ip] as usize;
+                    ip += 1;
+                    let value = self.pop();
+                    self.stack[slot] = value;
+                }
                 OpCode::Pop => {
                     self.pop();
                 }

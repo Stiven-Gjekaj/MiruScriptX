@@ -56,6 +56,11 @@ pub enum OpCode {
     JumpIfTrue,
     /// Replace the top of the stack with its truthiness as a bool.
     Truthy,
+    /// Push the value of a local variable. One operand byte: its stack slot.
+    GetLocal,
+    /// Pop a value and store it into a local variable's slot. One operand byte:
+    /// the stack slot.
+    SetLocal,
     /// Discard the value on top of the stack.
     Pop,
     /// Return from the current function (or end the program).
@@ -91,6 +96,8 @@ impl OpCode {
             b if b == JumpIfFalse as u8 => JumpIfFalse,
             b if b == JumpIfTrue as u8 => JumpIfTrue,
             b if b == Truthy as u8 => Truthy,
+            b if b == GetLocal as u8 => GetLocal,
+            b if b == SetLocal as u8 => SetLocal,
             b if b == Pop as u8 => Pop,
             b if b == Return as u8 => Return,
             _ => return None,
@@ -125,6 +132,8 @@ impl OpCode {
             OpCode::JumpIfFalse => "JUMP_IF_FALSE",
             OpCode::JumpIfTrue => "JUMP_IF_TRUE",
             OpCode::Truthy => "TRUTHY",
+            OpCode::GetLocal => "GET_LOCAL",
+            OpCode::SetLocal => "SET_LOCAL",
             OpCode::Pop => "POP",
             OpCode::Return => "RETURN",
         }
@@ -208,6 +217,11 @@ impl Chunk {
                 let target = offset + 3 + ((high << 8) | low);
                 let _ = writeln!(out, "{:<14}{offset} -> {target}", op.name());
                 offset + 3
+            }
+            Some(op @ (OpCode::GetLocal | OpCode::SetLocal)) => {
+                let slot = self.code.get(offset + 1).copied().unwrap_or(0);
+                let _ = writeln!(out, "{:<14}slot {slot}", op.name());
+                offset + 2
             }
             Some(op) => {
                 let _ = writeln!(out, "{}", op.name());
