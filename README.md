@@ -4,17 +4,17 @@
 
 ### A small, general-purpose scripting language, written in Rust
 
-_A tree-walking interpreter: source -&gt; tokens -&gt; AST -&gt; values_
+_Two engines: a tree-walking interpreter and a bytecode virtual machine_
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(66),_1_dev-007ec6?style=for-the-badge" alt="2 direct dependencies, 66 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-165_passing-427819?style=for-the-badge" alt="165 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-196_passing-427819?style=for-the-badge" alt="196 tests passing"/>
 </p>
 
 <p align="center">
   <a href="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml"><img src="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <img src="https://img.shields.io/badge/version-0.3-blue?style=flat-square" alt="Version 0.3"/>
+  <img src="https://img.shields.io/badge/version-0.4-blue?style=flat-square" alt="Version 0.4"/>
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"/>
 </p>
 
@@ -32,10 +32,14 @@ _A tree-walking interpreter: source -&gt; tokens -&gt; AST -&gt; values_
 ## Overview
 
 **MiruScriptX** is a minimalist, dynamically typed scripting language with a
-clean, modern syntax. It runs through a tree-walking interpreter written from
-scratch in Rust. Write functions, closures,
+clean, modern syntax, written from scratch in Rust. Write functions, closures,
 loops, arrays, and maps in familiar syntax, then run them from a file or an
 interactive REPL. Programs use the `.miru` extension.
+
+It ships two execution engines that run the same language: a tree-walking
+interpreter, and a bytecode compiler with a stack virtual machine that is
+several times faster. Every release checks them against each other, so choosing
+one is purely a speed decision.
 
 ```
 fn greet(name) {
@@ -118,6 +122,12 @@ Reformat a program in the canonical style (add `-w` to rewrite it in place):
 miru fmt examples/greet.miru
 ```
 
+Run it on the bytecode virtual machine instead of the tree walker:
+
+```
+miru run --vm examples/greet.miru
+```
+
 For a step-by-step guide, start the wiki at
 [wiki/01-introduction.md](wiki/01-introduction.md).
 
@@ -159,25 +169,27 @@ on one page.
 
 ## Project structure
 
-MiruScriptX is a classic pipeline: source becomes tokens, tokens become an
-abstract syntax tree, and the tree is evaluated directly.
+Source becomes tokens, tokens become an abstract syntax tree, and the tree is
+then either evaluated directly or compiled to bytecode and run on a VM.
 
 | Stage | Files | Lines | Responsibility |
 | ----- | ----- | ----- | -------------- |
 | **Lexer** | token.rs, lexer.rs | 753 | Source text to tokens, with line and column tracking |
 | **Parser** | ast.rs, parser.rs | 1031 | Recursive descent plus a Pratt expression parser |
-| **Interpreter** | value, environment, interpreter, builtins | 2195 | Tree-walking evaluation, scopes, closures, builtins |
+| **Interpreter** | value, environment, interpreter, builtins, ops | 2382 | Tree-walking evaluation, scopes, closures, builtins |
+| **Bytecode engine** | chunk.rs, compiler.rs, vm.rs | 2238 | Compiles the AST to bytecode and runs it on a stack VM |
 | **Formatter** | formatter.rs | 617 | Reprints a program in canonical form (`miru fmt`) |
-| **CLI and REPL** | main.rs, repl.rs | 284 | File runner, formatter command, and interactive REPL |
-| **Library** | lib.rs | 316 | Ties it together (`parse_program`, `run_source`, `format_source`) |
-| **Total** | **12 files** | **5196** | Written from scratch in Rust |
+| **CLI and REPL** | main.rs, repl.rs | 307 | File runner, formatter command, and interactive REPL |
+| **Library** | lib.rs | 388 | Ties it together (`parse_program`, `run_source`, `run_source_vm`) |
+| **Total** | **16 files** | **7716** | Written from scratch in Rust |
 
 ```
-src/         the interpreter (lexer, parser, evaluator, builtins, CLI, REPL)
+src/         the language (lexer, parser, evaluator, compiler, VM, CLI, REPL)
 examples/    runnable .miru programs
 wiki/        step-by-step learning lessons
 docs/        language reference, architecture, and roadmap
 tests/       end-to-end integration tests
+benches/     criterion benchmarks comparing the two engines
 scripts/     build_reference.sh regenerates the single-page reference
 ```
 
@@ -219,8 +231,16 @@ cargo test
 ```
 
 Unit tests sit next to each module; the integration tests in `tests/` run the
-compiled binary against the example programs. The same checks run in CI, along
-with `cargo fmt --check` and `cargo clippy -D warnings`.
+compiled binary against the example programs. Differential tests run the same
+programs on both engines and require identical values, errors, and output, so
+the two can never quietly diverge. The same checks run in CI, along with
+`cargo fmt --check` and `cargo clippy -D warnings`.
+
+Benchmark the engines against each other with:
+
+```
+cargo bench
+```
 
 ---
 

@@ -8,6 +8,32 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 0.4 (2026-07-24)
+
+### Added
+
+- A bytecode compiler and a stack-based virtual machine, a second execution
+  engine covering the whole language: globals and locals with block scoping, all
+  control flow and loops, functions and calls, closures with upvalues, arrays,
+  maps, indexing, and every builtin.
+- `miru run --vm` selects the VM. The tree-walking interpreter remains the
+  default while the VM is validated.
+- Differential testing across the two engines: the same programs run on both and
+  must agree on values, on error messages and their line and column, and on
+  printed output, including every example program run through the binary.
+- criterion benchmarks comparing the engines (`cargo bench`). The VM runs
+  recursive `fib` about 3x faster, tight loops about 1.5x, and closure-heavy
+  code about 1.8x.
+
+### Changed
+
+- Arithmetic, comparison, and indexing rules moved into a shared `ops` module,
+  and the higher-order builtins now reach the running engine through a `Caller`
+  trait, so both engines share one implementation of each.
+- The dependency badge now reads `2 (66), 1 dev`: criterion is counted even
+  though it is a dev-dependency. Running a MiruScriptX program still pulls in
+  only rustyline and its 15 crates.
+
 ## 0.3 (2026-07-23)
 
 ### Added

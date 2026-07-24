@@ -61,13 +61,30 @@ request templates, and a branded README with a project logo.
   interpreter-aware builtin kind so a builtin can call back into a user-defined
   function, a closure, or another builtin.
 
-## v0.4: performance
+## v0.4: performance, with two engines side by side
 
-- A bytecode compiler and a stack-based virtual machine, replacing the tree
-  walker for a large speedup while keeping the same language.
-- Benchmarks tracked over time.
+- A bytecode compiler (`src/compiler.rs`) and a stack-based virtual machine
+  (`src/vm.rs`) covering the whole language: globals and locals, all control
+  flow and loops, functions, closures with upvalues, arrays, maps, indexing, and
+  every builtin.
+- Both engines run side by side. The tree walker stays the default; the VM is
+  opt in with `miru run --vm`. Keeping both makes *differential testing*
+  possible: the same program runs on each engine and must produce the same
+  value, the same error at the same line and column, and the same output.
+- Shared foundations so agreement is structural, not accidental: one value
+  model, one `ops` module for arithmetic and indexing, and one builtin path
+  through the `Caller` trait.
+- criterion benchmarks comparing the engines. The VM runs recursive `fib` about
+  3x faster, tight loops about 1.5x, and closure-heavy code about 1.8x.
 
-## v0.5: reach
+## v0.5: one engine, and optimization
+
+- Retire the tree walker, make the VM the only engine, and drop the `--vm` flag
+  along with the duplicate function representation in `Value`.
+- Optimize now that there is a single target: faster global lookup, fewer stack
+  copies, and a constant-folding pass.
+
+## v0.6: reach
 
 - Compile the interpreter to WebAssembly.
 - Ship a live in-browser playground on GitHub Pages so anyone can try
