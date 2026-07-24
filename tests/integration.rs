@@ -76,6 +76,60 @@ fn greeter_example_reads_stdin() {
     );
 }
 
+/// Run an example on the bytecode VM instead of the default tree walker.
+fn run_example_vm(name: &str) -> String {
+    let output = miru()
+        .arg("run")
+        .arg("--vm")
+        .arg(format!("examples/{name}"))
+        .output()
+        .expect("failed to launch the miru binary");
+    assert!(
+        output.status.success(),
+        "running {name} on the VM failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("output should be valid utf-8")
+}
+
+#[test]
+fn the_vm_matches_the_tree_walker_on_every_example() {
+    for name in [
+        "greet.miru",
+        "fib.miru",
+        "fizzbuzz.miru",
+        "contacts.miru",
+        "transform.miru",
+    ] {
+        assert_eq!(
+            run_example(name),
+            run_example_vm(name),
+            "engines differ on {name}"
+        );
+    }
+}
+
+#[test]
+fn the_vm_reports_runtime_errors_like_the_tree_walker() {
+    let path = std::env::temp_dir().join("miru_integration_vm_bad.miru");
+    std::fs::write(&path, "let a = 1\nprint(b)\n").expect("write temp file");
+    let output = miru()
+        .arg("run")
+        .arg("--vm")
+        .arg(&path)
+        .output()
+        .expect("runs");
+    let _ = std::fs::remove_file(&path);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf-8");
+    assert!(stderr.contains("line 2"), "stderr was: {stderr}");
+    assert!(
+        stderr.contains("undefined variable 'b'"),
+        "stderr was: {stderr}"
+    );
+}
+
 #[test]
 fn fmt_prints_formatted_source_to_stdout() {
     let output = miru()

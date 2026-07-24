@@ -76,10 +76,42 @@ pub fn run_source(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
     Ok(())
 }
 
+/// Lex, parse, compile, and run a source string on the bytecode VM, sending
+/// `print` output to `out`. The counterpart to [`run_source`], selected by
+/// `miru run --vm`.
+pub fn run_source_vm(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
+    let program = parse_program(source)?;
+    let script = compiler::Compiler::compile(&program)?;
+    let mut vm = vm::Vm::with_output(out);
+    vm.set_input(Box::new(StdinInput));
+    vm.interpret(script)?;
+    vm.flush();
+    Ok(())
+}
+
 /// Run a source string and capture everything it printed. Handy for tests and
 /// tooling that needs the output as a string rather than on a stream.
 pub fn run_capture(source: &str) -> Result<String, MiruError> {
     run_capture_with_input(source, &[])
+}
+
+/// Like [`run_capture`], but runs the program on the bytecode VM. Used by the
+/// differential tests to compare the two engines' output.
+pub fn run_capture_vm(source: &str) -> Result<String, MiruError> {
+    run_capture_vm_with_input(source, &[])
+}
+
+/// Like [`run_capture_vm`], but feeds the given lines to `input()` in order.
+pub fn run_capture_vm_with_input(source: &str, input: &[&str]) -> Result<String, MiruError> {
+    let program = parse_program(source)?;
+    let script = compiler::Compiler::compile(&program)?;
+    let buffer = Rc::new(RefCell::new(Vec::<u8>::new()));
+    let mut vm = vm::Vm::with_output(Box::new(SharedBuffer(Rc::clone(&buffer))));
+    vm.set_input(Box::new(ScriptedInput::new(input)));
+    vm.interpret(script)?;
+    vm.flush();
+    let bytes = buffer.borrow();
+    Ok(String::from_utf8_lossy(bytes.as_slice()).into_owned())
 }
 
 /// Like [`run_capture`], but feeds the given lines to `input()` in order.
@@ -324,6 +356,25 @@ mod tests {
                 "formatting changed program behavior"
             );
         }
+    }
+
+    #[test]
+    fn both_engines_produce_the_same_output_for_every_example() {
+        // The whole point of running two engines in v0.4: they must be
+        // indistinguishable on real programs, not just on unit-test snippets.
+        for source in EXAMPLES {
+            let tree = run_capture(source).expect("the tree walker runs the example");
+            let vm = run_capture_vm(source).expect("the VM runs the example");
+            assert_eq!(tree, vm, "the engines printed different output");
+        }
+    }
+
+    #[test]
+    fn both_engines_read_input_the_same_way() {
+        let source = include_str!("../examples/greeter.miru");
+        let tree = run_capture_with_input(source, &["Aiko"]).expect("tree walker runs");
+        let vm = run_capture_vm_with_input(source, &["Aiko"]).expect("VM runs");
+        assert_eq!(tree, vm);
     }
 
     #[test]

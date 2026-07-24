@@ -7,6 +7,7 @@ use std::process::ExitCode;
 const USAGE: &str = "\
 Usage:
   miru run <file.miru>      Run a MiruScriptX program from a file
+  miru run --vm <file>      Run it on the bytecode virtual machine (experimental)
   miru fmt <file.miru>      Format a program and print it to standard output
   miru fmt -w <file.miru>   Format a program and rewrite the file in place
   miru                      Start the interactive REPL
@@ -44,10 +45,26 @@ fn main() -> ExitCode {
 }
 
 fn run_file(args: &[String]) -> ExitCode {
-    let path = match args {
-        [path] => path,
-        [] => return usage_error("the 'run' command needs a file path"),
-        _ => return usage_error("the 'run' command takes a single file path"),
+    // The tree walker is the default engine; --vm selects the bytecode VM.
+    let mut use_vm = false;
+    let mut path: Option<&str> = None;
+    for arg in args {
+        match arg.as_str() {
+            "--vm" => use_vm = true,
+            other if other.starts_with("--") => {
+                return usage_error(&format!("unknown option '{other}' for 'run'"));
+            }
+            other => {
+                if path.is_some() {
+                    return usage_error("the 'run' command takes a single file path");
+                }
+                path = Some(other);
+            }
+        }
+    }
+
+    let Some(path) = path else {
+        return usage_error("the 'run' command needs a file path");
     };
 
     let source = match std::fs::read_to_string(path) {
@@ -58,7 +75,13 @@ fn run_file(args: &[String]) -> ExitCode {
         }
     };
 
-    match miruscriptx::run_source(&source, Box::new(std::io::stdout())) {
+    let out = Box::new(std::io::stdout());
+    let result = if use_vm {
+        miruscriptx::run_source_vm(&source, out)
+    } else {
+        miruscriptx::run_source(&source, out)
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("miru: {}", err.render(&source));
