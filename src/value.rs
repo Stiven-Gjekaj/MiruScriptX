@@ -58,11 +58,21 @@ pub struct CompiledFunction {
     pub chunk: Chunk,
 }
 
-/// A [`CompiledFunction`] as a runtime value. It will grow captured upvalues; for
-/// now it simply wraps the function so the calling machinery is already in terms
-/// of closures.
+/// A captured variable shared by a closure. While the enclosing function is
+/// still running, the upvalue is `Open` and points at a stack slot, so writes on
+/// either side are seen by both. Once that function returns, the value is moved
+/// into the upvalue (`Closed`) and outlives the stack.
+pub enum Upvalue {
+    Open(usize),
+    Closed(Value),
+}
+
+/// A [`CompiledFunction`] paired with the variables it captured from enclosing
+/// functions. The captured upvalues are shared (`Rc<RefCell<..>>`) so several
+/// closures over the same variable observe each other's changes.
 pub struct Closure {
     pub function: Rc<CompiledFunction>,
+    pub upvalues: Vec<Rc<RefCell<Upvalue>>>,
 }
 
 /// A native function implemented in Rust and exposed to programs.

@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
-use crate::value::{Closure, CompiledFunction, Value};
+use crate::value::{Closure, CompiledFunction, Upvalue, Value};
 use crate::MiruError;
 
 /// A single active function call: which closure is running, where its
@@ -31,6 +31,10 @@ pub struct Vm {
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
     frames: Vec<CallFrame>,
+    /// Upvalues that still point at live stack slots, kept so several closures
+    /// capturing the same slot share one upvalue, and so they can be closed when
+    /// that slot leaves the stack.
+    open_upvalues: Vec<(usize, Rc<RefCell<Upvalue>>)>,
 }
 
 impl Vm {
@@ -42,7 +46,10 @@ impl Vm {
     /// anonymous script), so running it is just calling that function and reading
     /// back the value it returns.
     pub fn interpret(&mut self, script: Rc<CompiledFunction>) -> Result<Value, MiruError> {
-        let closure = Rc::new(Closure { function: script });
+        let closure = Rc::new(Closure {
+            function: script,
+            upvalues: Vec::new(),
+        });
         self.frames.push(CallFrame {
             closure,
             ip: 0,
@@ -211,8 +218,45 @@ impl Vm {
                     let index = chunk.code[ip] as usize;
                     ip += 1;
                     let function = Rc::clone(&chunk.functions[index]);
+                    let upvalue_count = chunk.code[ip] as usize;
+                    ip += 1;
+                    let mut upvalues = Vec::with_capacity(upvalue_count);
+                    for _ in 0..upvalue_count {
+                        let is_local = chunk.code[ip] != 0;
+                        let operand = chunk.code[ip + 1] as usize;
+                        ip += 2;
+                        let upvalue = if is_local {
+                            self.capture_upvalue(slot_base + operand)
+                        } else {
+                            Rc::clone(&closure.upvalues[operand])
+                        };
+                        upvalues.push(upvalue);
+                    }
                     self.stack
-                        .push(Value::Closure(Rc::new(Closure { function })));
+                        .push(Value::Closure(Rc::new(Closure { function, upvalues })));
+                }
+                OpCode::GetUpvalue => {
+                    let index = chunk.code[ip] as usize;
+                    ip += 1;
+                    let value = match &*closure.upvalues[index].borrow() {
+                        Upvalue::Open(slot) => self.stack[*slot].clone(),
+                        Upvalue::Closed(value) => value.clone(),
+                    };
+                    self.stack.push(value);
+                }
+                OpCode::SetUpvalue => {
+                    let index = chunk.code[ip] as usize;
+                    ip += 1;
+                    let value = self.pop();
+                    let upvalue = Rc::clone(&closure.upvalues[index]);
+                    match &mut *upvalue.borrow_mut() {
+                        Upvalue::Open(slot) => self.stack[*slot] = value,
+                        Upvalue::Closed(cell) => *cell = value,
+                    };
+                }
+                OpCode::CloseUpvalue => {
+                    self.close_upvalues_from(self.stack.len() - 1);
+                    self.pop();
                 }
                 OpCode::Call => {
                     let argcount = chunk.code[ip] as usize;
@@ -232,6 +276,9 @@ impl Vm {
                 OpCode::Return => {
                     let result = self.pop();
                     let frame = self.frames.pop().expect("a call frame");
+                    // Close any upvalues that captured this frame's locals before
+                    // they leave the stack.
+                    self.close_upvalues_from(frame.slot_base);
                     if self.frames.is_empty() {
                         return Ok(result);
                     }
@@ -313,6 +360,33 @@ impl Vm {
     /// Look at the top of the stack without removing it.
     fn peek(&self) -> &Value {
         self.stack.last().expect("value stack underflow")
+    }
+
+    /// Return the open upvalue over `slot`, creating one if none exists yet, so
+    /// that every closure capturing the same slot shares a single upvalue.
+    fn capture_upvalue(&mut self, slot: usize) -> Rc<RefCell<Upvalue>> {
+        if let Some((_, upvalue)) = self.open_upvalues.iter().find(|(s, _)| *s == slot) {
+            return Rc::clone(upvalue);
+        }
+        let upvalue = Rc::new(RefCell::new(Upvalue::Open(slot)));
+        self.open_upvalues.push((slot, Rc::clone(&upvalue)));
+        upvalue
+    }
+
+    /// Close every open upvalue at or above `from_slot`, moving each captured
+    /// value off the stack and into the upvalue so it outlives the frame.
+    fn close_upvalues_from(&mut self, from_slot: usize) {
+        let mut index = 0;
+        while index < self.open_upvalues.len() {
+            let slot = self.open_upvalues[index].0;
+            if slot >= from_slot {
+                let (_, upvalue) = self.open_upvalues.remove(index);
+                let value = self.stack[slot].clone();
+                *upvalue.borrow_mut() = Upvalue::Closed(value);
+            } else {
+                index += 1;
+            }
+        }
     }
 }
 

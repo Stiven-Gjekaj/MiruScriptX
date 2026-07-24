@@ -77,9 +77,19 @@ pub enum OpCode {
     /// the index is past the end, jump by the distance; otherwise push the next
     /// element and advance the index.
     ForNext,
-    /// Push a closure built from a nested function. One operand byte: the
-    /// function's index in the chunk's function pool.
+    /// Push a closure built from a nested function. Operands: the function's
+    /// index in the pool (one byte), an upvalue count (one byte), then two bytes
+    /// per upvalue: whether it captures a local (1) or an enclosing upvalue (0),
+    /// and that local slot or upvalue index.
     Closure,
+    /// Push the value of one of the current closure's upvalues. One operand byte:
+    /// the upvalue index.
+    GetUpvalue,
+    /// Pop a value and store it into one of the current closure's upvalues. One
+    /// operand byte: the upvalue index.
+    SetUpvalue,
+    /// Close the upvalue over the local on top of the stack, then pop it.
+    CloseUpvalue,
     /// Call the value beneath the arguments on the stack. One operand byte: the
     /// argument count.
     Call,
@@ -125,6 +135,9 @@ impl OpCode {
             b if b == IterSnapshot as u8 => IterSnapshot,
             b if b == ForNext as u8 => ForNext,
             b if b == Closure as u8 => Closure,
+            b if b == GetUpvalue as u8 => GetUpvalue,
+            b if b == SetUpvalue as u8 => SetUpvalue,
+            b if b == CloseUpvalue as u8 => CloseUpvalue,
             b if b == Call as u8 => Call,
             b if b == Pop as u8 => Pop,
             b if b == Return as u8 => Return,
@@ -167,6 +180,9 @@ impl OpCode {
             OpCode::IterSnapshot => "ITER_SNAPSHOT",
             OpCode::ForNext => "FOR_NEXT",
             OpCode::Closure => "CLOSURE",
+            OpCode::GetUpvalue => "GET_UPVALUE",
+            OpCode::SetUpvalue => "SET_UPVALUE",
+            OpCode::CloseUpvalue => "CLOSE_UPVALUE",
             OpCode::Call => "CALL",
             OpCode::Pop => "POP",
             OpCode::Return => "RETURN",
@@ -272,10 +288,20 @@ impl Chunk {
                 let _ = writeln!(out, "{:<14}slot {slot}", op.name());
                 offset + 2
             }
-            Some(op @ (OpCode::Array | OpCode::Call | OpCode::Closure)) => {
+            Some(op @ (OpCode::Array | OpCode::Call | OpCode::GetUpvalue | OpCode::SetUpvalue)) => {
                 let operand = self.code.get(offset + 1).copied().unwrap_or(0);
                 let _ = writeln!(out, "{:<14}{operand}", op.name());
                 offset + 2
+            }
+            Some(OpCode::Closure) => {
+                let function = self.code.get(offset + 1).copied().unwrap_or(0);
+                let upvalues = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let _ = writeln!(
+                    out,
+                    "{:<14}fn {function} ({upvalues} upvalue(s))",
+                    OpCode::Closure.name()
+                );
+                offset + 3 + upvalues * 2
             }
             Some(OpCode::ForNext) => {
                 let slot = self.code.get(offset + 1).copied().unwrap_or(0);

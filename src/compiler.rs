@@ -16,10 +16,32 @@ use crate::value::{CompiledFunction, Value};
 use crate::MiruError;
 
 /// A local variable in scope during compilation, at a known stack slot (its
-/// index in the list) and the block depth where it was declared.
+/// index in the list) and the block depth where it was declared. `captured`
+/// records whether a nested function closes over it, so it is closed rather than
+/// simply popped when its scope ends.
 struct Local {
     name: String,
     depth: usize,
+    captured: bool,
+}
+
+/// How a closure captures one upvalue: from a local of the immediately enclosing
+/// function (`is_local`), or from that function's own upvalue. `index` is the
+/// slot or upvalue index accordingly.
+#[derive(Clone, Copy, PartialEq)]
+struct UpvalueSpec {
+    is_local: bool,
+    index: u8,
+}
+
+/// A function whose compilation is paused while a nested function inside it is
+/// compiled. The nested function may reach back into these to capture upvalues.
+struct FunctionState {
+    chunk: Chunk,
+    locals: Vec<Local>,
+    scope_depth: usize,
+    loops: Vec<LoopContext>,
+    upvalues: Vec<UpvalueSpec>,
 }
 
 /// Bookkeeping for the loop currently being compiled, so `break` and `continue`
@@ -34,7 +56,8 @@ struct LoopContext {
     breaks: Vec<usize>,
 }
 
-/// Compiles an AST into a [`Chunk`].
+/// Compiles an AST into a [`Chunk`]. The fields describe the function currently
+/// being compiled; `enclosing` holds the functions paused around it.
 pub struct Compiler {
     chunk: Chunk,
     /// 0 at the top level (where variables are globals), higher inside blocks.
@@ -43,6 +66,10 @@ pub struct Compiler {
     locals: Vec<Local>,
     /// The stack of loops enclosing the code being compiled.
     loops: Vec<LoopContext>,
+    /// The upvalues the current function captures.
+    upvalues: Vec<UpvalueSpec>,
+    /// Functions whose compilation is paused while this one is compiled.
+    enclosing: Vec<FunctionState>,
 }
 
 impl Compiler {
@@ -52,6 +79,8 @@ impl Compiler {
             scope_depth: 0,
             locals: Vec::new(),
             loops: Vec::new(),
+            upvalues: Vec::new(),
+            enclosing: Vec::new(),
         }
     }
 
@@ -115,6 +144,10 @@ impl Compiler {
                             self.chunk
                                 .write_op(OpCode::SetLocal, target.line, target.column);
                             self.chunk.write(slot, target.line, target.column);
+                        } else if let Some(upvalue) = self.resolve_upvalue(name)? {
+                            self.chunk
+                                .write_op(OpCode::SetUpvalue, target.line, target.column);
+                            self.chunk.write(upvalue, target.line, target.column);
                         } else {
                             self.named_global(OpCode::SetGlobal, name, target.line, target.column)?;
                         }
@@ -162,7 +195,8 @@ impl Compiler {
     }
 
     /// Compile a function's parameters and body into a nested [`CompiledFunction`]
-    /// and emit a `Closure` in the current chunk that builds it at runtime.
+    /// and emit a `Closure` in the current chunk that builds it at runtime, along
+    /// with the specs for capturing its upvalues.
     fn function(
         &mut self,
         name: Option<&str>,
@@ -171,30 +205,110 @@ impl Compiler {
         line: usize,
         column: usize,
     ) -> Result<(), MiruError> {
-        let mut sub = Compiler::new();
+        self.begin_function();
         // Inside a function, declarations are local; parameters take the first
         // slots (0..arity), where the call places the arguments.
-        sub.scope_depth = 1;
+        self.scope_depth = 1;
         for param in params {
-            sub.declare_local(param, line)?;
+            self.declare_local(param, line)?;
         }
         for stmt in body {
-            sub.statement(stmt)?;
+            self.statement(stmt)?;
         }
         // A function that runs off the end returns nil.
-        sub.chunk.write_op(OpCode::Nil, line, column);
-        sub.chunk.write_op(OpCode::Return, line, column);
+        self.chunk.write_op(OpCode::Nil, line, column);
+        self.chunk.write_op(OpCode::Return, line, column);
+        let (chunk, upvalues) = self.end_function();
 
         let function = Rc::new(CompiledFunction {
             name: name.map(str::to_string),
             arity: params.len(),
-            chunk: sub.chunk,
+            chunk,
         });
         let index = u8::try_from(self.chunk.add_function(function))
             .map_err(|_| MiruError::with_column(line, column, "too many functions in one chunk"))?;
         self.chunk.write_op(OpCode::Closure, line, column);
         self.chunk.write(index, line, column);
+        self.chunk.write(upvalues.len() as u8, line, column);
+        for upvalue in upvalues {
+            self.chunk.write(u8::from(upvalue.is_local), line, column);
+            self.chunk.write(upvalue.index, line, column);
+        }
         Ok(())
+    }
+
+    /// Pause the current function and start a fresh one for a nested function.
+    fn begin_function(&mut self) {
+        let suspended = FunctionState {
+            chunk: std::mem::take(&mut self.chunk),
+            locals: std::mem::take(&mut self.locals),
+            scope_depth: self.scope_depth,
+            loops: std::mem::take(&mut self.loops),
+            upvalues: std::mem::take(&mut self.upvalues),
+        };
+        self.enclosing.push(suspended);
+        self.scope_depth = 0;
+    }
+
+    /// Finish the current function, returning its chunk and captured upvalues, and
+    /// restore the enclosing function's state.
+    fn end_function(&mut self) -> (Chunk, Vec<UpvalueSpec>) {
+        let chunk = std::mem::take(&mut self.chunk);
+        let upvalues = std::mem::take(&mut self.upvalues);
+        let restored = self.enclosing.pop().expect("an enclosing function");
+        self.chunk = restored.chunk;
+        self.locals = restored.locals;
+        self.scope_depth = restored.scope_depth;
+        self.loops = restored.loops;
+        self.upvalues = restored.upvalues;
+        (chunk, upvalues)
+    }
+
+    /// Resolve `name` as an upvalue of the current function, capturing it through
+    /// any functions in between. Returns `None` when `name` is not a local of any
+    /// enclosing function, so the caller falls back to a global.
+    fn resolve_upvalue(&mut self, name: &str) -> Result<Option<u8>, MiruError> {
+        let mut found = None;
+        for level in (0..self.enclosing.len()).rev() {
+            if let Some(slot) = local_slot(&self.enclosing[level].locals, name) {
+                found = Some((level, slot));
+                break;
+            }
+        }
+        let (level, slot) = match found {
+            Some(pair) => pair,
+            None => return Ok(None),
+        };
+        self.enclosing[level].locals[slot as usize].captured = true;
+        // The function just inside the declaring one captures its local; each
+        // function deeper in captures the previous one's upvalue.
+        let mut index = self.add_upvalue(level + 1, true, slot)?;
+        for deeper in (level + 2)..=self.enclosing.len() {
+            index = self.add_upvalue(deeper, false, index)?;
+        }
+        Ok(Some(index))
+    }
+
+    /// Add (or reuse) an upvalue at function `level`, where `level` equal to the
+    /// number of enclosing functions means the current one.
+    fn add_upvalue(&mut self, level: usize, is_local: bool, index: u8) -> Result<u8, MiruError> {
+        let spec = UpvalueSpec { is_local, index };
+        let upvalues = if level == self.enclosing.len() {
+            &mut self.upvalues
+        } else {
+            &mut self.enclosing[level].upvalues
+        };
+        if let Some(position) = upvalues.iter().position(|existing| *existing == spec) {
+            return Ok(position as u8);
+        }
+        if upvalues.len() >= u8::MAX as usize {
+            return Err(MiruError::new(
+                0,
+                "too many captured variables in one function",
+            ));
+        }
+        upvalues.push(spec);
+        Ok((upvalues.len() - 1) as u8)
     }
 
     /// Compile `while cond { .. }`. The condition is re-checked at the top of each
@@ -306,19 +420,26 @@ impl Compiler {
         self.emit_loop(start, line, 1)
     }
 
-    /// Emit a `Pop` for each local at or deeper than `min_depth` without removing
-    /// them from the compiler's list, since later code in the same scope still
-    /// sees them. Used by `break` and `continue`, which jump over the normal
-    /// end-of-scope cleanup.
+    /// Discard each local at or deeper than `min_depth` (popping, or closing a
+    /// captured one) without removing them from the compiler's list, since later
+    /// code in the same scope still sees them. Used by `break` and `continue`,
+    /// which jump over the normal end-of-scope cleanup.
     fn pop_locals_to_depth(&mut self, min_depth: usize, line: usize, column: usize) {
-        let count = self
+        let ops: Vec<OpCode> = self
             .locals
             .iter()
             .rev()
             .take_while(|local| local.depth >= min_depth)
-            .count();
-        for _ in 0..count {
-            self.chunk.write_op(OpCode::Pop, line, column);
+            .map(|local| {
+                if local.captured {
+                    OpCode::CloseUpvalue
+                } else {
+                    OpCode::Pop
+                }
+            })
+            .collect();
+        for op in ops {
+            self.chunk.write_op(op, line, column);
         }
     }
 
@@ -341,11 +462,18 @@ impl Compiler {
         self.scope_depth += 1;
     }
 
-    /// Leave the current scope, emitting a `Pop` for every local it declared.
+    /// Leave the current scope. Each local it declared is popped, or closed as an
+    /// upvalue first if a nested function captured it.
     fn end_scope(&mut self, line: usize, column: usize) {
         self.scope_depth -= 1;
         while matches!(self.locals.last(), Some(local) if local.depth > self.scope_depth) {
-            self.chunk.write_op(OpCode::Pop, line, column);
+            let captured = self.locals.last().expect("a local").captured;
+            let op = if captured {
+                OpCode::CloseUpvalue
+            } else {
+                OpCode::Pop
+            };
+            self.chunk.write_op(op, line, column);
             self.locals.pop();
         }
     }
@@ -359,16 +487,14 @@ impl Compiler {
         self.locals.push(Local {
             name: name.to_string(),
             depth: self.scope_depth,
+            captured: false,
         });
         Ok(())
     }
 
     /// Find a local variable's stack slot by name, searching innermost first.
     fn resolve_local(&self, name: &str) -> Option<u8> {
-        self.locals
-            .iter()
-            .rposition(|local| local.name == name)
-            .map(|slot| slot as u8)
+        local_slot(&self.locals, name)
     }
 
     /// Compile `if cond { .. } else { .. }`. The condition is left on the stack
@@ -419,6 +545,9 @@ impl Compiler {
                 if let Some(slot) = self.resolve_local(name) {
                     self.chunk.write_op(OpCode::GetLocal, line, column);
                     self.chunk.write(slot, line, column);
+                } else if let Some(upvalue) = self.resolve_upvalue(name)? {
+                    self.chunk.write_op(OpCode::GetUpvalue, line, column);
+                    self.chunk.write(upvalue, line, column);
                 } else {
                     self.named_global(OpCode::GetGlobal, name, line, column)?;
                 }
@@ -540,6 +669,14 @@ impl Compiler {
         self.chunk.write(index, line, column);
         Ok(())
     }
+}
+
+/// Find a local's stack slot by name in a scope, searching innermost first.
+fn local_slot(locals: &[Local], name: &str) -> Option<u8> {
+    locals
+        .iter()
+        .rposition(|local| local.name == name)
+        .map(|slot| slot as u8)
 }
 
 fn binary_opcode(op: BinaryOp) -> OpCode {
@@ -786,6 +923,29 @@ mod tests {
             // Errors: wrong arity and calling a non-function, at the call site.
             "fn one(a) { return a }\none(1, 2)",
             "let x = 5\nx(1)",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_closures() {
+        let corpus = [
+            // Capture a parameter, called after the enclosing function returns.
+            "fn make_adder(n) { return fn(x) { return x + n } }\nlet add5 = make_adder(5)\nadd5(10)",
+            // Capture and mutate a closed-over variable across several calls.
+            "fn make_counter() {\n  let count = 0\n  return fn() { count = count + 1\nreturn count }\n}\nlet c = make_counter()\nlet a = c()\nlet b = c()\na + b",
+            // Each closure instance captures its own variable.
+            "fn make_counter() {\n  let count = 0\n  return fn() { count = count + 1\nreturn count }\n}\nlet c1 = make_counter()\nlet c2 = make_counter()\nlet a = c1()\nlet b = c1()\nlet d = c2()\na + b + d",
+            // Capture an outer local (not a parameter), while it is still live.
+            "fn outer() {\n  let base = 100\n  fn inner() { return base + 1 }\n  return inner()\n}\nouter()",
+            // Capture through two levels of nesting.
+            "fn a() {\n  let x = 10\n  fn b() {\n    fn c() { return x }\n    return c()\n  }\n  return b()\n}\na()",
+            // The closure sees writes the enclosing function makes after capture.
+            "fn f() {\n  let x = 1\n  let g = fn() { return x }\n  x = 99\n  return g()\n}\nf()",
+            // A closure that captures and assigns the outer variable.
+            "fn f() {\n  let x = 1\n  let bump = fn() { x = x + 10 }\n  bump()\n  return x\n}\nf()",
         ];
         for source in corpus {
             agree(source);
