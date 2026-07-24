@@ -198,6 +198,136 @@ fn type_errors_name_both_types() {
 }
 
 #[test]
+fn globals_are_declared_read_and_assigned() {
+    check_all(&[
+        ("let x = 5\nx + 1", "ok 6"),
+        ("let x = 5\nlet y = 10\nx * y", "ok 50"),
+        ("let x = 1\nx = x + 1\nx", "ok 2"),
+        ("let name = \"Aiko\"\n\"Hi \" + name", "ok \"Hi Aiko\""),
+        // A let statement is not an expression, so a trailing one yields nil.
+        ("let x = 5", "ok nil"),
+        // Re-declaring overwrites.
+        ("let a = 2\nlet a = 3\na", "ok 3"),
+        ("missing", "err undefined variable 'missing' @ 1:1"),
+        (
+            "missing = 5",
+            "err cannot assign to undefined variable 'missing' @ 1:1",
+        ),
+    ]);
+}
+
+#[test]
+fn if_else_chains_pick_one_branch() {
+    check_all(&[
+        ("let x = 0\nif true { x = 1 }\nx", "ok 1"),
+        ("let x = 0\nif false { x = 1 }\nx", "ok 0"),
+        ("let x = 0\nif false { x = 1 } else { x = 2 }\nx", "ok 2"),
+        (
+            "let x = 5\nlet r = 0\nif x > 10 { r = 1 } else if x > 3 { r = 2 } else { r = 3 }\nr",
+            "ok 2",
+        ),
+        ("let x = 3\nif x > 0 { if x > 2 { x = 100 } }\nx", "ok 100"),
+        // Truthiness: nil is falsy, but 0 is not.
+        ("let r = 0\nif nil { r = 1 } else { r = 2 }\nr", "ok 2"),
+        ("let r = 0\nif 0 { r = 1 } else { r = 2 }\nr", "ok 1"),
+    ]);
+}
+
+#[test]
+fn locals_are_scoped_to_their_block() {
+    check_all(&[
+        // A block-local declaration does not leak out.
+        ("let x = 1\nif true { let x = 2 }\nx", "ok 1"),
+        (
+            "let result = 0\nif true {\n  let a = 10\n  let b = 20\n  result = a + b\n}\nresult",
+            "ok 30",
+        ),
+        // A local shadows an outer name inside the block only.
+        (
+            "let n = 5\nlet out = 0\nif n > 0 {\n  let n = 100\n  out = n\n}\nout",
+            "ok 100",
+        ),
+        // A right-hand reference resolves to the outer binding.
+        (
+            "let out = 0\nif true {\n  let a = 3\n  let a = a + 1\n  out = a\n}\nout",
+            "ok 4",
+        ),
+        (
+            "let total = 0\nif true {\n  let a = 1\n  if true {\n    let b = 2\n    total = a + b\n  }\n}\ntotal",
+            "ok 3",
+        ),
+        (
+            "let out = 0\nif true {\n  let c = 1\n  c = c + 5\n  out = c\n}\nout",
+            "ok 6",
+        ),
+    ]);
+}
+
+#[test]
+fn while_loops_and_loop_control() {
+    check_all(&[
+        (
+            "let i = 0\nlet sum = 0\nwhile i < 5 { sum = sum + i\ni = i + 1 }\nsum",
+            "ok 10",
+        ),
+        ("let i = 0\nwhile i < 3 { i = i + 1 }\ni", "ok 3"),
+        ("let i = 0\nwhile false { i = 1 }\ni", "ok 0"),
+        // A local declared fresh on each iteration.
+        (
+            "let i = 0\nlet sum = 0\nwhile i < 4 {\n  let step = i * 2\n  sum = sum + step\n  i = i + 1\n}\nsum",
+            "ok 12",
+        ),
+        (
+            "let i = 0\nwhile true {\n  if i == 3 { break }\n  i = i + 1\n}\ni",
+            "ok 3",
+        ),
+        (
+            "let i = 0\nlet sum = 0\nwhile i < 6 {\n  i = i + 1\n  if i % 2 == 0 { continue }\n  sum = sum + i\n}\nsum",
+            "ok 9",
+        ),
+        // break out of a loop that declared a local, leaving the stack balanced.
+        (
+            "let i = 0\nlet last = 0\nwhile i < 10 {\n  let doubled = i * 2\n  last = doubled\n  if i == 4 { break }\n  i = i + 1\n}\nlast",
+            "ok 8",
+        ),
+    ]);
+}
+
+#[test]
+fn for_in_loops_over_arrays() {
+    check_all(&[
+        ("let sum = 0\nfor x in [1, 2, 3, 4] { sum = sum + x }\nsum", "ok 10"),
+        (
+            "let s = \"\"\nfor c in [\"a\", \"b\", \"c\"] { s = s + c }\ns",
+            "ok \"abc\"",
+        ),
+        // The loop variable is fresh per iteration and does not leak out.
+        ("let i = 99\nfor i in [1, 2, 3] { }\ni", "ok 99"),
+        ("let sum = 0\nfor x in [] { sum = 1 }\nsum", "ok 0"),
+        (
+            "let sum = 0\nfor x in [1, 2, 3, 4, 5] {\n  if x == 4 { break }\n  sum = sum + x\n}\nsum",
+            "ok 6",
+        ),
+        (
+            "let sum = 0\nfor x in [1, 2, 3, 4] {\n  if x % 2 == 0 { continue }\n  sum = sum + x\n}\nsum",
+            "ok 4",
+        ),
+        (
+            "let sum = 0\nfor x in [1, 2, 3] {\n  let sq = x * x\n  sum = sum + sq\n}\nsum",
+            "ok 14",
+        ),
+        ("let sum = 0\nfor x in range(4) { sum = sum + x }\nsum", "ok 6"),
+        (
+            "let n = 0\nfor i in [1,2] { for j in [1,2,3] { n = n + 1 } }\nn",
+            "ok 6",
+        ),
+        // Only arrays are iterable, including not strings.
+        ("for x in 5 { }", "err cannot iterate over a int @ 1:10"),
+        ("for x in \"ab\" { }", "err cannot iterate over a string @ 1:10"),
+    ]);
+}
+
+#[test]
 fn a_program_evaluates_to_its_last_expression() {
     check_all(&[("1\n2\n3", "ok 3"), ("1 + 1\n2 + 2", "ok 4")]);
 }
