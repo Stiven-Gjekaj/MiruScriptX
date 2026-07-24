@@ -7,7 +7,6 @@ use std::process::ExitCode;
 const USAGE: &str = "\
 Usage:
   miru run <file.miru>      Run a MiruScriptX program from a file
-  miru run --vm <file>      Run it on the bytecode virtual machine (experimental)
   miru fmt <file.miru>      Format a program and print it to standard output
   miru fmt -w <file.miru>   Format a program and rewrite the file in place
   miru                      Start the interactive REPL
@@ -45,12 +44,15 @@ fn main() -> ExitCode {
 }
 
 fn run_file(args: &[String]) -> ExitCode {
-    // The tree walker is the default engine; --vm selects the bytecode VM.
-    let mut use_vm = false;
+    // The bytecode VM is the default engine. --tree-walk selects the older
+    // tree-walking interpreter, which is being retired; --vm is accepted as a
+    // no-op so existing commands keep working.
+    let mut use_tree_walker = false;
     let mut path: Option<&str> = None;
     for arg in args {
         match arg.as_str() {
-            "--vm" => use_vm = true,
+            "--vm" => use_tree_walker = false,
+            "--tree-walk" => use_tree_walker = true,
             other if other.starts_with("--") => {
                 return usage_error(&format!("unknown option '{other}' for 'run'"));
             }
@@ -76,10 +78,10 @@ fn run_file(args: &[String]) -> ExitCode {
     };
 
     let out = Box::new(std::io::stdout());
-    let result = if use_vm {
-        miruscriptx::run_source_vm(&source, out)
-    } else {
+    let result = if use_tree_walker {
         miruscriptx::run_source(&source, out)
+    } else {
+        miruscriptx::run_source_vm(&source, out)
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
