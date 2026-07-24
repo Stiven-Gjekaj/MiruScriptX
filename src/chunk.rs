@@ -54,6 +54,9 @@ pub enum OpCode {
     /// Jump forward if the top of the stack is truthy (peeked, not popped). Two
     /// operand bytes.
     JumpIfTrue,
+    /// Jump backward unconditionally, for looping. Two operand bytes: a
+    /// big-endian distance that is subtracted.
+    Loop,
     /// Replace the top of the stack with its truthiness as a bool.
     Truthy,
     /// Push the value of a local variable. One operand byte: its stack slot.
@@ -95,6 +98,7 @@ impl OpCode {
             b if b == Jump as u8 => Jump,
             b if b == JumpIfFalse as u8 => JumpIfFalse,
             b if b == JumpIfTrue as u8 => JumpIfTrue,
+            b if b == Loop as u8 => Loop,
             b if b == Truthy as u8 => Truthy,
             b if b == GetLocal as u8 => GetLocal,
             b if b == SetLocal as u8 => SetLocal,
@@ -131,6 +135,7 @@ impl OpCode {
             OpCode::Jump => "JUMP",
             OpCode::JumpIfFalse => "JUMP_IF_FALSE",
             OpCode::JumpIfTrue => "JUMP_IF_TRUE",
+            OpCode::Loop => "LOOP",
             OpCode::Truthy => "TRUTHY",
             OpCode::GetLocal => "GET_LOCAL",
             OpCode::SetLocal => "SET_LOCAL",
@@ -216,6 +221,13 @@ impl Chunk {
                 let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
                 let target = offset + 3 + ((high << 8) | low);
                 let _ = writeln!(out, "{:<14}{offset} -> {target}", op.name());
+                offset + 3
+            }
+            Some(OpCode::Loop) => {
+                let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let target = (offset + 3).saturating_sub((high << 8) | low);
+                let _ = writeln!(out, "{:<14}{offset} -> {target}", OpCode::Loop.name());
                 offset + 3
             }
             Some(op @ (OpCode::GetLocal | OpCode::SetLocal)) => {

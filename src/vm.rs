@@ -112,6 +112,10 @@ impl Vm {
                         ip += offset as usize;
                     }
                 }
+                OpCode::Loop => {
+                    let offset = read_u16(chunk, ip);
+                    ip = ip + 2 - offset as usize;
+                }
                 OpCode::Truthy => {
                     let value = self.pop();
                     self.stack.push(Value::Bool(value.is_truthy()));

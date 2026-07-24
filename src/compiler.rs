@@ -22,6 +22,18 @@ struct Local {
     depth: usize,
 }
 
+/// Bookkeeping for the loop currently being compiled, so `break` and `continue`
+/// know where to jump and how many locals to discard first.
+struct LoopContext {
+    /// Where `continue` jumps back to (the condition check).
+    start: usize,
+    /// The scope depth of the loop body; locals at or below it are popped when
+    /// `break` or `continue` leaves the current iteration.
+    body_depth: usize,
+    /// Offsets of `break` jumps to patch to the loop's exit.
+    breaks: Vec<usize>,
+}
+
 /// Compiles an AST into a [`Chunk`].
 pub struct Compiler {
     chunk: Chunk,
@@ -29,6 +41,8 @@ pub struct Compiler {
     scope_depth: usize,
     /// Locals currently in scope, in stack order.
     locals: Vec<Local>,
+    /// The stack of loops enclosing the code being compiled.
+    loops: Vec<LoopContext>,
 }
 
 impl Compiler {
@@ -40,6 +54,7 @@ impl Compiler {
             chunk: Chunk::new(),
             scope_depth: 0,
             locals: Vec::new(),
+            loops: Vec::new(),
         };
         compiler.program(program)?;
         let (line, column) = program.last().map(|stmt| (stmt.line, 1)).unwrap_or((0, 0));
@@ -110,6 +125,9 @@ impl Compiler {
                 then_branch,
                 else_branch,
             } => self.if_statement(condition, then_branch, else_branch.as_deref())?,
+            StmtKind::While { condition, body } => self.while_statement(condition, body)?,
+            StmtKind::Break => self.break_statement(stmt.line)?,
+            StmtKind::Continue => self.continue_statement(stmt.line)?,
             _ => {
                 return Err(MiruError::new(
                     stmt.line,
@@ -118,6 +136,78 @@ impl Compiler {
             }
         }
         Ok(())
+    }
+
+    /// Compile `while cond { .. }`. The condition is re-checked at the top of each
+    /// iteration; `Loop` jumps back to it, and `break` jumps past the whole loop.
+    fn while_statement(&mut self, condition: &Expr, body: &[Stmt]) -> Result<(), MiruError> {
+        let line = condition.line;
+        let column = condition.column;
+        let loop_start = self.chunk.code.len();
+        self.expression(condition)?;
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse, line, column);
+        self.chunk.write_op(OpCode::Pop, line, column);
+        self.begin_scope();
+        self.loops.push(LoopContext {
+            start: loop_start,
+            body_depth: self.scope_depth,
+            breaks: Vec::new(),
+        });
+        for stmt in body {
+            self.statement(stmt)?;
+        }
+        let context = self.loops.pop().expect("loop context");
+        let (end_line, end_column) = body.last().map(|s| (s.line, 1)).unwrap_or((line, column));
+        self.end_scope(end_line, end_column);
+        self.emit_loop(loop_start, line, column)?;
+        self.patch_jump(exit_jump)?;
+        self.chunk.write_op(OpCode::Pop, line, column);
+        for break_jump in context.breaks {
+            self.patch_jump(break_jump)?;
+        }
+        Ok(())
+    }
+
+    fn break_statement(&mut self, line: usize) -> Result<(), MiruError> {
+        let Some(body_depth) = self.loops.last().map(|context| context.body_depth) else {
+            return Err(MiruError::new(line, "break outside of a loop"));
+        };
+        self.pop_locals_to_depth(body_depth, line, 1);
+        let jump = self.emit_jump(OpCode::Jump, line, 1);
+        self.loops
+            .last_mut()
+            .expect("loop context")
+            .breaks
+            .push(jump);
+        Ok(())
+    }
+
+    fn continue_statement(&mut self, line: usize) -> Result<(), MiruError> {
+        let Some((start, body_depth)) = self
+            .loops
+            .last()
+            .map(|context| (context.start, context.body_depth))
+        else {
+            return Err(MiruError::new(line, "continue outside of a loop"));
+        };
+        self.pop_locals_to_depth(body_depth, line, 1);
+        self.emit_loop(start, line, 1)
+    }
+
+    /// Emit a `Pop` for each local at or deeper than `min_depth` without removing
+    /// them from the compiler's list, since later code in the same scope still
+    /// sees them. Used by `break` and `continue`, which jump over the normal
+    /// end-of-scope cleanup.
+    fn pop_locals_to_depth(&mut self, min_depth: usize, line: usize, column: usize) {
+        let count = self
+            .locals
+            .iter()
+            .rev()
+            .take_while(|local| local.depth >= min_depth)
+            .count();
+        for _ in 0..count {
+            self.chunk.write_op(OpCode::Pop, line, column);
+        }
     }
 
     /// Compile a block of statements in a nested scope, popping any locals it
@@ -279,6 +369,17 @@ impl Compiler {
             .map_err(|_| MiruError::new(0, "the compiled body is too large to jump over"))?;
         self.chunk.code[operand] = (distance >> 8) as u8;
         self.chunk.code[operand + 1] = (distance & 0xff) as u8;
+        Ok(())
+    }
+
+    /// Emit a backward `Loop` jump to `target` (an earlier code offset).
+    fn emit_loop(&mut self, target: usize, line: usize, column: usize) -> Result<(), MiruError> {
+        self.chunk.write_op(OpCode::Loop, line, column);
+        let distance = self.chunk.code.len() + 2 - target;
+        let distance = u16::try_from(distance)
+            .map_err(|_| MiruError::new(0, "the loop body is too large to compile"))?;
+        self.chunk.write((distance >> 8) as u8, line, column);
+        self.chunk.write((distance & 0xff) as u8, line, column);
         Ok(())
     }
 
@@ -466,6 +567,35 @@ mod tests {
             "let total = 0\nif true {\n  let a = 1\n  if true {\n    let b = 2\n    total = a + b\n  }\n}\ntotal",
             // Assigning to a local inside the block.
             "let out = 0\nif true {\n  let c = 1\n  c = c + 5\n  out = c\n}\nout",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_while_loops() {
+        let corpus = [
+            "let i = 0\nlet sum = 0\nwhile i < 5 { sum = sum + i\ni = i + 1 }\nsum",
+            "let i = 0\nwhile i < 3 { i = i + 1 }\ni",
+            "let i = 0\nwhile false { i = 1 }\ni",
+            // A local declared in the loop body each iteration.
+            "let i = 0\nlet sum = 0\nwhile i < 4 {\n  let step = i * 2\n  sum = sum + step\n  i = i + 1\n}\nsum",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_break_and_continue() {
+        let corpus = [
+            // break stops the loop early.
+            "let i = 0\nwhile true {\n  if i == 3 { break }\n  i = i + 1\n}\ni",
+            // continue skips the rest of an iteration.
+            "let i = 0\nlet sum = 0\nwhile i < 6 {\n  i = i + 1\n  if i % 2 == 0 { continue }\n  sum = sum + i\n}\nsum",
+            // break out of a loop that declares a local.
+            "let i = 0\nlet last = 0\nwhile i < 10 {\n  let doubled = i * 2\n  last = doubled\n  if i == 4 { break }\n  i = i + 1\n}\nlast",
         ];
         for source in corpus {
             agree(source);
