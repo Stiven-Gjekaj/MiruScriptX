@@ -20,6 +20,7 @@ use crate::value::Input;
 pub mod ast;
 pub mod builtins;
 pub mod chunk;
+pub mod compiler;
 pub mod environment;
 pub mod formatter;
 pub mod interpreter;
@@ -37,6 +38,23 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn parse_program(source: &str) -> Result<Vec<ast::Stmt>, MiruError> {
     let tokens = lexer::Lexer::tokenize(source)?;
     parser::Parser::parse(tokens)
+}
+
+/// Evaluate a program with the tree walker and return the value of its final
+/// expression (what the REPL echoes), discarding any output. This is the
+/// tree-walker side of the differential tests that keep the two engines in step.
+pub fn eval_source(source: &str) -> Result<value::Value, MiruError> {
+    let program = parse_program(source)?;
+    let mut interpreter = interpreter::Interpreter::with_output(Box::new(std::io::sink()));
+    interpreter.run_program(&program)
+}
+
+/// Evaluate a program with the bytecode VM and return the value left on the
+/// stack. The counterpart to [`eval_source`] for differential testing.
+pub fn eval_source_vm(source: &str) -> Result<value::Value, MiruError> {
+    let program = parse_program(source)?;
+    let chunk = compiler::Compiler::compile(&program)?;
+    vm::Vm::new().interpret(&chunk)
 }
 
 /// Lex, parse, and reprint a source string in the canonical `miru fmt` style,
