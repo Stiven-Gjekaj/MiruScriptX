@@ -89,6 +89,58 @@ pub fn run_source_vm(source: &str, out: Box<dyn Write>) -> Result<(), MiruError>
     Ok(())
 }
 
+/// An interactive session: a virtual machine whose globals persist from one
+/// program to the next, so a variable or function defined by one input is still
+/// there for the next. The REPL is built on this.
+///
+/// A failed input reports its error and leaves the session usable, so a typo or
+/// a runtime error does not end the session or corrupt what came before.
+pub struct Session {
+    vm: vm::Vm,
+}
+
+impl Default for Session {
+    fn default() -> Self {
+        Session::new()
+    }
+}
+
+impl Session {
+    /// A session that prints to standard output and reads standard input.
+    pub fn new() -> Session {
+        let mut session = Session::with_output(Box::new(std::io::stdout()));
+        session.vm.set_input(Box::new(StdinInput));
+        session
+    }
+
+    /// A session that prints to a custom sink, as tests do.
+    pub fn with_output(out: Box<dyn Write>) -> Session {
+        Session {
+            vm: vm::Vm::with_output(out),
+        }
+    }
+
+    /// Replace the input source that `input()` reads from.
+    pub fn set_input(&mut self, input: Box<dyn Input>) {
+        self.vm.set_input(input);
+    }
+
+    /// Parse, compile, and run one input against the session's accumulated
+    /// state, returning the value of its final expression (or `nil`).
+    pub fn eval(&mut self, source: &str) -> Result<value::Value, MiruError> {
+        let program = parse_program(source)?;
+        let script = compiler::Compiler::compile(&program)?;
+        let value = self.vm.interpret(script)?;
+        self.vm.flush();
+        Ok(value)
+    }
+
+    /// Flush anything the session has buffered.
+    pub fn flush(&mut self) {
+        self.vm.flush();
+    }
+}
+
 /// Run a source string and capture everything it printed. Handy for tests and
 /// tooling that needs the output as a string rather than on a stream.
 pub fn run_capture(source: &str) -> Result<String, MiruError> {
