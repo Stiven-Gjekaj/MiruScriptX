@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use crate::ast::Stmt;
+use crate::chunk::Chunk;
 use crate::environment::Env;
 use crate::interpreter::Interpreter;
 use crate::MiruError;
@@ -39,12 +40,29 @@ impl Input for EmptyInput {
 pub type BuiltinFn = fn(&mut dyn Output, &mut dyn Input, Vec<Value>) -> Result<Value, String>;
 
 /// A user-defined function together with the environment it closed over. The
-/// captured `closure` is what makes closures and recursion work.
+/// captured `closure` is what makes closures and recursion work. This is the
+/// tree walker's function representation.
 pub struct Function {
     pub name: Option<String>,
     pub params: Vec<String>,
     pub body: Vec<Stmt>,
     pub closure: Env,
+}
+
+/// A function compiled to bytecode, for the virtual machine. The whole program
+/// is itself one of these (an anonymous script). Upvalues are added when
+/// closures land.
+pub struct CompiledFunction {
+    pub name: Option<String>,
+    pub arity: usize,
+    pub chunk: Chunk,
+}
+
+/// A [`CompiledFunction`] as a runtime value. It will grow captured upvalues; for
+/// now it simply wraps the function so the calling machinery is already in terms
+/// of closures.
+pub struct Closure {
+    pub function: Rc<CompiledFunction>,
 }
 
 /// A native function implemented in Rust and exposed to programs.
@@ -77,6 +95,7 @@ pub enum Value {
     Array(Rc<RefCell<Vec<Value>>>),
     Map(Rc<RefCell<BTreeMap<String, Value>>>),
     Function(Rc<Function>),
+    Closure(Rc<Closure>),
     Builtin(Builtin),
     HostBuiltin(HostBuiltin),
     Nil,
@@ -92,7 +111,9 @@ impl Value {
             Value::Str(_) => "string",
             Value::Array(_) => "array",
             Value::Map(_) => "map",
-            Value::Function(_) | Value::Builtin(_) | Value::HostBuiltin(_) => "function",
+            Value::Function(_) | Value::Closure(_) | Value::Builtin(_) | Value::HostBuiltin(_) => {
+                "function"
+            }
             Value::Nil => "nil",
         }
     }
@@ -136,6 +157,10 @@ impl Value {
                 Some(name) => format!("<fn {name}>"),
                 None => "<fn>".to_string(),
             },
+            Value::Closure(closure) => match &closure.function.name {
+                Some(name) => format!("<fn {name}>"),
+                None => "<fn>".to_string(),
+            },
             Value::Builtin(builtin) => format!("<builtin {}>", builtin.name),
             Value::HostBuiltin(builtin) => format!("<builtin {}>", builtin.name),
         }
@@ -157,6 +182,7 @@ impl Value {
                 a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.equals(y))
             }
             (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
+            (Value::Closure(a), Value::Closure(b)) => Rc::ptr_eq(a, b),
             (Value::Builtin(a), Value::Builtin(b)) => a.name == b.name,
             (Value::HostBuiltin(a), Value::HostBuiltin(b)) => a.name == b.name,
             (Value::Map(a), Value::Map(b)) => {

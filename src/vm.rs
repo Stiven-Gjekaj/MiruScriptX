@@ -14,14 +14,23 @@ use std::rc::Rc;
 
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
-use crate::value::Value;
+use crate::value::{Closure, CompiledFunction, Value};
 use crate::MiruError;
+
+/// A single active function call: which closure is running, where its
+/// instruction pointer sits, and where its window of stack slots begins.
+struct CallFrame {
+    closure: Rc<Closure>,
+    ip: usize,
+    slot_base: usize,
+}
 
 /// A stack-based bytecode interpreter.
 #[derive(Default)]
 pub struct Vm {
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
+    frames: Vec<CallFrame>,
 }
 
 impl Vm {
@@ -29,12 +38,29 @@ impl Vm {
         Vm::default()
     }
 
-    /// Execute a chunk to completion, returning the value left on top of the
-    /// stack (or `nil` if the stack is empty). Runtime errors carry the source
-    /// position of the instruction that failed.
-    pub fn interpret(&mut self, chunk: &Chunk) -> Result<Value, MiruError> {
-        let mut ip = 0;
-        while ip < chunk.code.len() {
+    /// Execute a compiled program. The whole program is itself a function (an
+    /// anonymous script), so running it is just calling that function and reading
+    /// back the value it returns.
+    pub fn interpret(&mut self, script: Rc<CompiledFunction>) -> Result<Value, MiruError> {
+        let closure = Rc::new(Closure { function: script });
+        self.frames.push(CallFrame {
+            closure,
+            ip: 0,
+            slot_base: 0,
+        });
+        self.run()
+    }
+
+    fn run(&mut self) -> Result<Value, MiruError> {
+        // Keep the current frame's closure, instruction pointer, and stack base in
+        // locals. `closure` is a cloned handle, so `chunk` borrows it rather than
+        // `self`, leaving `self` free to mutate as instructions execute. The three
+        // are resynced from the frame stack whenever a call or return changes it.
+        let mut closure = Rc::clone(&self.frames.last().expect("a call frame").closure);
+        let mut ip = self.frames.last().expect("a call frame").ip;
+        let mut slot_base = self.frames.last().expect("a call frame").slot_base;
+        loop {
+            let chunk = &closure.function.chunk;
             let op_ip = ip;
             let byte = chunk.code[ip];
             ip += 1;
@@ -125,14 +151,14 @@ impl Vm {
                 OpCode::GetLocal => {
                     let slot = chunk.code[ip] as usize;
                     ip += 1;
-                    let value = self.stack[slot].clone();
+                    let value = self.stack[slot_base + slot].clone();
                     self.stack.push(value);
                 }
                 OpCode::SetLocal => {
                     let slot = chunk.code[ip] as usize;
                     ip += 1;
                     let value = self.pop();
-                    self.stack[slot] = value;
+                    self.stack[slot_base + slot] = value;
                 }
                 OpCode::Array => {
                     let count = chunk.code[ip] as usize;
@@ -159,7 +185,7 @@ impl Vm {
                     }
                 }
                 OpCode::ForNext => {
-                    let seq_slot = chunk.code[ip] as usize;
+                    let seq_slot = slot_base + chunk.code[ip] as usize;
                     let jump = read_u16(chunk, ip + 1);
                     ip += 3;
                     let index = match &self.stack[seq_slot + 1] {
@@ -181,13 +207,85 @@ impl Vm {
                         self.stack[seq_slot + 1] = Value::Int(index + 1);
                     }
                 }
+                OpCode::Closure => {
+                    let index = chunk.code[ip] as usize;
+                    ip += 1;
+                    let function = Rc::clone(&chunk.functions[index]);
+                    self.stack
+                        .push(Value::Closure(Rc::new(Closure { function })));
+                }
+                OpCode::Call => {
+                    let argcount = chunk.code[ip] as usize;
+                    ip += 1;
+                    // Save where to resume, then enter the callee's frame.
+                    self.frames.last_mut().expect("a call frame").ip = ip;
+                    self.call_value(argcount, chunk, op_ip)?;
+                    let frame = self.frames.last().expect("a call frame");
+                    closure = Rc::clone(&frame.closure);
+                    ip = frame.ip;
+                    slot_base = frame.slot_base;
+                    continue;
+                }
                 OpCode::Pop => {
                     self.pop();
                 }
-                OpCode::Return => return Ok(self.stack.pop().unwrap_or(Value::Nil)),
+                OpCode::Return => {
+                    let result = self.pop();
+                    let frame = self.frames.pop().expect("a call frame");
+                    if self.frames.is_empty() {
+                        return Ok(result);
+                    }
+                    // Drop the callee and its arguments and locals, then leave the
+                    // return value where the call expression's result belongs.
+                    self.stack.truncate(frame.slot_base - 1);
+                    self.stack.push(result);
+                    let caller = self.frames.last().expect("a call frame");
+                    closure = Rc::clone(&caller.closure);
+                    ip = caller.ip;
+                    slot_base = caller.slot_base;
+                    continue;
+                }
             }
         }
-        Ok(self.stack.pop().unwrap_or(Value::Nil))
+    }
+
+    /// Enter a function call: the callee sits just beneath its `argcount`
+    /// arguments on the stack. Pushes a new frame, or fails if the callee is not
+    /// callable or the arity is wrong.
+    fn call_value(
+        &mut self,
+        argcount: usize,
+        chunk: &Chunk,
+        op_ip: usize,
+    ) -> Result<(), MiruError> {
+        let callee = self.stack[self.stack.len() - argcount - 1].clone();
+        match callee {
+            Value::Closure(closure) => {
+                let arity = closure.function.arity;
+                if argcount != arity {
+                    let name = closure.function.name.as_deref().unwrap_or("<anonymous>");
+                    return Err(runtime_error(
+                        chunk,
+                        op_ip,
+                        format!(
+                            "function {name} expects {arity} argument(s) but received {argcount}"
+                        ),
+                    ));
+                }
+                let slot_base = self.stack.len() - argcount;
+                self.frames.push(CallFrame {
+                    closure,
+                    ip: 0,
+                    slot_base,
+                });
+                Ok(())
+            }
+            other => Err(runtime_error(
+                chunk,
+                op_ip,
+                format!("a {} is not callable", other.type_name()),
+            )),
+        }
     }
 
     fn unary(&mut self, op: UnaryOp, chunk: &Chunk, offset: usize) -> Result<(), MiruError> {
@@ -267,7 +365,12 @@ mod tests {
         let mut chunk = Chunk::new();
         build(&mut chunk);
         chunk.write_op(OpCode::Return, 1, 1);
-        Vm::new().interpret(&chunk)
+        let script = Rc::new(CompiledFunction {
+            name: None,
+            arity: 0,
+            chunk,
+        });
+        Vm::new().interpret(script)
     }
 
     fn constant(chunk: &mut Chunk, value: Value) {

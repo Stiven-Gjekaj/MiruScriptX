@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
-use crate::value::Value;
+use crate::value::{CompiledFunction, Value};
 use crate::MiruError;
 
 /// A local variable in scope during compilation, at a known stack slot (its
@@ -46,20 +46,28 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    /// Compile a whole program into a chunk that ends in a `Return`. The value
-    /// returned by the VM is that of the program's final expression, matching
-    /// what the tree walker's `run_program` yields.
-    pub fn compile(program: &[Stmt]) -> Result<Chunk, MiruError> {
-        let mut compiler = Compiler {
+    fn new() -> Compiler {
+        Compiler {
             chunk: Chunk::new(),
             scope_depth: 0,
             locals: Vec::new(),
             loops: Vec::new(),
-        };
+        }
+    }
+
+    /// Compile a whole program into a script function whose chunk ends in a
+    /// `Return`. The value the VM returns is that of the program's final
+    /// expression, matching what the tree walker's `run_program` yields.
+    pub fn compile(program: &[Stmt]) -> Result<Rc<CompiledFunction>, MiruError> {
+        let mut compiler = Compiler::new();
         compiler.program(program)?;
         let (line, column) = program.last().map(|stmt| (stmt.line, 1)).unwrap_or((0, 0));
         compiler.chunk.write_op(OpCode::Return, line, column);
-        Ok(compiler.chunk)
+        Ok(Rc::new(CompiledFunction {
+            name: None,
+            arity: 0,
+            chunk: compiler.chunk,
+        }))
     }
 
     fn program(&mut self, program: &[Stmt]) -> Result<(), MiruError> {
@@ -133,13 +141,59 @@ impl Compiler {
             } => self.for_statement(name, iterable, body)?,
             StmtKind::Break => self.break_statement(stmt.line)?,
             StmtKind::Continue => self.continue_statement(stmt.line)?,
-            _ => {
-                return Err(MiruError::new(
-                    stmt.line,
-                    "the bytecode VM does not support this statement yet",
-                ));
+            StmtKind::Return(value) => {
+                match value {
+                    Some(expr) => self.expression(expr)?,
+                    None => self.chunk.write_op(OpCode::Nil, stmt.line, 1),
+                }
+                // Return unwinds the whole call frame, so locals need no cleanup.
+                self.chunk.write_op(OpCode::Return, stmt.line, 1);
+            }
+            StmtKind::Function { name, params, body } => {
+                self.function(Some(name), params, body, stmt.line, 1)?;
+                if self.scope_depth == 0 {
+                    self.named_global(OpCode::DefineGlobal, name, stmt.line, 1)?;
+                } else {
+                    self.declare_local(name, stmt.line)?;
+                }
             }
         }
+        Ok(())
+    }
+
+    /// Compile a function's parameters and body into a nested [`CompiledFunction`]
+    /// and emit a `Closure` in the current chunk that builds it at runtime.
+    fn function(
+        &mut self,
+        name: Option<&str>,
+        params: &[String],
+        body: &[Stmt],
+        line: usize,
+        column: usize,
+    ) -> Result<(), MiruError> {
+        let mut sub = Compiler::new();
+        // Inside a function, declarations are local; parameters take the first
+        // slots (0..arity), where the call places the arguments.
+        sub.scope_depth = 1;
+        for param in params {
+            sub.declare_local(param, line)?;
+        }
+        for stmt in body {
+            sub.statement(stmt)?;
+        }
+        // A function that runs off the end returns nil.
+        sub.chunk.write_op(OpCode::Nil, line, column);
+        sub.chunk.write_op(OpCode::Return, line, column);
+
+        let function = Rc::new(CompiledFunction {
+            name: name.map(str::to_string),
+            arity: params.len(),
+            chunk: sub.chunk,
+        });
+        let index = u8::try_from(self.chunk.add_function(function))
+            .map_err(|_| MiruError::with_column(line, column, "too many functions in one chunk"))?;
+        self.chunk.write_op(OpCode::Closure, line, column);
+        self.chunk.write(index, line, column);
         Ok(())
     }
 
@@ -396,6 +450,19 @@ impl Compiler {
                 self.expression(right)?;
                 self.chunk.write_op(OpCode::Truthy, line, column);
                 self.patch_jump(jump)?;
+            }
+            ExprKind::Call { callee, arguments } => {
+                self.expression(callee)?;
+                let argcount = u8::try_from(arguments.len())
+                    .map_err(|_| MiruError::with_column(line, column, "too many call arguments"))?;
+                for argument in arguments {
+                    self.expression(argument)?;
+                }
+                self.chunk.write_op(OpCode::Call, line, column);
+                self.chunk.write(argcount, line, column);
+            }
+            ExprKind::Function { params, body } => {
+                self.function(None, params, body, line, column)?;
             }
             _ => {
                 return Err(MiruError::with_column(
@@ -690,6 +757,35 @@ mod tests {
             "let sum = 0\nfor x in [1, 2, 3] {\n  let sq = x * x\n  sum = sum + sq\n}\nsum",
             // Iterating a non-array is the same error at the same place.
             "for x in 5 { }",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_functions() {
+        let corpus = [
+            "fn add(a, b) { return a + b }\nadd(2, 3)",
+            "fn square(x) { return x * x }\nsquare(9)",
+            // A function value is first class.
+            "fn greet() { return \"hi\" }\ngreet",
+            // No explicit return yields nil.
+            "fn nothing() { }\nnothing()",
+            // Recursion through a global name.
+            "fn fib(n) {\n  if n < 2 { return n }\n  return fib(n - 1) + fib(n - 2)\n}\nfib(10)",
+            "fn fact(n) {\n  if n < 2 { return 1 }\n  return n * fact(n - 1)\n}\nfact(6)",
+            // A function called from a loop, accumulating into a global.
+            "fn double(x) { return x * 2 }\nlet sum = 0\nfor x in [1, 2, 3] { sum = sum + double(x) }\nsum",
+            // Anonymous function bound to a variable.
+            "let inc = fn(x) { return x + 1 }\ninc(41)",
+            // Early return from inside control flow.
+            "fn sign(n) {\n  if n > 0 { return 1 }\n  if n < 0 { return -1 }\n  return 0\n}\nsign(-8)",
+            // Local parameters do not leak to globals.
+            "fn use_it(p) { return p * 10 }\nlet r = use_it(4)\nr",
+            // Errors: wrong arity and calling a non-function, at the call site.
+            "fn one(a) { return a }\none(1, 2)",
+            "let x = 5\nx(1)",
         ];
         for source in corpus {
             agree(source);

@@ -53,8 +53,8 @@ pub fn eval_source(source: &str) -> Result<value::Value, MiruError> {
 /// stack. The counterpart to [`eval_source`] for differential testing.
 pub fn eval_source_vm(source: &str) -> Result<value::Value, MiruError> {
     let program = parse_program(source)?;
-    let chunk = compiler::Compiler::compile(&program)?;
-    vm::Vm::new().interpret(&chunk)
+    let script = compiler::Compiler::compile(&program)?;
+    vm::Vm::new().interpret(script)
 }
 
 /// Lex, parse, and reprint a source string in the canonical `miru fmt` style,

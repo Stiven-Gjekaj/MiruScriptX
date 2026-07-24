@@ -6,7 +6,9 @@
 //! VM can point a caret at the exact place a runtime error happened, just as the
 //! tree walker does from the AST.
 
-use crate::value::Value;
+use std::rc::Rc;
+
+use crate::value::{CompiledFunction, Value};
 
 /// A single virtual-machine instruction. Encoded as one byte in a chunk,
 /// sometimes followed by operand bytes (for example, [`OpCode::Constant`] is
@@ -75,6 +77,12 @@ pub enum OpCode {
     /// the index is past the end, jump by the distance; otherwise push the next
     /// element and advance the index.
     ForNext,
+    /// Push a closure built from a nested function. One operand byte: the
+    /// function's index in the chunk's function pool.
+    Closure,
+    /// Call the value beneath the arguments on the stack. One operand byte: the
+    /// argument count.
+    Call,
     /// Discard the value on top of the stack.
     Pop,
     /// Return from the current function (or end the program).
@@ -116,6 +124,8 @@ impl OpCode {
             b if b == Array as u8 => Array,
             b if b == IterSnapshot as u8 => IterSnapshot,
             b if b == ForNext as u8 => ForNext,
+            b if b == Closure as u8 => Closure,
+            b if b == Call as u8 => Call,
             b if b == Pop as u8 => Pop,
             b if b == Return as u8 => Return,
             _ => return None,
@@ -156,6 +166,8 @@ impl OpCode {
             OpCode::Array => "ARRAY",
             OpCode::IterSnapshot => "ITER_SNAPSHOT",
             OpCode::ForNext => "FOR_NEXT",
+            OpCode::Closure => "CLOSURE",
+            OpCode::Call => "CALL",
             OpCode::Pop => "POP",
             OpCode::Return => "RETURN",
         }
@@ -170,6 +182,8 @@ pub struct Chunk {
     pub constants: Vec<Value>,
     /// One `(line, column)` per byte in `code`, so `code.len() == positions.len()`.
     pub positions: Vec<(usize, usize)>,
+    /// Nested functions this chunk can turn into closures, by index.
+    pub functions: Vec<Rc<CompiledFunction>>,
 }
 
 impl Chunk {
@@ -193,6 +207,12 @@ impl Chunk {
     pub fn add_constant(&mut self, value: Value) -> usize {
         self.constants.push(value);
         self.constants.len() - 1
+    }
+
+    /// Add a nested function and return its index, for use as a `Closure` operand.
+    pub fn add_function(&mut self, function: Rc<CompiledFunction>) -> usize {
+        self.functions.push(function);
+        self.functions.len() - 1
     }
 
     /// The source position of the byte at `offset`, or `(0, 0)` when unknown.
@@ -252,9 +272,9 @@ impl Chunk {
                 let _ = writeln!(out, "{:<14}slot {slot}", op.name());
                 offset + 2
             }
-            Some(OpCode::Array) => {
-                let count = self.code.get(offset + 1).copied().unwrap_or(0);
-                let _ = writeln!(out, "{:<14}{count}", OpCode::Array.name());
+            Some(op @ (OpCode::Array | OpCode::Call | OpCode::Closure)) => {
+                let operand = self.code.get(offset + 1).copied().unwrap_or(0);
+                let _ = writeln!(out, "{:<14}{operand}", op.name());
                 offset + 2
             }
             Some(OpCode::ForNext) => {
