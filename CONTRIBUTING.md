@@ -48,11 +48,15 @@ Every change must keep the project green. Run these locally, exactly as CI does:
 - `cargo test` runs the unit tests (next to each module) and the end-to-end
   tests in `tests/`. Add tests for anything you change.
 
-MiruScriptX has two execution engines, the tree-walking interpreter and the
-bytecode VM, and they must behave identically. If you change how programs are
-evaluated, extend the differential tests in `src/compiler.rs`, which run the same
-source on both engines and compare the value and any error. Benchmarks live in
-`benches/`; run them with `cargo bench`.
+If you change how programs are evaluated, add cases to `tests/golden.rs`, which
+pairs each program with the exact outcome it must produce, including the line
+and column an error points at. Write those expectations as literals: a test that
+regenerates its expected value cannot fail, and so cannot catch a regression.
+
+Benchmarks live in `benches/`; run them with `cargo bench`. Read the module docs
+there before drawing a conclusion from one. The harness has a noise floor of
+roughly four percent that looks exactly like a real result, so a change under
+five percent is unmeasured rather than small.
 
 ## Coding style
 
@@ -69,9 +73,9 @@ source on both engines and compare the value and any error. Benchmarks live in
 
 ## Where things live
 
-See `docs/architecture.md` for a tour of the pipeline (lexer, parser,
-interpreter, builtins) and notes on how to add a builtin, an operator, or a
-statement.
+See `docs/architecture.md` for a tour of the pipeline (lexer, parser, compiler,
+virtual machine, builtins) and notes on how to add a builtin, an operator, a
+statement, or an opcode.
 
 ## Commit messages and pull requests
 

@@ -224,13 +224,16 @@ scripts/     build_reference.sh regenerates the single-page reference
 cargo test
 ```
 
-Unit tests sit next to each module; the integration tests in `tests/` run the
-compiled binary against the example programs. Differential tests run the same
-programs on both engines and require identical values, errors, and output, so
-the two can never quietly diverge. The same checks run in CI, along with
-`cargo fmt --check` and `cargo clippy -D warnings`.
+Unit tests sit next to each module. Beyond those, `tests/golden.rs` pins a
+corpus of programs to the exact result each must produce, values and errors
+alike, down to the line and column a caret points at. Those expectations are
+literals rather than regenerated, so a test cannot quietly absorb a change in
+behavior, which is what made rewriting the engine's hot paths safe.
+`tests/integration.rs` runs the compiled binary against the example programs.
+The same checks run in CI, along with `cargo fmt --check` and
+`cargo clippy -D warnings`.
 
-Benchmark the engines against each other with:
+Benchmark the engine with:
 
 ```
 cargo bench

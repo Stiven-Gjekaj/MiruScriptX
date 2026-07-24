@@ -4,8 +4,8 @@ MiruScriptX is a small, general-purpose scripting language. If you have written
 a little JavaScript, Python, or Lua, it will feel familiar: dynamic types, a
 clean syntax, first-class functions, and arrays.
 
-Programs live in files with a `.miru` extension and run through a tree-walking
-interpreter written in Rust.
+Programs live in files with a `.miru` extension. They are compiled to bytecode
+and run on a stack virtual machine, all written in Rust from scratch.
 
 ## Hello, world
 

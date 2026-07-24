@@ -21,9 +21,14 @@ For a single searchable page covering everything in this wiki, see the
 
 ## See how it works
 
-Curious how the interpreter is built? The
+Curious how the language is built? The
 [architecture guide](../docs/architecture.md) walks through the lexer, parser,
-and evaluator.
+compiler, and virtual machine. You can also see the bytecode for any program
+yourself:
+
+```
+miru disasm hello.miru
+```
 
 ## What is coming
 
