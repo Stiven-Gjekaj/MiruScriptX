@@ -127,19 +127,21 @@ miru fmt -w hello.miru
 
 Comments and single blank lines between sections are kept.
 
-## Try the bytecode engine
+## How your program runs
 
-MiruScriptX can run your program two ways. By default it walks the syntax tree
-directly. It can also compile the program to bytecode and run that on a virtual
-machine, which is faster:
+`miru run` compiles your program to bytecode and executes it on a virtual
+machine. You do not have to do anything to get this; it is simply how the
+language runs.
+
+MiruScriptX also still contains the older tree-walking interpreter it started
+with, which you can select with `--tree-walk`:
 
 ```
-miru run --vm hello.miru
+miru run --tree-walk hello.miru
 ```
 
-Both engines run the same language and produce the same output, so `--vm` is
-purely a speed choice. The bytecode engine is newer, so the tree-walking one
-stays the default for now.
+Both produce exactly the same results, and the tree walker is only there while
+it is being retired. There is no reason to reach for it.
 
 
 # Syntax basics

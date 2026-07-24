@@ -122,10 +122,10 @@ Reformat a program in the canonical style (add `-w` to rewrite it in place):
 miru fmt examples/greet.miru
 ```
 
-Run it on the bytecode virtual machine instead of the tree walker:
+Run it on the older tree-walking interpreter (being retired) instead:
 
 ```
-miru run --vm examples/greet.miru
+miru run --tree-walk examples/greet.miru
 ```
 
 For a step-by-step guide, start the wiki at
