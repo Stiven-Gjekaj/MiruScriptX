@@ -133,33 +133,53 @@ The VM has a fast path for two integers, but it *declines* rather than guesses:
 overflow and zero divisors fall through to `src/ops.rs`, so there is exactly one
 definition of what each operator means and which error it raises.
 
-### Two engines, one language
+### How the tree walker was replaced
 
-As of v0.3 the tree walker was the only way to run a program. v0.4 adds a second
-engine: the compiler turns the AST into bytecode once, and the VM executes that
-flat instruction stream. This avoids re-walking the tree and re-resolving names
-on every evaluation, which is where a tree walker spends much of its time. In
-benchmarks the VM runs recursive `fib` about three times faster.
+Through v0.3 a tree walker was the only engine. v0.4 built the compiler and VM
+alongside it, and v0.5 deleted the tree walker. The interesting part is the
+order, because swapping the engine underneath a language is exactly the change
+that quietly alters behavior.
 
-The two run side by side on purpose. `miru run` uses the tree walker; `miru run
---vm` uses the VM. Keeping both lets every change be checked by *differential
-testing*: the tests in `src/compiler.rs` run the same source on both engines and
-assert they produce the same value, or the same error at the same line and
-column, and the tests in `src/lib.rs` do the same for the printed output of every
-example program. A language with two independent implementations that agree is a
-strong signal that neither has drifted.
+While both engines existed they were checked against each other by *differential
+testing*: run the same source on both, and require the same value, or the same
+error message at the same line and column. Two independent implementations that
+agree are strong evidence neither has drifted.
 
-Three things make the agreement structural rather than accidental. Both engines
-use the same `Value` type; both apply operators through `src/ops.rs`, so numeric
-promotion, overflow checks, and index bounds are defined in exactly one place;
-and both reach the builtins through the `Caller` trait, so `map`, `filter`, and
-`reduce` are shared code rather than two implementations.
+That check is only as permanent as the second engine, so before deleting the
+tree walker its behavior was frozen into `tests/golden.rs`: a corpus of programs
+paired with the exact result each must produce, written as literals. A test that
+regenerates its expected value cannot fail, and so cannot catch a regression.
+Freezing first paid off immediately, by turning up a real bug: given `5[0]` the
+VM put the caret under the index and the tree walker under the target, and the
+tree walker was right.
 
-The VM's stack holds locals directly (a call is a frame push, not a heap-allocated
-scope), and closures capture variables as *upvalues*: shared cells that start out
-pointing at a live stack slot and are "closed" into owned values when that slot
-goes away. That is what lets a closure outlive the function it came from while
-still seeing writes made through the original variable.
+Deleting the differential tests then had to be shown lossless rather than
+assumed to be. Every source string in both suites was extracted and compared;
+eighteen cases the golden corpus did not cover were added before anything was
+removed.
+
+The golden corpus is what made the v0.5 optimization work safe. Every change in
+this section was made against a test suite that pins exact output and exact
+error positions, including while the hot paths were being rewritten.
+
+### Optimization is measured, not assumed
+
+`benches/vm.rs` holds eight workloads, run end to end so the numbers reflect
+`miru run` rather than the dispatch loop in isolation. The rule is that a change
+which does not move them is not an optimization and should be reverted rather
+than kept for the complexity it adds.
+
+The harness documents its own noise floor, which is worth reading before
+trusting any number it prints. Adding a public function that no benchmark calls
+measured as a 3.9% improvement, at p = 0.00, with tight confidence intervals: a
+rebuild moves where the dispatch loop falls relative to cache lines, and a tight
+interpreter loop is sensitive to it. Anything under about five percent from this
+harness is unmeasured rather than small.
+
+Over v0.5 the loop and global workloads came down by a factor of about 4.4, from
+an integer fast path, an unchecked opcode decode, hoisting the chunk pointer out
+of the dispatch loop, resolving globals to slots, and folding a constant operand
+into the operator.
 
 ### Input and output go through traits
 
