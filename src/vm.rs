@@ -1,12 +1,14 @@
 //! The bytecode virtual machine: it executes a compiled [`Chunk`] on a value
 //! stack.
 //!
-//! The VM is the second of MiruScriptX's two execution engines. It computes with
-//! the same [`Value`]s as the tree walker and applies operators through the same
-//! [`crate::ops`] functions, so the two engines agree on results and errors. What
-//! differs is how it gets there: instead of walking the AST, it runs a flat
-//! stream of bytecode, which avoids the pointer chasing and repeated name
-//! lookups that make a tree walker slow.
+//! This is how MiruScriptX runs programs. Rather than walking the syntax tree,
+//! it executes a flat stream of bytecode produced by [`crate::compiler`], which
+//! avoids re-walking the tree and re-resolving names on every evaluation.
+//!
+//! Locals live in stack slots, a call pushes a frame that windows into the same
+//! stack, and a closure captures variables as upvalues: shared cells that start
+//! out pointing at a live slot and are closed into owned values when that slot
+//! goes away. Operators and indexing go through [`crate::ops`].
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -15,7 +17,7 @@ use std::rc::Rc;
 
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
-use crate::value::{Caller, Closure, CompiledFunction, EmptyInput, Input, Output, Upvalue, Value};
+use crate::value::{Closure, CompiledFunction, EmptyInput, Input, Output, Upvalue, Value};
 use crate::MiruError;
 
 /// A single active function call: which closure is running, where its
@@ -52,16 +54,6 @@ impl Default for Vm {
 impl Output for Vm {
     fn write(&mut self, text: &str) {
         let _ = self.out.write_all(text.as_bytes());
-    }
-}
-
-impl Caller for Vm {
-    fn call_value(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError> {
-        self.call_from_host(callee, args)
-    }
-
-    fn call_error(&self, message: String) -> MiruError {
-        MiruError::with_column(self.line, self.column, message)
     }
 }
 
@@ -489,6 +481,18 @@ impl Vm {
         self.line = saved_line;
         self.column = saved_column;
         result
+    }
+
+    /// Apply a function value to arguments from outside the bytecode loop. This
+    /// is what a higher-order builtin such as `map` calls.
+    pub fn call_value(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError> {
+        self.call_from_host(callee, args)
+    }
+
+    /// Build an error at the position of the call being executed, for a builtin
+    /// to report against.
+    pub fn call_error(&self, message: String) -> MiruError {
+        MiruError::with_column(self.line, self.column, message)
     }
 
     /// Apply a function value from outside the bytecode loop, as a higher-order

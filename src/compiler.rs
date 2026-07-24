@@ -1,12 +1,8 @@
 //! The bytecode compiler: it walks the AST and emits a [`Chunk`] for the VM.
 //!
-//! This is the counterpart to the tree walker's evaluation. Where the
-//! interpreter executes each AST node as it visits it, the compiler records what
-//! to do as bytecode once, so the VM can run it without re-walking the tree.
-//!
-//! Support is added feature by feature across the v0.4 milestone; anything not
-//! yet handled compiles to a clear error, so the VM can run the growing subset
-//! it understands while the tree walker keeps running everything.
+//! Compiling happens once per program, so the work of resolving names to slots,
+//! laying out control flow as jumps, and folding each construct into
+//! instructions is paid a single time rather than on every evaluation.
 
 use std::rc::Rc;
 
@@ -86,7 +82,7 @@ impl Compiler {
 
     /// Compile a whole program into a script function whose chunk ends in a
     /// `Return`. The value the VM returns is that of the program's final
-    /// expression, matching what the tree walker's `run_program` yields.
+    /// expression, which is what the REPL echoes.
     pub fn compile(program: &[Stmt]) -> Result<Rc<CompiledFunction>, MiruError> {
         let mut compiler = Compiler::new();
         compiler.program(program)?;
@@ -107,8 +103,7 @@ impl Compiler {
         for stmt in rest {
             self.statement(stmt)?;
         }
-        // The program's value is that of a trailing expression, or nil otherwise,
-        // matching the tree walker's run_program.
+        // The program's value is that of a trailing expression, or nil otherwise.
         if let StmtKind::Expr(expr) = &last.kind {
             self.expression(expr)?;
         } else {

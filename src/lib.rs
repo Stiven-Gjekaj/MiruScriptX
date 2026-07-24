@@ -3,9 +3,9 @@
 //! This crate exposes the language as a library. The `miru` binary in
 //! `src/main.rs` wraps it with a command line interface and a REPL.
 //!
-//! The pipeline is a classic tree walker: source text is turned into tokens by
-//! the [`lexer`], parsed into an abstract syntax tree by the [`parser`], and
-//! then evaluated by the [`interpreter`].
+//! Source text is turned into tokens by the [`lexer`], parsed into an abstract
+//! syntax tree by the [`parser`], compiled to bytecode by the [`compiler`], and
+//! executed by the [`vm`].
 //!
 //! Learn the language in the `wiki/` folder and look things up in
 //! `docs/language-reference.md`.

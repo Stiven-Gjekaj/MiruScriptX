@@ -36,9 +36,8 @@ impl Input for EmptyInput {
 /// The shared signature of every native (Rust-implemented) builtin.
 pub type BuiltinFn = fn(&mut dyn Output, &mut dyn Input, Vec<Value>) -> Result<Value, String>;
 
-/// A function compiled to bytecode, for the virtual machine. The whole program
-/// is itself one of these (an anonymous script). Upvalues are added when
-/// closures land.
+/// A function compiled to bytecode. The whole program is itself one of these,
+/// an anonymous script with no parameters.
 pub struct CompiledFunction {
     pub name: Option<String>,
     pub arity: usize,
@@ -69,21 +68,9 @@ pub struct Builtin {
     pub func: BuiltinFn,
 }
 
-/// An execution engine that can apply a function value to arguments. Both the
-/// tree-walking interpreter and the bytecode VM implement this, so higher-order
-/// builtins such as `map` work identically on either engine.
-pub trait Caller {
-    /// Call `callee` with `args`, returning its result. Errors carry the current
-    /// source position of whichever engine is running.
-    fn call_value(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError>;
-
-    /// Build an error at the engine's current source position.
-    fn call_error(&self, message: String) -> MiruError;
-}
-
-/// The signature of a higher-order builtin: one handed the running engine so it
+/// The signature of a higher-order builtin: one handed the virtual machine so it
 /// can apply a function argument, for example to each element of an array.
-pub type HostFn = fn(&mut dyn Caller, Vec<Value>) -> Result<Value, MiruError>;
+pub type HostFn = fn(&mut crate::vm::Vm, Vec<Value>) -> Result<Value, MiruError>;
 
 /// A native builtin that receives the running engine, used by the higher-order
 /// builtins `map`, `filter`, and `reduce`.
