@@ -1,77 +1,69 @@
 //! Native builtins that every program can call.
 //!
 //! Each builtin matches [`crate::value::BuiltinFn`]. Errors are returned as
-//! plain strings; the interpreter attaches the current source line before
-//! surfacing them.
+//! plain strings; the virtual machine attaches the source line and column of
+//! the call before surfacing them.
 
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use crate::environment::{self, Env};
+use std::collections::HashMap;
 
 use crate::value::{Builtin, BuiltinFn, Caller, HostBuiltin, HostFn, Input, Output, Value};
 use crate::MiruError;
 
-/// Register every builtin into the given (global) scope.
-pub fn register(env: &Env) {
-    define(env, "print", print);
-    define(env, "len", len);
-    define(env, "push", push);
-    define(env, "str", to_str);
-    define(env, "type", type_of);
-    define(env, "range", range);
-    define(env, "keys", keys);
-    define(env, "values", values);
-    define(env, "has", has);
-    define(env, "upper", upper);
-    define(env, "lower", lower);
-    define(env, "trim", trim);
-    define(env, "replace", replace);
-    define(env, "split", split);
-    define(env, "join", join);
-    define(env, "contains", contains);
-    define(env, "find", find);
-    define(env, "pop", pop);
-    define(env, "index_of", index_of);
-    define(env, "slice", slice);
-    define(env, "sort", sort);
-    define(env, "reverse", reverse);
-    define(env, "abs", abs);
-    define(env, "min", min);
-    define(env, "max", max);
-    define(env, "floor", floor);
-    define(env, "ceil", ceil);
-    define(env, "round", round);
-    define(env, "sqrt", sqrt);
-    define(env, "pow", pow);
-    define(env, "int", int);
-    define(env, "float", float);
-    define(env, "input", input);
-    define_host(env, "map", map);
-    define_host(env, "filter", filter);
-    define_host(env, "reduce", reduce);
+/// Register every builtin into a program's globals.
+pub fn register(globals: &mut HashMap<String, Value>) {
+    define(globals, "print", print);
+    define(globals, "len", len);
+    define(globals, "push", push);
+    define(globals, "str", to_str);
+    define(globals, "type", type_of);
+    define(globals, "range", range);
+    define(globals, "keys", keys);
+    define(globals, "values", values);
+    define(globals, "has", has);
+    define(globals, "upper", upper);
+    define(globals, "lower", lower);
+    define(globals, "trim", trim);
+    define(globals, "replace", replace);
+    define(globals, "split", split);
+    define(globals, "join", join);
+    define(globals, "contains", contains);
+    define(globals, "find", find);
+    define(globals, "pop", pop);
+    define(globals, "index_of", index_of);
+    define(globals, "slice", slice);
+    define(globals, "sort", sort);
+    define(globals, "reverse", reverse);
+    define(globals, "abs", abs);
+    define(globals, "min", min);
+    define(globals, "max", max);
+    define(globals, "floor", floor);
+    define(globals, "ceil", ceil);
+    define(globals, "round", round);
+    define(globals, "sqrt", sqrt);
+    define(globals, "pow", pow);
+    define(globals, "int", int);
+    define(globals, "float", float);
+    define(globals, "input", input);
+    define_host(globals, "map", map);
+    define_host(globals, "filter", filter);
+    define_host(globals, "reduce", reduce);
 }
 
-/// Register every builtin into a plain name-to-value map, as the bytecode VM's
-/// globals are stored. Built from the same list as [`register`], so both engines
-/// expose exactly the same builtins.
-pub fn register_map(globals: &mut std::collections::HashMap<String, Value>) {
-    let env = environment::new_global();
-    register(&env);
-    for (name, value) in environment::bindings(&env) {
-        globals.insert(name, value);
-    }
+fn define(globals: &mut HashMap<String, Value>, name: &'static str, func: BuiltinFn) {
+    globals.insert(name.to_string(), Value::Builtin(Builtin { name, func }));
 }
 
-fn define(env: &Env, name: &'static str, func: BuiltinFn) {
-    environment::define(env, name, Value::Builtin(Builtin { name, func }));
-}
-
-/// Register a higher-order builtin, one that receives the interpreter so it can
-/// apply a function argument.
-fn define_host(env: &Env, name: &'static str, func: HostFn) {
-    environment::define(env, name, Value::HostBuiltin(HostBuiltin { name, func }));
+/// Register a higher-order builtin, one that receives the running engine so it
+/// can apply a function argument.
+fn define_host(globals: &mut HashMap<String, Value>, name: &'static str, func: HostFn) {
+    globals.insert(
+        name.to_string(),
+        Value::HostBuiltin(HostBuiltin { name, func }),
+    );
 }
 
 fn check_arity(name: &str, args: &[Value], expected: usize) -> Result<(), String> {

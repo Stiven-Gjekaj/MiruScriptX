@@ -74,7 +74,7 @@ impl Vm {
     /// Create a VM that writes to a custom sink, as the capture helpers do.
     pub fn with_output(out: Box<dyn Write>) -> Vm {
         let mut globals = HashMap::new();
-        crate::builtins::register_map(&mut globals);
+        crate::builtins::register(&mut globals);
         Vm {
             stack: Vec::new(),
             globals,

@@ -21,7 +21,6 @@ pub mod ast;
 pub mod builtins;
 pub mod chunk;
 pub mod compiler;
-pub mod environment;
 pub mod formatter;
 pub mod lexer;
 pub mod ops;
