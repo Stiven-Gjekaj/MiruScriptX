@@ -6,7 +6,6 @@
 //! executed.
 
 use std::cell::RefCell;
-use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::rc::Rc;
@@ -22,12 +21,6 @@ enum Flow {
     Return(Value),
     Break,
     Continue,
-}
-
-/// A pair of numbers promoted to a common representation for arithmetic.
-enum Num {
-    Ints(i64, i64),
-    Floats(f64, f64),
 }
 
 pub struct Interpreter {
@@ -412,93 +405,11 @@ impl Interpreter {
     }
 
     fn eval_unary(&self, op: UnaryOp, value: Value) -> Result<Value, MiruError> {
-        match op {
-            UnaryOp::Negate => match value {
-                Value::Int(n) => n
-                    .checked_neg()
-                    .map(Value::Int)
-                    .ok_or_else(|| self.error("integer overflow while negating")),
-                Value::Float(f) => Ok(Value::Float(-f)),
-                other => Err(self.error(format!("cannot negate a {}", other.type_name()))),
-            },
-            UnaryOp::Not => Ok(Value::Bool(!value.is_truthy())),
-        }
+        crate::ops::unary(op, value).map_err(|message| self.error(message))
     }
 
     fn eval_binary(&self, op: BinaryOp, left: Value, right: Value) -> Result<Value, MiruError> {
-        match op {
-            BinaryOp::Add => self.eval_add(left, right),
-            BinaryOp::Subtract => match self.numeric_pair(&left, &right, "subtract")? {
-                Num::Ints(a, b) => a
-                    .checked_sub(b)
-                    .map(Value::Int)
-                    .ok_or_else(|| self.error("integer overflow in subtraction")),
-                Num::Floats(a, b) => Ok(Value::Float(a - b)),
-            },
-            BinaryOp::Multiply => match self.numeric_pair(&left, &right, "multiply")? {
-                Num::Ints(a, b) => a
-                    .checked_mul(b)
-                    .map(Value::Int)
-                    .ok_or_else(|| self.error("integer overflow in multiplication")),
-                Num::Floats(a, b) => Ok(Value::Float(a * b)),
-            },
-            BinaryOp::Divide => match self.numeric_pair(&left, &right, "divide")? {
-                Num::Ints(_, 0) => Err(self.error("division by zero")),
-                Num::Ints(a, b) => a
-                    .checked_div(b)
-                    .map(Value::Int)
-                    .ok_or_else(|| self.error("integer overflow in division")),
-                Num::Floats(a, b) => {
-                    if b == 0.0 {
-                        Err(self.error("division by zero"))
-                    } else {
-                        Ok(Value::Float(a / b))
-                    }
-                }
-            },
-            BinaryOp::Modulo => match self.numeric_pair(&left, &right, "take the modulo of")? {
-                Num::Ints(_, 0) => Err(self.error("modulo by zero")),
-                Num::Ints(a, b) => a
-                    .checked_rem(b)
-                    .map(Value::Int)
-                    .ok_or_else(|| self.error("integer overflow in modulo")),
-                Num::Floats(a, b) => {
-                    if b == 0.0 {
-                        Err(self.error("modulo by zero"))
-                    } else {
-                        Ok(Value::Float(a % b))
-                    }
-                }
-            },
-            BinaryOp::Equal => Ok(Value::Bool(left.equals(&right))),
-            BinaryOp::NotEqual => Ok(Value::Bool(!left.equals(&right))),
-            BinaryOp::Less => Ok(Value::Bool(self.ordering(left, right)? == Ordering::Less)),
-            BinaryOp::Greater => Ok(Value::Bool(
-                self.ordering(left, right)? == Ordering::Greater,
-            )),
-            BinaryOp::LessEqual => Ok(Value::Bool(
-                self.ordering(left, right)? != Ordering::Greater,
-            )),
-            BinaryOp::GreaterEqual => {
-                Ok(Value::Bool(self.ordering(left, right)? != Ordering::Less))
-            }
-        }
-    }
-
-    fn eval_add(&self, left: Value, right: Value) -> Result<Value, MiruError> {
-        if let (Value::Str(a), Value::Str(b)) = (&left, &right) {
-            let mut joined = String::with_capacity(a.len() + b.len());
-            joined.push_str(a);
-            joined.push_str(b);
-            return Ok(Value::Str(Rc::new(joined)));
-        }
-        match self.numeric_pair(&left, &right, "add")? {
-            Num::Ints(a, b) => a
-                .checked_add(b)
-                .map(Value::Int)
-                .ok_or_else(|| self.error("integer overflow in addition")),
-            Num::Floats(a, b) => Ok(Value::Float(a + b)),
-        }
+        crate::ops::binary(op, left, right).map_err(|message| self.error(message))
     }
 
     fn eval_logical(
@@ -514,34 +425,6 @@ impl Interpreter {
             LogicalOp::Or => left.is_truthy() || self.eval(right, env)?.is_truthy(),
         };
         Ok(Value::Bool(result))
-    }
-
-    fn numeric_pair(&self, left: &Value, right: &Value, verb: &str) -> Result<Num, MiruError> {
-        match (left, right) {
-            (Value::Int(a), Value::Int(b)) => Ok(Num::Ints(*a, *b)),
-            (Value::Int(a), Value::Float(b)) => Ok(Num::Floats(*a as f64, *b)),
-            (Value::Float(a), Value::Int(b)) => Ok(Num::Floats(*a, *b as f64)),
-            (Value::Float(a), Value::Float(b)) => Ok(Num::Floats(*a, *b)),
-            _ => Err(self.error(format!(
-                "cannot {} a {} and a {}",
-                verb,
-                left.type_name(),
-                right.type_name()
-            ))),
-        }
-    }
-
-    fn ordering(&self, left: Value, right: Value) -> Result<Ordering, MiruError> {
-        match (&left, &right) {
-            (Value::Int(a), Value::Int(b)) => Ok(a.cmp(b)),
-            (Value::Str(a), Value::Str(b)) => Ok(a.cmp(b)),
-            _ => match self.numeric_pair(&left, &right, "compare")? {
-                Num::Ints(a, b) => Ok(a.cmp(&b)),
-                Num::Floats(a, b) => a
-                    .partial_cmp(&b)
-                    .ok_or_else(|| self.error("cannot compare with NaN")),
-            },
-        }
     }
 
     pub(crate) fn error(&self, message: impl Into<String>) -> MiruError {
