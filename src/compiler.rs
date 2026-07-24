@@ -126,6 +126,11 @@ impl Compiler {
                 else_branch,
             } => self.if_statement(condition, then_branch, else_branch.as_deref())?,
             StmtKind::While { condition, body } => self.while_statement(condition, body)?,
+            StmtKind::For {
+                name,
+                iterable,
+                body,
+            } => self.for_statement(name, iterable, body)?,
             StmtKind::Break => self.break_statement(stmt.line)?,
             StmtKind::Continue => self.continue_statement(stmt.line)?,
             _ => {
@@ -165,6 +170,59 @@ impl Compiler {
         for break_jump in context.breaks {
             self.patch_jump(break_jump)?;
         }
+        Ok(())
+    }
+
+    /// Compile `for name in iterable { .. }`. The iterable is snapshotted into a
+    /// hidden local, a hidden index walks it, and each iteration binds `name` to
+    /// the next element in a fresh per-iteration scope.
+    fn for_statement(
+        &mut self,
+        name: &str,
+        iterable: &Expr,
+        body: &[Stmt],
+    ) -> Result<(), MiruError> {
+        let line = iterable.line;
+        let column = iterable.column;
+        self.begin_scope();
+        // The snapshot and index are hidden locals whose names cannot be written
+        // in source ('$' is not a valid identifier), so they never clash.
+        self.expression(iterable)?;
+        self.chunk.write_op(OpCode::IterSnapshot, line, column);
+        let seq_slot = u8::try_from(self.locals.len())
+            .map_err(|_| MiruError::new(line, "too many local variables in scope"))?;
+        self.declare_local("$seq", line)?;
+        self.constant(Value::Int(0), line, column)?;
+        self.declare_local("$idx", line)?;
+
+        let loop_start = self.chunk.code.len();
+        self.chunk.write_op(OpCode::ForNext, line, column);
+        self.chunk.write(seq_slot, line, column);
+        self.chunk.write(0xff, line, column);
+        self.chunk.write(0xff, line, column);
+        let exit_jump = self.chunk.code.len() - 2;
+
+        // The loop variable and body share one fresh scope per iteration.
+        self.begin_scope();
+        self.declare_local(name, line)?;
+        self.loops.push(LoopContext {
+            start: loop_start,
+            body_depth: self.scope_depth,
+            breaks: Vec::new(),
+        });
+        for stmt in body {
+            self.statement(stmt)?;
+        }
+        let context = self.loops.pop().expect("loop context");
+        let (end_line, end_column) = body.last().map(|s| (s.line, 1)).unwrap_or((line, column));
+        self.end_scope(end_line, end_column);
+        self.emit_loop(loop_start, line, column)?;
+
+        self.patch_jump(exit_jump)?;
+        for break_jump in context.breaks {
+            self.patch_jump(break_jump)?;
+        }
+        self.end_scope(line, column);
         Ok(())
     }
 
@@ -293,6 +351,16 @@ impl Compiler {
             ExprKind::Bool(true) => self.chunk.write_op(OpCode::True, line, column),
             ExprKind::Bool(false) => self.chunk.write_op(OpCode::False, line, column),
             ExprKind::Nil => self.chunk.write_op(OpCode::Nil, line, column),
+            ExprKind::Array(elements) => {
+                let count = u8::try_from(elements.len()).map_err(|_| {
+                    MiruError::with_column(line, column, "array literal has too many elements")
+                })?;
+                for element in elements {
+                    self.expression(element)?;
+                }
+                self.chunk.write_op(OpCode::Array, line, column);
+                self.chunk.write(count, line, column);
+            }
             ExprKind::Identifier(name) => {
                 if let Some(slot) = self.resolve_local(name) {
                     self.chunk.write_op(OpCode::GetLocal, line, column);
@@ -596,6 +664,32 @@ mod tests {
             "let i = 0\nlet sum = 0\nwhile i < 6 {\n  i = i + 1\n  if i % 2 == 0 { continue }\n  sum = sum + i\n}\nsum",
             // break out of a loop that declares a local.
             "let i = 0\nlet last = 0\nwhile i < 10 {\n  let doubled = i * 2\n  last = doubled\n  if i == 4 { break }\n  i = i + 1\n}\nlast",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_arrays_and_for_in() {
+        let corpus = [
+            "[1, 2, 3]",
+            "[]",
+            "[1 + 1, 2 * 2, \"a\" + \"b\"]",
+            "[1, 2] == [1, 2]",
+            "let sum = 0\nfor x in [1, 2, 3, 4] { sum = sum + x }\nsum",
+            "let s = \"\"\nfor c in [\"a\", \"b\", \"c\"] { s = s + c }\ns",
+            // The loop variable does not leak out and does not touch an outer one.
+            "let i = 99\nfor i in [1, 2, 3] { }\ni",
+            // An empty iterable runs the body zero times.
+            "let sum = 0\nfor x in [] { sum = 1 }\nsum",
+            // break and continue inside for-in.
+            "let sum = 0\nfor x in [1, 2, 3, 4, 5] {\n  if x == 4 { break }\n  sum = sum + x\n}\nsum",
+            "let sum = 0\nfor x in [1, 2, 3, 4] {\n  if x % 2 == 0 { continue }\n  sum = sum + x\n}\nsum",
+            // A local declared in the loop body.
+            "let sum = 0\nfor x in [1, 2, 3] {\n  let sq = x * x\n  sum = sum + sq\n}\nsum",
+            // Iterating a non-array is the same error at the same place.
+            "for x in 5 { }",
         ];
         for source in corpus {
             agree(source);

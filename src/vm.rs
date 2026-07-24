@@ -8,7 +8,9 @@
 //! stream of bytecode, which avoids the pointer chasing and repeated name
 //! lookups that make a tree walker slow.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
@@ -131,6 +133,53 @@ impl Vm {
                     ip += 1;
                     let value = self.pop();
                     self.stack[slot] = value;
+                }
+                OpCode::Array => {
+                    let count = chunk.code[ip] as usize;
+                    ip += 1;
+                    let start = self.stack.len() - count;
+                    let items = self.stack.split_off(start);
+                    self.stack.push(Value::Array(Rc::new(RefCell::new(items))));
+                }
+                OpCode::IterSnapshot => {
+                    let value = self.pop();
+                    match value {
+                        Value::Array(items) => {
+                            let snapshot = items.borrow().clone();
+                            self.stack
+                                .push(Value::Array(Rc::new(RefCell::new(snapshot))));
+                        }
+                        other => {
+                            return Err(runtime_error(
+                                chunk,
+                                op_ip,
+                                format!("cannot iterate over a {}", other.type_name()),
+                            ))
+                        }
+                    }
+                }
+                OpCode::ForNext => {
+                    let seq_slot = chunk.code[ip] as usize;
+                    let jump = read_u16(chunk, ip + 1);
+                    ip += 3;
+                    let index = match &self.stack[seq_slot + 1] {
+                        Value::Int(n) => *n,
+                        _ => unreachable!("for-in index is not an integer"),
+                    };
+                    let length = match &self.stack[seq_slot] {
+                        Value::Array(items) => items.borrow().len() as i64,
+                        _ => unreachable!("for-in sequence is not an array"),
+                    };
+                    if index >= length {
+                        ip += jump as usize;
+                    } else {
+                        let element = match &self.stack[seq_slot] {
+                            Value::Array(items) => items.borrow()[index as usize].clone(),
+                            _ => unreachable!("for-in sequence is not an array"),
+                        };
+                        self.stack.push(element);
+                        self.stack[seq_slot + 1] = Value::Int(index + 1);
+                    }
                 }
                 OpCode::Pop => {
                     self.pop();

@@ -64,6 +64,17 @@ pub enum OpCode {
     /// Pop a value and store it into a local variable's slot. One operand byte:
     /// the stack slot.
     SetLocal,
+    /// Build an array from the top values on the stack. One operand byte: the
+    /// element count. Pops that many values and pushes the array.
+    Array,
+    /// Pop the iterable, check it is an array, and push a snapshot to iterate. A
+    /// runtime error otherwise.
+    IterSnapshot,
+    /// Drive a `for` loop. Operands: the snapshot's slot (one byte) and a
+    /// big-endian exit distance (two bytes). The index lives in the next slot. If
+    /// the index is past the end, jump by the distance; otherwise push the next
+    /// element and advance the index.
+    ForNext,
     /// Discard the value on top of the stack.
     Pop,
     /// Return from the current function (or end the program).
@@ -102,6 +113,9 @@ impl OpCode {
             b if b == Truthy as u8 => Truthy,
             b if b == GetLocal as u8 => GetLocal,
             b if b == SetLocal as u8 => SetLocal,
+            b if b == Array as u8 => Array,
+            b if b == IterSnapshot as u8 => IterSnapshot,
+            b if b == ForNext as u8 => ForNext,
             b if b == Pop as u8 => Pop,
             b if b == Return as u8 => Return,
             _ => return None,
@@ -139,6 +153,9 @@ impl OpCode {
             OpCode::Truthy => "TRUTHY",
             OpCode::GetLocal => "GET_LOCAL",
             OpCode::SetLocal => "SET_LOCAL",
+            OpCode::Array => "ARRAY",
+            OpCode::IterSnapshot => "ITER_SNAPSHOT",
+            OpCode::ForNext => "FOR_NEXT",
             OpCode::Pop => "POP",
             OpCode::Return => "RETURN",
         }
@@ -234,6 +251,19 @@ impl Chunk {
                 let slot = self.code.get(offset + 1).copied().unwrap_or(0);
                 let _ = writeln!(out, "{:<14}slot {slot}", op.name());
                 offset + 2
+            }
+            Some(OpCode::Array) => {
+                let count = self.code.get(offset + 1).copied().unwrap_or(0);
+                let _ = writeln!(out, "{:<14}{count}", OpCode::Array.name());
+                offset + 2
+            }
+            Some(OpCode::ForNext) => {
+                let slot = self.code.get(offset + 1).copied().unwrap_or(0);
+                let high = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 3).copied().unwrap_or(0) as usize;
+                let target = offset + 4 + ((high << 8) | low);
+                let _ = writeln!(out, "{:<14}slot {slot} -> {target}", OpCode::ForNext.name());
+                offset + 4
             }
             Some(op) => {
                 let _ = writeln!(out, "{}", op.name());
