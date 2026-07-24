@@ -604,8 +604,25 @@ impl<'g> Compiler<'g> {
             }
             ExprKind::Binary { op, left, right } => {
                 self.expression(left)?;
-                self.expression(right)?;
-                self.chunk.write_op(binary_opcode(*op), line, column);
+                // A constant on the right is the shape most operators in real
+                // code have: `i < 20000`, `x + 1`, `n * 2`. Folding has already
+                // dealt with the case where both sides are known, so what is
+                // left is a computed value against a fixed one. Carrying that
+                // constant as an operand of the operator costs the same three
+                // bytes as loading it separately, but is one instruction rather
+                // than two and never puts it on the stack.
+                match fold(right).filter(fusable_operand) {
+                    Some(value) => {
+                        let index = self.constant_index(value, line, column)?;
+                        self.chunk.write_op(OpCode::BinaryConst, line, column);
+                        self.chunk.write(binary_opcode(*op) as u8, line, column);
+                        self.chunk.write(index, line, column);
+                    }
+                    None => {
+                        self.expression(right)?;
+                        self.chunk.write_op(binary_opcode(*op), line, column);
+                    }
+                }
             }
             ExprKind::Logical { op, left, right } => {
                 // MiruScriptX's && and || yield a bool, and short-circuit: the
@@ -743,6 +760,16 @@ fn fold(expr: &Expr) -> Option<Value> {
         }
         _ => None,
     }
+}
+
+/// Whether a known right-hand value is worth folding into the operator.
+///
+/// `true`, `false`, and `nil` are not. They already load in a single byte with
+/// no constant pool entry, so fusing them would trade a byte of code and one of
+/// the 256 constant slots for the one dispatch it saves, on comparisons that are
+/// rare next to arithmetic against a number.
+fn fusable_operand(value: &Value) -> bool {
+    matches!(value, Value::Int(_) | Value::Float(_) | Value::Str(_))
 }
 
 /// Find a local's stack slot by name in a scope, searching innermost first.

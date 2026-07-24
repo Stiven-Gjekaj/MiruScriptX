@@ -809,3 +809,47 @@ fn printing_writes_display_forms() {
         ("print(1)\nprint(2)", "1\n2\n"),
     ]);
 }
+
+#[test]
+fn operators_with_a_constant_right_operand_keep_their_results_and_positions() {
+    // These compile to the fused BinaryConst instruction rather than a constant
+    // load followed by the operator. The caret must land on the operator, the
+    // same place the unfused pair put it, and the fused form must decline the
+    // same cases so the shared operator rules produce the message.
+    check_all(&[
+        ("let x = 1\nx / 0", "err division by zero @ 2:3"),
+        ("let x = 1\nx % 0", "err modulo by zero @ 2:3"),
+        (
+            "let x = 9223372036854775807\nx + 1",
+            "err integer overflow in addition @ 2:3",
+        ),
+        (
+            "let x = -9223372036854775807\nx - 2",
+            "err integer overflow in subtraction @ 2:3",
+        ),
+        (
+            "let x = 9223372036854775807\nx * 2",
+            "err integer overflow in multiplication @ 2:3",
+        ),
+        (
+            "let s = \"a\"\ns - 1",
+            "err cannot subtract a string and a int @ 2:3",
+        ),
+        // And the ordinary results, which have to match what the pair gave.
+        ("let x = 10\nx / 4", "ok 2"),
+        ("let x = 10\nx % 4", "ok 2"),
+        ("let x = 1\nx + 2.5", "ok 3.5"),
+        ("let s = \"a\"\ns + \"b\"", "ok \"ab\""),
+        ("let x = 3\nx < 4", "ok true"),
+        ("let x = 3\nx >= 4", "ok false"),
+        // A right operand that folds to a constant fuses as that constant.
+        ("let x = 1\nx + 2 * 3", "ok 7"),
+        // A right operand that cannot fold stays an ordinary two-instruction
+        // operator, and its errors are unchanged.
+        ("let x = 1\nlet y = 0\nx / y", "err division by zero @ 3:3"),
+        // true, false, and nil are deliberately not fused; they keep their
+        // single-byte opcodes.
+        ("let x = 1\nx == true", "ok false"),
+        ("let x = 1\nx != nil", "ok true"),
+    ]);
+}

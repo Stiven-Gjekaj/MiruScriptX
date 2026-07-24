@@ -113,12 +113,21 @@ pub enum OpCode {
     Pop,
     /// Return from the current function (or end the program).
     Return,
+    /// Apply a binary operator whose right operand is a constant, to the value
+    /// on top of the stack. Two operand bytes: the byte of the plain opcode for
+    /// the operator (`Add` through `GreaterEqual`), then the constant's index.
+    ///
+    /// This is the same work as `Constant` followed by that operator, in one
+    /// instruction and without the round trip through the stack. All three of
+    /// its bytes carry the operator's position, so an error it raises points
+    /// where the unfused pair pointed.
+    BinaryConst,
 }
 
 /// Every opcode in declaration order, so a byte decodes by indexing rather than
 /// by comparison. The order must match the enum, which `opcodes_match_their_byte`
 /// checks.
-const OPCODES: [OpCode; 40] = [
+const OPCODES: [OpCode; 41] = [
     OpCode::Constant,
     OpCode::Nil,
     OpCode::True,
@@ -159,6 +168,7 @@ const OPCODES: [OpCode; 40] = [
     OpCode::Call,
     OpCode::Pop,
     OpCode::Return,
+    OpCode::BinaryConst,
 ];
 
 impl OpCode {
@@ -228,6 +238,7 @@ impl OpCode {
             OpCode::Call => "CALL",
             OpCode::Pop => "POP",
             OpCode::Return => "RETURN",
+            OpCode::BinaryConst => "BINARY_CONST",
         }
     }
 }
@@ -336,6 +347,23 @@ impl Chunk {
                     .unwrap_or_else(|| "?".to_string());
                 let _ = writeln!(out, "{:<14}{index} ({value})", op.name());
                 offset + 2
+            }
+            Some(op @ OpCode::BinaryConst) => {
+                let operator = self
+                    .code
+                    .get(offset + 1)
+                    .copied()
+                    .and_then(OpCode::from_u8)
+                    .map(OpCode::name)
+                    .unwrap_or("?");
+                let index = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let value = self
+                    .constants
+                    .get(index)
+                    .map(Value::repr)
+                    .unwrap_or_else(|| "?".to_string());
+                let _ = writeln!(out, "{:<14}{operator} {index} ({value})", op.name());
+                offset + 3
             }
             Some(op @ (OpCode::Jump | OpCode::JumpIfFalse | OpCode::JumpIfTrue)) => {
                 let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;

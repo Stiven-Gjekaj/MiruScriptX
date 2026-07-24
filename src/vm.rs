@@ -210,6 +210,12 @@ impl Vm {
                     | OpCode::Greater
                     | OpCode::LessEqual
                     | OpCode::GreaterEqual => self.binary(binary_op(op), chunk, op_ip)?,
+                    OpCode::BinaryConst => {
+                        let operator = binary_op(OpCode::decode(chunk.code[ip]));
+                        let index = chunk.code[ip + 1] as usize;
+                        ip += 2;
+                        self.binary_const(operator, index, chunk, op_ip)?;
+                    }
                     OpCode::DefineGlobal => {
                         let slot = read_u16(chunk, ip);
                         ip += 2;
@@ -622,6 +628,34 @@ impl Vm {
                 return Ok(());
             }
         }
+        let result =
+            crate::ops::binary(op, left, right).map_err(|m| runtime_error(chunk, offset, m))?;
+        self.stack.push(result);
+        Ok(())
+    }
+
+    /// Apply a binary operator whose right operand is `constants[index]`.
+    ///
+    /// The same work as [`Vm::binary`] against a constant that was never pushed.
+    /// Reading it out of the pool rather than off the stack is what the fused
+    /// instruction buys, and it lets the integer fast path see the constant
+    /// without cloning it first.
+    #[inline]
+    fn binary_const(
+        &mut self,
+        op: BinaryOp,
+        index: usize,
+        chunk: &Chunk,
+        offset: usize,
+    ) -> Result<(), MiruError> {
+        let left = self.pop();
+        if let (Value::Int(a), Value::Int(b)) = (&left, &chunk.constants[index]) {
+            if let Some(result) = int_binary(op, *a, *b) {
+                self.stack.push(result);
+                return Ok(());
+            }
+        }
+        let right = chunk.constants[index].clone();
         let result =
             crate::ops::binary(op, left, right).map_err(|m| runtime_error(chunk, offset, m))?;
         self.stack.push(result);
