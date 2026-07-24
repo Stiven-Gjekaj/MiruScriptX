@@ -607,9 +607,20 @@ impl Vm {
         Ok(())
     }
 
+    #[inline]
     fn binary(&mut self, op: BinaryOp, chunk: &Chunk, offset: usize) -> Result<(), MiruError> {
         let right = self.pop();
         let left = self.pop();
+        // Two integers is overwhelmingly the common case in a loop, so handle it
+        // here rather than through the general dispatch. Anything the fast path
+        // declines, including an overflow, falls through to the shared rules so
+        // there is exactly one definition of what each operator means.
+        if let (Value::Int(a), Value::Int(b)) = (&left, &right) {
+            if let Some(result) = int_binary(op, *a, *b) {
+                self.stack.push(result);
+                return Ok(());
+            }
+        }
         let result =
             crate::ops::binary(op, left, right).map_err(|m| runtime_error(chunk, offset, m))?;
         self.stack.push(result);
@@ -653,6 +664,34 @@ impl Vm {
             }
         }
     }
+}
+
+/// Apply a binary operator to two integers, or decline.
+///
+/// This exists only to skip the general operator dispatch on the case a loop
+/// spends its time in. It declines rather than guesses: overflow, division and
+/// modulo by zero, and anything not covered here all return `None`, and the
+/// caller falls back to [`crate::ops::binary`], which stays the single
+/// definition of what every operator means and which error it raises.
+#[inline]
+fn int_binary(op: BinaryOp, a: i64, b: i64) -> Option<Value> {
+    let value = match op {
+        BinaryOp::Add => Value::Int(a.checked_add(b)?),
+        BinaryOp::Subtract => Value::Int(a.checked_sub(b)?),
+        BinaryOp::Multiply => Value::Int(a.checked_mul(b)?),
+        // Zero divisors are an error, not a result, so leave them to the
+        // general path rather than reproducing the message here.
+        BinaryOp::Divide if b != 0 => Value::Int(a.checked_div(b)?),
+        BinaryOp::Modulo if b != 0 => Value::Int(a.checked_rem(b)?),
+        BinaryOp::Divide | BinaryOp::Modulo => return None,
+        BinaryOp::Equal => Value::Bool(a == b),
+        BinaryOp::NotEqual => Value::Bool(a != b),
+        BinaryOp::Less => Value::Bool(a < b),
+        BinaryOp::Greater => Value::Bool(a > b),
+        BinaryOp::LessEqual => Value::Bool(a <= b),
+        BinaryOp::GreaterEqual => Value::Bool(a >= b),
+    };
+    Some(value)
 }
 
 /// Read a big-endian two-byte operand at `ip`.
