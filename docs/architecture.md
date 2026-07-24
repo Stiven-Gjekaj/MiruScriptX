@@ -5,40 +5,41 @@
 # Architecture
 
 MiruScriptX is a scripting language written from scratch in Rust, with a single
-runtime dependency (rustyline, used only for REPL line editing and history). It
-ships two execution engines: a tree-walking interpreter and a bytecode compiler
-with a stack virtual machine. This document explains how the pieces fit together,
-so you can find your way around the code and extend it with confidence.
+runtime dependency (rustyline, used only for REPL line editing and history).
+Programs are compiled to bytecode and run on a stack virtual machine. This
+document explains how the pieces fit together, so you can find your way around
+the code and extend it with confidence.
 
 ## The pipeline
 
-Source text is lexed and parsed once, then handed to one of two execution
-engines:
+Source text goes through four stages, each handing its output to the next:
 
 ```
 source text
    |
-   |  lexer   (src/lexer.rs, src/token.rs)
+   |  lexer     (src/lexer.rs, src/token.rs)
    v
  tokens
    |
-   |  parser  (src/parser.rs, src/ast.rs)
+   |  parser    (src/parser.rs, src/ast.rs)
    v
  AST (Vec<Stmt>)
    |
-   +---------------------------+
-   |                           |
-   |  interpreter              |  compiler   (src/compiler.rs)
-   v  (src/interpreter.rs)     v
- values and printed output   bytecode (src/chunk.rs)
-   ^                           |
-   |                           |  virtual machine  (src/vm.rs)
-   +---------------------------+
+   |  compiler  (src/compiler.rs)
+   v
+ bytecode (src/chunk.rs)
+   |
+   |  virtual machine  (src/vm.rs)
+   v
+ values and printed output
 ```
 
-Both engines share the value model (`src/value.rs`), the builtins
-(`src/builtins.rs`), and the arithmetic and indexing rules (`src/ops.rs`), which
-is what keeps them behaving identically.
+Compiling happens inside the VM rather than in the caller, because the two share
+state that has to outlive a single program. A session compiles one input at a
+time, and the second input has to resolve names the first defined.
+
+`miru disasm <file>` prints the bytecode for a program, which is the quickest
+way to see what any of this produces.
 
 Every stage reports problems as a single `MiruError { line, column, message }`
 (defined in `src/lib.rs`), so a syntax error and a runtime error are surfaced
@@ -55,15 +56,14 @@ column.
 | `src/ast.rs`         | `Expr` and `Stmt` node definitions                         |
 | `src/parser.rs`      | Builds the AST (recursive descent plus a Pratt expression parser) |
 | `src/value.rs`       | `Value`, functions and closures, the `Output` and `Caller` traits |
-| `src/ops.rs`         | Arithmetic, comparison, and indexing rules, shared by both engines |
-| `src/environment.rs` | `Scope` chain for lexical scoping and closures             |
-| `src/interpreter.rs` | Walks the AST and evaluates it (the default engine)        |
+| `src/ops.rs`         | Arithmetic, comparison, and indexing rules, in one place    |
 | `src/chunk.rs`       | Bytecode chunks: opcodes, constants, positions, disassembler |
+| `src/globals.rs`     | The global table the compiler and VM share, addressed by slot |
 | `src/compiler.rs`    | Compiles the AST into bytecode                             |
 | `src/vm.rs`          | The stack-based virtual machine that runs bytecode         |
 | `src/formatter.rs`   | Reprints a program in canonical form (`miru fmt`)          |
 | `src/builtins.rs`    | The native builtins: printing, plus string, array, math, map, and input helpers |
-| `src/lib.rs`         | Ties the modules together (`parse_program`, `run_source`, `run_source_vm`, `format_source`) |
+| `src/lib.rs`         | Ties the modules together (`parse_program`, `run_source`, `disassemble_source`, `format_source`) |
 | `src/main.rs`        | The `miru` command line interface                          |
 | `src/repl.rs`        | The interactive REPL                                       |
 
