@@ -100,6 +100,13 @@ impl Vm {
     /// Execute a compiled program. The whole program is itself a function (an
     /// anonymous script), so running it is just calling that function and reading
     /// back the value it returns.
+    ///
+    /// Globals persist across calls, which is what lets a session such as the
+    /// REPL build up state over many inputs. Everything else is transient: this
+    /// returns with the value stack, the frame stack, and the open upvalues
+    /// empty, whether the program succeeded or failed. Without that, a program
+    /// that fails part way would leave a half-finished frame behind and the next
+    /// one would resume into it.
     pub fn interpret(&mut self, script: Rc<CompiledFunction>) -> Result<Value, MiruError> {
         let closure = Rc::new(Closure {
             function: script,
@@ -110,7 +117,15 @@ impl Vm {
             ip: 0,
             slot_base: 0,
         });
-        self.run_frames(0)
+        let result = self.run_frames(0);
+        if result.is_err() {
+            self.frames.clear();
+            self.stack.clear();
+            self.open_upvalues.clear();
+        }
+        debug_assert!(self.frames.is_empty(), "frames left after a program");
+        debug_assert!(self.stack.is_empty(), "stack values left after a program");
+        result
     }
 
     /// Run the bytecode loop until the frame at `base_depth` returns, yielding its
