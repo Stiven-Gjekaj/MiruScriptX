@@ -8,6 +8,8 @@
 //! stream of bytecode, which avoids the pointer chasing and repeated name
 //! lookups that make a tree walker slow.
 
+use std::collections::HashMap;
+
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
 use crate::value::Value;
@@ -17,6 +19,7 @@ use crate::MiruError;
 #[derive(Default)]
 pub struct Vm {
     stack: Vec<Value>,
+    globals: HashMap<String, Value>,
 }
 
 impl Vm {
@@ -57,6 +60,40 @@ impl Vm {
                 | OpCode::Greater
                 | OpCode::LessEqual
                 | OpCode::GreaterEqual => self.binary(binary_op(op), chunk, op_ip)?,
+                OpCode::DefineGlobal => {
+                    let name = global_name(chunk, chunk.code[ip]);
+                    ip += 1;
+                    let value = self.pop();
+                    self.globals.insert(name.to_string(), value);
+                }
+                OpCode::GetGlobal => {
+                    let name = global_name(chunk, chunk.code[ip]);
+                    ip += 1;
+                    match self.globals.get(name) {
+                        Some(value) => self.stack.push(value.clone()),
+                        None => {
+                            return Err(runtime_error(
+                                chunk,
+                                op_ip,
+                                format!("undefined variable '{name}'"),
+                            ))
+                        }
+                    }
+                }
+                OpCode::SetGlobal => {
+                    let name = global_name(chunk, chunk.code[ip]);
+                    ip += 1;
+                    let value = self.pop();
+                    if self.globals.contains_key(name) {
+                        self.globals.insert(name.to_string(), value);
+                    } else {
+                        return Err(runtime_error(
+                            chunk,
+                            op_ip,
+                            format!("cannot assign to undefined variable '{name}'"),
+                        ));
+                    }
+                }
                 OpCode::Pop => {
                     self.pop();
                 }
@@ -105,6 +142,15 @@ fn binary_op(op: OpCode) -> BinaryOp {
         OpCode::LessEqual => BinaryOp::LessEqual,
         OpCode::GreaterEqual => BinaryOp::GreaterEqual,
         other => unreachable!("not a binary opcode: {}", other.name()),
+    }
+}
+
+/// The variable name held as a string constant at `index`. The compiler always
+/// emits a string here, so a non-string means the bytecode is malformed.
+fn global_name(chunk: &Chunk, index: u8) -> &str {
+    match &chunk.constants[index as usize] {
+        Value::Str(name) => name.as_str(),
+        _ => unreachable!("global name operand is not a string constant"),
     }
 }
 

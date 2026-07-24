@@ -37,6 +37,15 @@ pub enum OpCode {
     Greater,
     LessEqual,
     GreaterEqual,
+    /// Pop a value and bind it to a global name. One operand byte: the constant
+    /// index of the name.
+    DefineGlobal,
+    /// Push the value of a global name. One operand byte: the name's constant
+    /// index.
+    GetGlobal,
+    /// Pop a value and assign it to an existing global. One operand byte: the
+    /// name's constant index.
+    SetGlobal,
     /// Discard the value on top of the stack.
     Pop,
     /// Return from the current function (or end the program).
@@ -65,6 +74,9 @@ impl OpCode {
             b if b == Greater as u8 => Greater,
             b if b == LessEqual as u8 => LessEqual,
             b if b == GreaterEqual as u8 => GreaterEqual,
+            b if b == DefineGlobal as u8 => DefineGlobal,
+            b if b == GetGlobal as u8 => GetGlobal,
+            b if b == SetGlobal as u8 => SetGlobal,
             b if b == Pop as u8 => Pop,
             b if b == Return as u8 => Return,
             _ => return None,
@@ -92,6 +104,9 @@ impl OpCode {
             OpCode::Greater => "GREATER",
             OpCode::LessEqual => "LESS_EQUAL",
             OpCode::GreaterEqual => "GREATER_EQUAL",
+            OpCode::DefineGlobal => "DEFINE_GLOBAL",
+            OpCode::GetGlobal => "GET_GLOBAL",
+            OpCode::SetGlobal => "SET_GLOBAL",
             OpCode::Pop => "POP",
             OpCode::Return => "RETURN",
         }
@@ -154,14 +169,19 @@ impl Chunk {
 
         let _ = write!(out, "{offset:04} ");
         match OpCode::from_u8(self.code[offset]) {
-            Some(OpCode::Constant) => {
+            Some(
+                op @ (OpCode::Constant
+                | OpCode::DefineGlobal
+                | OpCode::GetGlobal
+                | OpCode::SetGlobal),
+            ) => {
                 let index = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
                 let value = self
                     .constants
                     .get(index)
                     .map(Value::repr)
                     .unwrap_or_else(|| "?".to_string());
-                let _ = writeln!(out, "{:<14}{index} ({value})", OpCode::Constant.name());
+                let _ = writeln!(out, "{:<14}{index} ({value})", op.name());
                 offset + 2
             }
             Some(op) => {

@@ -35,28 +35,60 @@ impl Compiler {
     }
 
     fn program(&mut self, program: &[Stmt]) -> Result<(), MiruError> {
-        let mut has_value = false;
-        for stmt in program {
-            match &stmt.kind {
-                StmtKind::Expr(expr) => {
-                    // Only the final expression's value is kept; discard earlier
-                    // ones so the stack does not grow.
-                    if has_value {
-                        self.chunk.write_op(OpCode::Pop, stmt.line, 1);
-                    }
-                    self.expression(expr)?;
-                    has_value = true;
-                }
-                _ => {
-                    return Err(MiruError::new(
-                        stmt.line,
-                        "the bytecode VM does not support this statement yet",
-                    ));
+        if program.is_empty() {
+            self.chunk.write_op(OpCode::Nil, 0, 0);
+            return Ok(());
+        }
+        let last = program.len() - 1;
+        for (index, stmt) in program.iter().enumerate() {
+            self.statement(stmt, index == last)?;
+        }
+        Ok(())
+    }
+
+    /// Compile one statement. When it is the program's last, it leaves exactly one
+    /// value on the stack (the expression's value, or `nil`); otherwise it leaves
+    /// the stack unchanged. This makes the VM return the same value the tree
+    /// walker's `run_program` does.
+    fn statement(&mut self, stmt: &Stmt, is_last: bool) -> Result<(), MiruError> {
+        match &stmt.kind {
+            StmtKind::Expr(expr) => {
+                self.expression(expr)?;
+                if !is_last {
+                    self.chunk.write_op(OpCode::Pop, stmt.line, 1);
                 }
             }
-        }
-        if !has_value {
-            self.chunk.write_op(OpCode::Nil, 0, 0);
+            StmtKind::Let { name, value } => {
+                self.expression(value)?;
+                self.named_global(OpCode::DefineGlobal, name, stmt.line, 1)?;
+                if is_last {
+                    self.chunk.write_op(OpCode::Nil, stmt.line, 1);
+                }
+            }
+            StmtKind::Assign { target, value } => {
+                self.expression(value)?;
+                match &target.kind {
+                    ExprKind::Identifier(name) => {
+                        self.named_global(OpCode::SetGlobal, name, target.line, target.column)?;
+                    }
+                    _ => {
+                        return Err(MiruError::with_column(
+                            target.line,
+                            target.column,
+                            "the bytecode VM does not support this assignment yet",
+                        ));
+                    }
+                }
+                if is_last {
+                    self.chunk.write_op(OpCode::Nil, stmt.line, 1);
+                }
+            }
+            _ => {
+                return Err(MiruError::new(
+                    stmt.line,
+                    "the bytecode VM does not support this statement yet",
+                ));
+            }
         }
         Ok(())
     }
@@ -71,6 +103,9 @@ impl Compiler {
             ExprKind::Bool(true) => self.chunk.write_op(OpCode::True, line, column),
             ExprKind::Bool(false) => self.chunk.write_op(OpCode::False, line, column),
             ExprKind::Nil => self.chunk.write_op(OpCode::Nil, line, column),
+            ExprKind::Identifier(name) => {
+                self.named_global(OpCode::GetGlobal, name, line, column)?
+            }
             ExprKind::Unary { op, operand } => {
                 self.expression(operand)?;
                 let opcode = match op {
@@ -95,19 +130,39 @@ impl Compiler {
         Ok(())
     }
 
-    /// Emit a `Constant` instruction, adding `value` to the pool. A chunk holds
-    /// at most 256 constants, since the index is a single byte.
-    fn constant(&mut self, value: Value, line: usize, column: usize) -> Result<(), MiruError> {
+    /// Add a value to the constant pool, returning its one-byte index. A chunk
+    /// holds at most 256 constants, since the index is a single byte.
+    fn constant_index(
+        &mut self,
+        value: Value,
+        line: usize,
+        column: usize,
+    ) -> Result<u8, MiruError> {
         let index = self.chunk.add_constant(value);
-        if index > u8::MAX as usize {
-            return Err(MiruError::with_column(
-                line,
-                column,
-                "too many constants in one chunk",
-            ));
-        }
+        u8::try_from(index)
+            .map_err(|_| MiruError::with_column(line, column, "too many constants in one chunk"))
+    }
+
+    /// Emit a `Constant` instruction that pushes `value`.
+    fn constant(&mut self, value: Value, line: usize, column: usize) -> Result<(), MiruError> {
+        let index = self.constant_index(value, line, column)?;
         self.chunk.write_op(OpCode::Constant, line, column);
-        self.chunk.write(index as u8, line, column);
+        self.chunk.write(index, line, column);
+        Ok(())
+    }
+
+    /// Emit a named-global instruction (`DefineGlobal`, `GetGlobal`, or
+    /// `SetGlobal`), storing the variable name as a string constant.
+    fn named_global(
+        &mut self,
+        op: OpCode,
+        name: &str,
+        line: usize,
+        column: usize,
+    ) -> Result<(), MiruError> {
+        let index = self.constant_index(Value::Str(Rc::new(name.to_string())), line, column)?;
+        self.chunk.write_op(op, line, column);
+        self.chunk.write(index, line, column);
         Ok(())
     }
 }
@@ -193,6 +248,24 @@ mod tests {
             "1 + true",
             "-nil",
             "1 < \"a\"",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_globals() {
+        let corpus = [
+            "let x = 5\nx + 1",
+            "let x = 5\nlet y = 10\nx * y",
+            "let x = 1\nx = x + 1\nx",
+            "let name = \"Aiko\"\n\"Hi \" + name",
+            "let x = 5",
+            "let a = 2\nlet a = 3\na",
+            // Errors: reading and assigning an undefined variable.
+            "missing",
+            "missing = 5",
         ];
         for source in corpus {
             agree(source);
