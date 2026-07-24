@@ -4,14 +4,16 @@
 
 # Architecture
 
-MiruScriptX is a tree-walking interpreter written from scratch in Rust, with a
-single runtime dependency (rustyline, used only for REPL line editing and
-history). This document explains how the pieces fit together, so you can find
-your way around the code and extend it with confidence.
+MiruScriptX is a scripting language written from scratch in Rust, with a single
+runtime dependency (rustyline, used only for REPL line editing and history). It
+ships two execution engines: a tree-walking interpreter and a bytecode compiler
+with a stack virtual machine. This document explains how the pieces fit together,
+so you can find your way around the code and extend it with confidence.
 
 ## The pipeline
 
-Source text flows through three stages:
+Source text is lexed and parsed once, then handed to one of two execution
+engines:
 
 ```
 source text
@@ -24,10 +26,19 @@ source text
    v
  AST (Vec<Stmt>)
    |
-   |  interpreter  (src/interpreter.rs, src/value.rs,
-   v                src/environment.rs, src/builtins.rs)
- values and printed output
+   +---------------------------+
+   |                           |
+   |  interpreter              |  compiler   (src/compiler.rs)
+   v  (src/interpreter.rs)     v
+ values and printed output   bytecode (src/chunk.rs)
+   ^                           |
+   |                           |  virtual machine  (src/vm.rs)
+   +---------------------------+
 ```
+
+Both engines share the value model (`src/value.rs`), the builtins
+(`src/builtins.rs`), and the arithmetic and indexing rules (`src/ops.rs`), which
+is what keeps them behaving identically.
 
 Every stage reports problems as a single `MiruError { line, column, message }`
 (defined in `src/lib.rs`), so a syntax error and a runtime error are surfaced
@@ -43,11 +54,16 @@ column.
 | `src/lexer.rs`       | Turns source text into tokens; tracks lines and columns    |
 | `src/ast.rs`         | `Expr` and `Stmt` node definitions                         |
 | `src/parser.rs`      | Builds the AST (recursive descent plus a Pratt expression parser) |
-| `src/value.rs`       | `Value`, `Function`, the `Output` trait, display and equality |
+| `src/value.rs`       | `Value`, functions and closures, the `Output` and `Caller` traits |
+| `src/ops.rs`         | Arithmetic, comparison, and indexing rules, shared by both engines |
 | `src/environment.rs` | `Scope` chain for lexical scoping and closures             |
-| `src/interpreter.rs` | Walks the AST and evaluates it                             |
+| `src/interpreter.rs` | Walks the AST and evaluates it (the default engine)        |
+| `src/chunk.rs`       | Bytecode chunks: opcodes, constants, positions, disassembler |
+| `src/compiler.rs`    | Compiles the AST into bytecode                             |
+| `src/vm.rs`          | The stack-based virtual machine that runs bytecode         |
+| `src/formatter.rs`   | Reprints a program in canonical form (`miru fmt`)          |
 | `src/builtins.rs`    | The native builtins: printing, plus string, array, math, map, and input helpers |
-| `src/lib.rs`         | Ties the modules together (`parse_program`, `run_source`, `run_capture`) |
+| `src/lib.rs`         | Ties the modules together (`parse_program`, `run_source`, `run_source_vm`, `format_source`) |
 | `src/main.rs`        | The `miru` command line interface                          |
 | `src/repl.rs`        | The interactive REPL                                       |
 
@@ -95,6 +111,34 @@ interpreter). Integer division and modulo truncate; division or modulo by zero
 is a runtime error; integer operations use checked arithmetic and report
 overflow rather than panicking.
 
+### Two engines, one language
+
+As of v0.3 the tree walker was the only way to run a program. v0.4 adds a second
+engine: the compiler turns the AST into bytecode once, and the VM executes that
+flat instruction stream. This avoids re-walking the tree and re-resolving names
+on every evaluation, which is where a tree walker spends much of its time. In
+benchmarks the VM runs recursive `fib` about three times faster.
+
+The two run side by side on purpose. `miru run` uses the tree walker; `miru run
+--vm` uses the VM. Keeping both lets every change be checked by *differential
+testing*: the tests in `src/compiler.rs` run the same source on both engines and
+assert they produce the same value, or the same error at the same line and
+column, and the tests in `src/lib.rs` do the same for the printed output of every
+example program. A language with two independent implementations that agree is a
+strong signal that neither has drifted.
+
+Three things make the agreement structural rather than accidental. Both engines
+use the same `Value` type; both apply operators through `src/ops.rs`, so numeric
+promotion, overflow checks, and index bounds are defined in exactly one place;
+and both reach the builtins through the `Caller` trait, so `map`, `filter`, and
+`reduce` are shared code rather than two implementations.
+
+The VM's stack holds locals directly (a call is a frame push, not a heap-allocated
+scope), and closures capture variables as *upvalues*: shared cells that start out
+pointing at a live stack slot and are "closed" into owned values when that slot
+goes away. That is what lets a closure outlive the function it came from while
+still seeing writes made through the original variable.
+
 ### Input and output go through traits
 
 Builtins that print do not write to stdout directly. Instead they receive a
@@ -123,13 +167,22 @@ in `make_infix` (both in `src/parser.rs`), then handle it in `eval_binary` in
 
 ### Add a statement
 
-Add a `StmtKind` in `src/ast.rs`, parse it in `Parser::statement`, and execute
-it in `Interpreter::execute`.
+Add a `StmtKind` in `src/ast.rs`, parse it in `Parser::statement`, execute it in
+`Interpreter::execute`, and compile it in `Compiler::statement`. Add a
+differential test so both engines are checked against each other.
+
+### Add an opcode
+
+Add a variant to `OpCode` in `src/chunk.rs` (with its `from_u8` and `name`
+arms, and a disassembler case if it takes operands), emit it from
+`src/compiler.rs`, and execute it in the `run_frames` loop in `src/vm.rs`.
 
 ## Testing
 
 Each stage has unit tests next to it (`#[cfg(test)] mod tests`), covering the
-lexer, parser, interpreter, and builtins. End-to-end tests in
-`tests/integration.rs` run the compiled `miru` binary against the example
-programs and check both output and exit codes. Run everything with
-`cargo test`.
+lexer, parser, interpreter, formatter, compiler, and builtins. The differential
+tests in `src/compiler.rs` run the same programs on both engines and compare
+results and errors, and `src/lib.rs` compares their printed output across the
+example programs. End-to-end tests in `tests/integration.rs` run the compiled
+`miru` binary, on both engines, against the examples and check output and exit
+codes. Run everything with `cargo test`, and the benchmarks with `cargo bench`.
