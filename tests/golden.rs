@@ -69,6 +69,115 @@ fn check_output(corpus: &[(&str, &str)]) {
     );
 }
 
+/// Check the fully rendered form of an error: the header line, the offending
+/// source line, and the caret beneath it. This is what a user actually sees on
+/// standard error, so it is worth pinning exactly rather than only checking the
+/// message and position separately.
+fn check_rendered(corpus: &[(&str, &str)]) {
+    let mut failures = Vec::new();
+    for (source, expected) in corpus {
+        let actual = match miruscriptx::parse_program(source) {
+            Err(error) => error.render(source),
+            Ok(_) => match miruscriptx::eval_source_vm(source) {
+                Ok(_) => "<no error>".to_string(),
+                Err(error) => error.render(source),
+            },
+        };
+        if actual != *expected {
+            failures.push(format!(
+                "  source:   {source:?}\n  expected: {expected:?}\n  actual:   {actual:?}"
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of {} rendered-error cases failed:\n{}",
+        failures.len(),
+        corpus.len(),
+        failures.join("\n\n")
+    );
+}
+
+#[test]
+fn runtime_errors_render_with_a_caret() {
+    check_rendered(&[
+        (
+            "let a = 1\nprint(b)",
+            "error (line 2, column 7): undefined variable 'b'\n    print(b)\n          ^",
+        ),
+        (
+            "1 / 0",
+            "error (line 1, column 3): division by zero\n    1 / 0\n      ^",
+        ),
+        (
+            "let x = [1, 2]\nx[9]",
+            "error (line 2, column 3): index 9 is out of range for an array of length 2\n    x[9]\n      ^",
+        ),
+        // The caret sits under the target, which is the part at fault here.
+        (
+            "5[0]",
+            "error (line 1, column 1): cannot index a int\n    5[0]\n    ^",
+        ),
+        (
+            "fn f(a) { return a }\nf(1, 2)",
+            "error (line 2, column 1): function f expects 1 argument(s) but received 2\n    f(1, 2)\n    ^",
+        ),
+        // A leading tab is reproduced in the caret indent, so the caret stays
+        // aligned however the line is displayed.
+        (
+            "\tlet y = nil + 1",
+            "error (line 1, column 14): cannot add a nil and a int\n    \tlet y = nil + 1\n    \t            ^",
+        ),
+    ]);
+}
+
+#[test]
+fn syntax_errors_render_with_a_caret() {
+    check_rendered(&[
+        (
+            "let = 1",
+            "error (line 1, column 5): expected an identifier after 'let' but found '='\n    let = 1\n        ^",
+        ),
+        (
+            "let x =",
+            "error (line 1, column 8): expected an expression but found end of input\n    let x =\n           ^",
+        ),
+        (
+            "print(",
+            "error (line 1, column 7): expected an expression but found end of input\n    print(\n          ^",
+        ),
+        (
+            "1 +",
+            "error (line 1, column 4): expected an expression but found end of input\n    1 +\n       ^",
+        ),
+        (
+            "if true {",
+            "error (line 1, column 10): expected '}' to close a block but found end of input\n    if true {\n             ^",
+        ),
+        // Loop control outside a loop is caught while parsing, not at runtime.
+        (
+            "break",
+            "error (line 1, column 1): break outside of a loop\n    break\n    ^",
+        ),
+        (
+            "continue",
+            "error (line 1, column 1): continue outside of a loop\n    continue\n    ^",
+        ),
+        (
+            "@",
+            "error (line 1, column 1): unexpected character '@'\n    @\n    ^",
+        ),
+        (
+            "\"unterminated",
+            "error (line 1, column 1): unterminated string literal\n    \"unterminated\n    ^",
+        ),
+        (
+            "1 & 2",
+            "error (line 1, column 3): unexpected '&' (did you mean '&&'?)\n    1 & 2\n      ^",
+        ),
+    ]);
+}
+
 #[test]
 fn literals_and_their_inspect_forms() {
     check_all(&[
