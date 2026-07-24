@@ -76,5 +76,30 @@ language runs.
 
 This is the only way programs run: there is no engine to choose between.
 
+## See the bytecode
+
+You never need this to write MiruScriptX, but it is the best way to see what
+the language is actually doing. `miru disasm` prints the instructions a program
+compiles to:
+
+```
+miru disasm hello.miru
+```
+
+For a one-line `print("Hello, world!")` that reads:
+
+```
+== script ==
+   1  0000 GET_GLOBAL    slot 0
+   |  0003 CONSTANT      0 ("Hello, world!")
+   |  0005 CALL          1
+   |  0007 RETURN
+```
+
+Read it as a stack machine. Push `print`, push the string, call it with one
+argument, return what it gave back. The number on the left is the source line,
+and a bar means the instruction continues the line above. Functions you define
+are printed after the script, each under its own heading.
+
 ---
 Previous: [Introduction](01-introduction.md) | Next: [Syntax basics](03-syntax-basics.md)
