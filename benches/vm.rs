@@ -15,6 +15,22 @@
 //!
 //! An optimization that does not move these numbers is not an optimization, and
 //! should be reverted rather than kept for the complexity it adds.
+//!
+//! # Baseline
+//!
+//! Measured at the start of the v0.5 optimization work, on the machine used for
+//! development. Absolute numbers are only comparable against other runs on the
+//! same machine; the point is the relative movement each change produces.
+//!
+//! ```text
+//! fib             1.108 ms
+//! loop_sum        5.276 ms
+//! arrays        786.35 us
+//! higher_order  638.72 us
+//! globals         3.222 ms
+//! strings       605.68 us
+//! maps            1.775 ms
+//! ```
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;
