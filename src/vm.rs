@@ -11,12 +11,13 @@
 //! goes away. Operators and indexing go through [`crate::ops`].
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::rc::Rc;
 
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
+use crate::globals::Globals;
 use crate::value::{Closure, CompiledFunction, EmptyInput, Input, Output, Upvalue, Value};
 use crate::MiruError;
 
@@ -56,7 +57,7 @@ struct CallFrame {
 /// A stack-based bytecode interpreter.
 pub struct Vm {
     stack: Vec<Value>,
-    globals: HashMap<String, Value>,
+    globals: Globals,
     frames: Vec<CallFrame>,
     /// Upvalues that still point at live stack slots, kept so several closures
     /// capturing the same slot share one upvalue, and so they can be closed when
@@ -93,7 +94,7 @@ impl Vm {
 
     /// Create a VM that writes to a custom sink, as the capture helpers do.
     pub fn with_output(out: Box<dyn Write>) -> Vm {
-        let mut globals = HashMap::new();
+        let mut globals = Globals::new();
         crate::builtins::register(&mut globals);
         Vm {
             stack: Vec::new(),
@@ -126,7 +127,7 @@ impl Vm {
     /// a session compiles one input at a time, and the second input must resolve
     /// names the first defined.
     pub fn run(&mut self, program: &[crate::ast::Stmt]) -> Result<Value, MiruError> {
-        let script = crate::compiler::Compiler::compile(program)?;
+        let script = crate::compiler::Compiler::compile(program, &mut self.globals)?;
         self.interpret(script)
     }
 
@@ -203,32 +204,32 @@ impl Vm {
                 | OpCode::LessEqual
                 | OpCode::GreaterEqual => self.binary(binary_op(op), chunk, op_ip)?,
                 OpCode::DefineGlobal => {
-                    let name = global_name(chunk, chunk.code[ip]);
-                    ip += 1;
+                    let slot = read_u16(chunk, ip);
+                    ip += 2;
                     let value = self.pop();
-                    self.globals.insert(name.to_string(), value);
+                    self.globals.define(slot, value);
                 }
                 OpCode::GetGlobal => {
-                    let name = global_name(chunk, chunk.code[ip]);
-                    ip += 1;
-                    match self.globals.get(name) {
+                    let slot = read_u16(chunk, ip);
+                    ip += 2;
+                    match self.globals.get(slot) {
                         Some(value) => self.stack.push(value.clone()),
                         None => {
+                            let name = self.globals.name(slot);
                             return Err(runtime_error(
                                 chunk,
                                 op_ip,
                                 format!("undefined variable '{name}'"),
-                            ))
+                            ));
                         }
                     }
                 }
                 OpCode::SetGlobal => {
-                    let name = global_name(chunk, chunk.code[ip]);
-                    ip += 1;
+                    let slot = read_u16(chunk, ip);
+                    ip += 2;
                     let value = self.pop();
-                    if self.globals.contains_key(name) {
-                        self.globals.insert(name.to_string(), value);
-                    } else {
+                    if !self.globals.assign(slot, value) {
+                        let name = self.globals.name(slot);
                         return Err(runtime_error(
                             chunk,
                             op_ip,
@@ -740,15 +741,6 @@ fn index_set(
             target_ip,
             format!("cannot index-assign to a {}", other.type_name()),
         )),
-    }
-}
-
-/// The variable name held as a string constant at `index`. The compiler always
-/// emits a string here, so a non-string means the bytecode is malformed.
-fn global_name(chunk: &Chunk, index: u8) -> &str {
-    match &chunk.constants[index as usize] {
-        Value::Str(name) => name.as_str(),
-        _ => unreachable!("global name operand is not a string constant"),
     }
 }
 

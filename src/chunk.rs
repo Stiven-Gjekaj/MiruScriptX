@@ -39,14 +39,14 @@ pub enum OpCode {
     Greater,
     LessEqual,
     GreaterEqual,
-    /// Pop a value and bind it to a global name. One operand byte: the constant
-    /// index of the name.
+    /// Pop a value and bind it to a global. Two operand bytes: a big-endian slot
+    /// in the shared global table.
     DefineGlobal,
-    /// Push the value of a global name. One operand byte: the name's constant
-    /// index.
+    /// Push the value of a global. Two operand bytes: its slot. A slot that has
+    /// never been defined is the "undefined variable" error.
     GetGlobal,
-    /// Pop a value and assign it to an existing global. One operand byte: the
-    /// name's constant index.
+    /// Pop a value and assign it to an already defined global. Two operand
+    /// bytes: its slot.
     SetGlobal,
     /// Jump forward unconditionally. Two operand bytes: a big-endian distance.
     Jump,
@@ -276,12 +276,7 @@ impl Chunk {
 
         let _ = write!(out, "{offset:04} ");
         match OpCode::from_u8(self.code[offset]) {
-            Some(
-                op @ (OpCode::Constant
-                | OpCode::DefineGlobal
-                | OpCode::GetGlobal
-                | OpCode::SetGlobal),
-            ) => {
+            Some(op @ OpCode::Constant) => {
                 let index = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
                 let value = self
                     .constants
@@ -320,6 +315,12 @@ impl Chunk {
                 let operand = self.code.get(offset + 1).copied().unwrap_or(0);
                 let _ = writeln!(out, "{:<14}{operand}", op.name());
                 offset + 2
+            }
+            Some(op @ (OpCode::DefineGlobal | OpCode::GetGlobal | OpCode::SetGlobal)) => {
+                let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let _ = writeln!(out, "{:<14}slot {}", op.name(), (high << 8) | low);
+                offset + 3
             }
             Some(op @ (OpCode::Index | OpCode::SetIndex)) => {
                 // The operand byte carries only a source position, so there is

@@ -8,14 +8,13 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use std::collections::HashMap;
-
+use crate::globals::Globals;
 use crate::value::{Builtin, BuiltinFn, HostBuiltin, HostFn, Input, Output, Value};
 use crate::vm::Vm;
 use crate::MiruError;
 
 /// Register every builtin into a program's globals.
-pub fn register(globals: &mut HashMap<String, Value>) {
+pub fn register(globals: &mut Globals) {
     define(globals, "print", print);
     define(globals, "len", len);
     define(globals, "push", push);
@@ -54,17 +53,16 @@ pub fn register(globals: &mut HashMap<String, Value>) {
     define_host(globals, "reduce", reduce);
 }
 
-fn define(globals: &mut HashMap<String, Value>, name: &'static str, func: BuiltinFn) {
-    globals.insert(name.to_string(), Value::Builtin(Builtin { name, func }));
+fn define(globals: &mut Globals, name: &'static str, func: BuiltinFn) {
+    let slot = globals.slot_for(name).expect("room for the builtins");
+    globals.define(slot, Value::Builtin(Builtin { name, func }));
 }
 
 /// Register a higher-order builtin, one that receives the running engine so it
 /// can apply a function argument.
-fn define_host(globals: &mut HashMap<String, Value>, name: &'static str, func: HostFn) {
-    globals.insert(
-        name.to_string(),
-        Value::HostBuiltin(HostBuiltin { name, func }),
-    );
+fn define_host(globals: &mut Globals, name: &'static str, func: HostFn) {
+    let slot = globals.slot_for(name).expect("room for the builtins");
+    globals.define(slot, Value::HostBuiltin(HostBuiltin { name, func }));
 }
 
 fn check_arity(name: &str, args: &[Value], expected: usize) -> Result<(), String> {

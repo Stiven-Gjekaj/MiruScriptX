@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
+use crate::globals::Globals;
 use crate::value::{CompiledFunction, Value};
 use crate::MiruError;
 
@@ -54,7 +55,10 @@ struct LoopContext {
 
 /// Compiles an AST into a [`Chunk`]. The fields describe the function currently
 /// being compiled; `enclosing` holds the functions paused around it.
-pub struct Compiler {
+pub struct Compiler<'g> {
+    /// The shared global table, so a name gets the same slot across the
+    /// separately compiled inputs of a session.
+    globals: &'g mut Globals,
     chunk: Chunk,
     /// 0 at the top level (where variables are globals), higher inside blocks.
     scope_depth: usize,
@@ -68,9 +72,10 @@ pub struct Compiler {
     enclosing: Vec<FunctionState>,
 }
 
-impl Compiler {
-    fn new() -> Compiler {
+impl<'g> Compiler<'g> {
+    fn new(globals: &'g mut Globals) -> Compiler<'g> {
         Compiler {
+            globals,
             chunk: Chunk::new(),
             scope_depth: 0,
             locals: Vec::new(),
@@ -83,8 +88,11 @@ impl Compiler {
     /// Compile a whole program into a script function whose chunk ends in a
     /// `Return`. The value the VM returns is that of the program's final
     /// expression, which is what the REPL echoes.
-    pub fn compile(program: &[Stmt]) -> Result<Rc<CompiledFunction>, MiruError> {
-        let mut compiler = Compiler::new();
+    pub fn compile(
+        program: &[Stmt],
+        globals: &'g mut Globals,
+    ) -> Result<Rc<CompiledFunction>, MiruError> {
+        let mut compiler = Compiler::new(globals);
         compiler.program(program)?;
         let (line, column) = program.last().map(|stmt| (stmt.line, 1)).unwrap_or((0, 0));
         compiler.chunk.write_op(OpCode::Return, line, column);
@@ -674,8 +682,9 @@ impl Compiler {
         Ok(())
     }
 
-    /// Emit a named-global instruction (`DefineGlobal`, `GetGlobal`, or
-    /// `SetGlobal`), storing the variable name as a string constant.
+    /// Emit a global instruction (`DefineGlobal`, `GetGlobal`, or `SetGlobal`),
+    /// resolving the name to its slot in the shared table. Resolving here rather
+    /// than at run time is the point: the VM indexes instead of hashing.
     fn named_global(
         &mut self,
         op: OpCode,
@@ -683,9 +692,12 @@ impl Compiler {
         line: usize,
         column: usize,
     ) -> Result<(), MiruError> {
-        let index = self.constant_index(Value::Str(Rc::new(name.to_string())), line, column)?;
+        let slot = self.globals.slot_for(name).ok_or_else(|| {
+            MiruError::with_column(line, column, "too many global variables in one program")
+        })?;
         self.chunk.write_op(op, line, column);
-        self.chunk.write(index, line, column);
+        self.chunk.write((slot >> 8) as u8, line, column);
+        self.chunk.write((slot & 0xff) as u8, line, column);
         Ok(())
     }
 }

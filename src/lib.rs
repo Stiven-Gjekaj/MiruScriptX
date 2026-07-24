@@ -22,6 +22,7 @@ pub mod builtins;
 pub mod chunk;
 pub mod compiler;
 pub mod formatter;
+pub mod globals;
 pub mod lexer;
 pub mod ops;
 pub mod parser;
