@@ -433,6 +433,191 @@ fn closures_capture_by_reference_and_outlive_their_scope() {
 }
 
 #[test]
+fn arrays_maps_and_indexing() {
+    check_all(&[
+        ("[1, 2, 3]", "ok [1, 2, 3]"),
+        ("[]", "ok []"),
+        ("[1 + 1, 2 * 2, \"a\" + \"b\"]", "ok [2, 4, \"ab\"]"),
+        ("[1, 2] == [1, 2]", "ok true"),
+        ("[[1, 2], [3, 4]]", "ok [[1, 2], [3, 4]]"),
+        ("[10, 20, 30][1]", "ok 20"),
+        ("let a = [1, 2, 3]\na[0] + a[2]", "ok 4"),
+        ("[[1, 2], [3, 4]][1][0]", "ok 3"),
+        ("let a = [1, 2, 3]\na[1] = 99\na", "ok [1, 99, 3]"),
+        ("{}", "ok {}"),
+        ("{\"a\": 1, \"b\": 2}", "ok {\"a\": 1, \"b\": 2}"),
+        ("{\"b\": 2, \"a\": 1}", "ok {\"a\": 1, \"b\": 2}"),
+        ("{\"a\": 1, \"b\": 2}[\"a\"]", "ok 1"),
+        ("let m = {\"x\": 10}\nm[\"x\"]", "ok 10"),
+        ("{\"a\": 1}[\"missing\"]", "ok nil"),
+        (
+            "let k = \"name\"\nlet m = {k: \"Aiko\"}\nm[\"name\"]",
+            "ok \"Aiko\"",
+        ),
+        (
+            "let m = {\"a\": 1}\nm[\"b\"] = 2\nm",
+            "ok {\"a\": 1, \"b\": 2}",
+        ),
+        ("{\"a\": 1} == {\"a\": 1}", "ok true"),
+        (
+            "[1, 2, 3][5]",
+            "err index 5 is out of range for an array of length 3 @ 1:11",
+        ),
+        (
+            "[1, 2, 3][-1]",
+            "err index -1 is out of range (negative) @ 1:11",
+        ),
+        (
+            "[1, 2][\"x\"]",
+            "err array index must be an int, not a string @ 1:8",
+        ),
+        (
+            "{\"a\": 1}[5]",
+            "err map key must be a string, not a int @ 1:10",
+        ),
+        (
+            "let a = [1, 2, 3]\na[9] = 0",
+            "err index 9 is out of range for an array of length 3 @ 2:3",
+        ),
+        ("5[0]", "err cannot index a int @ 1:1"),
+        ("nil[0]", "err cannot index a nil @ 1:1"),
+        (
+            "let x = 5\nx[0] = 1",
+            "err cannot index-assign to a int @ 2:1",
+        ),
+    ]);
+}
+
+#[test]
+fn builtins_and_their_errors() {
+    check_all(&[
+        ("len([1, 2, 3])", "ok 3"),
+        ("len(\"hello\")", "ok 5"),
+        ("len({\"a\": 1})", "ok 1"),
+        ("len([])", "ok 0"),
+        ("type(1)", "ok \"int\""),
+        ("type(1.5)", "ok \"float\""),
+        ("type(\"a\")", "ok \"string\""),
+        ("type([])", "ok \"array\""),
+        ("type({})", "ok \"map\""),
+        ("type(nil)", "ok \"nil\""),
+        ("type(true)", "ok \"bool\""),
+        ("type(len)", "ok \"function\""),
+        ("str(42) + \"!\"", "ok \"42!\""),
+        ("str(nil)", "ok \"nil\""),
+        ("str([1, 2])", "ok \"[1, 2]\""),
+        ("range(4)", "ok [0, 1, 2, 3]"),
+        ("range(2, 5)", "ok [2, 3, 4]"),
+        ("range(0)", "ok []"),
+        ("let a = [1]\npush(a, 2)\na", "ok [1, 2]"),
+        ("upper(\"abc\")", "ok \"ABC\""),
+        ("lower(\"DEF\")", "ok \"def\""),
+        ("trim(\"  hi  \")", "ok \"hi\""),
+        ("replace(\"a.b\", \".\", \"-\")", "ok \"a-b\""),
+        ("split(\"a,b,c\", \",\")", "ok [\"a\", \"b\", \"c\"]"),
+        ("split(\"hi\", \"\")", "ok [\"h\", \"i\"]"),
+        ("join([1, 2, 3], \"-\")", "ok \"1-2-3\""),
+        ("contains(\"hello\", \"ell\")", "ok true"),
+        ("contains([1, 2], 2)", "ok true"),
+        ("contains([1, 2], 9)", "ok false"),
+        ("find(\"hello\", \"l\")", "ok 2"),
+        ("find(\"hello\", \"z\")", "ok -1"),
+        ("pop([1, 2, 3])", "ok 3"),
+        ("index_of([10, 20], 20)", "ok 1"),
+        ("index_of([1], 9)", "ok -1"),
+        ("slice([1,2,3,4], 1, 3)", "ok [2, 3]"),
+        ("slice(\"hello\", 1, 4)", "ok \"ell\""),
+        ("slice([1, 2], 0, 99)", "ok [1, 2]"),
+        ("sort([3, 1, 2])", "ok [1, 2, 3]"),
+        ("sort([\"c\", \"a\"])", "ok [\"a\", \"c\"]"),
+        ("reverse([1, 2, 3])", "ok [3, 2, 1]"),
+        ("reverse(\"abc\")", "ok \"cba\""),
+        ("abs(-5)", "ok 5"),
+        ("abs(-2.5)", "ok 2.5"),
+        ("min(3, 1, 2)", "ok 1"),
+        ("max(3, 1, 2)", "ok 3"),
+        ("min(2, 1.5)", "ok 1.5"),
+        ("floor(2.7)", "ok 2"),
+        ("ceil(2.1)", "ok 3"),
+        ("round(2.5)", "ok 3"),
+        ("round(2.4)", "ok 2"),
+        ("sqrt(16)", "ok 4.0"),
+        ("sqrt(9)", "ok 3.0"),
+        ("pow(2, 10)", "ok 1024"),
+        ("pow(2, -1)", "ok 0.5"),
+        ("pow(2.0, 3)", "ok 8.0"),
+        ("int(\"42\")", "ok 42"),
+        ("int(2.9)", "ok 2"),
+        ("int(7)", "ok 7"),
+        ("float(3)", "ok 3.0"),
+        ("float(\"1.5\")", "ok 1.5"),
+        ("keys({\"b\": 2, \"a\": 1})", "ok [\"a\", \"b\"]"),
+        ("values({\"b\": 2, \"a\": 1})", "ok [1, 2]"),
+        ("has({\"a\": 1}, \"a\")", "ok true"),
+        ("has({\"a\": 1}, \"z\")", "ok false"),
+        (
+            "len(1)",
+            "err len expects a string, array, or map but got a int @ 1:1",
+        ),
+        ("upper(5)", "err upper expects a string but got a int @ 1:1"),
+        ("sqrt(-1)", "err sqrt of a negative number @ 1:1"),
+        ("pop([])", "err pop from an empty array @ 1:1"),
+        ("int(\"abc\")", "err cannot convert \"abc\" to an int @ 1:1"),
+        (
+            "sort([1, \"a\"])",
+            "err sort expects an array of all numbers or all strings @ 1:1",
+        ),
+        ("len()", "err len expects 1 argument(s) but got 0 @ 1:1"),
+        ("keys([])", "err keys expects a map but got a array @ 1:1"),
+        (
+            "has([], \"a\")",
+            "err has expects a map but got a array @ 1:1",
+        ),
+        (
+            "push(5, 1)",
+            "err push expects an array as its first argument but got a int @ 1:1",
+        ),
+        (
+            "abs(\"a\")",
+            "err abs expects a number but got a string @ 1:1",
+        ),
+        ("min()", "err min expects at least one argument @ 1:1"),
+        (
+            "float(\"zz\")",
+            "err cannot convert \"zz\" to a float @ 1:1",
+        ),
+        (
+            "join(5, \"-\")",
+            "err join expects an array and a string separator @ 1:1",
+        ),
+        ("range(\"a\")", "err range expects integer arguments @ 1:1"),
+    ]);
+}
+
+#[test]
+fn higher_order_builtins() {
+    check_all(&[
+        ("map([1, 2, 3], fn(x) { return x * 2 })", "ok [2, 4, 6]"),
+        ("filter([1, 2, 3, 4], fn(x) { return x % 2 == 0 })", "ok [2, 4]"),
+        ("reduce([1, 2, 3, 4], fn(acc, x) { return acc + x }, 0)", "ok 10"),
+        ("map([], fn(x) { return x })", "ok []"),
+        ("reduce([], fn(a, b) { return a + b }, 42)", "ok 42"),
+        ("fn double(x) { return x * 2 }\nmap([1, 2, 3], double)", "ok [2, 4, 6]"),
+        ("map([-1, -2, 3], abs)", "ok [1, 2, 3]"),
+        ("let n = 10\nlet add = fn(x) { return x + n }\nmap([1, 2, 3], add)", "ok [11, 12, 13]"),
+        ("reduce(map(filter([1,2,3,4,5], fn(x) { return x % 2 == 1 }), fn(x) { return x * x }), fn(a, b) { return a + b }, 0)", "ok 35"),
+        ("fn sum(xs) { return reduce(xs, fn(a, b) { return a + b }, 0) }\nsum([4, 5, 6])", "ok 15"),
+        ("map([1, 0], fn(x) { return 1 / x })", "err division by zero @ 1:30"),
+        ("map(5, fn(x) { return x })", "err map expects an array but got a int @ 1:1"),
+        ("map([1, 2], 3)", "err a int is not callable @ 1:1"),
+        ("map([1, 2])", "err map expects 2 argument(s) but got 1 @ 1:1"),
+        ("filter(5, fn(x) { return true })", "err filter expects an array but got a int @ 1:1"),
+        ("reduce([1, 2], fn(a, b) { return a })", "err reduce expects 3 argument(s) but got 2 @ 1:1"),
+        ("filter([1,2,3], fn(x) { return nil })", "ok []"),
+    ]);
+}
+
+#[test]
 fn a_program_evaluates_to_its_last_expression() {
     check_all(&[("1\n2\n3", "ok 3"), ("1 + 1\n2 + 2", "ok 4")]);
 }
