@@ -54,7 +54,7 @@ pub fn eval_source(source: &str) -> Result<value::Value, MiruError> {
 pub fn eval_source_vm(source: &str) -> Result<value::Value, MiruError> {
     let program = parse_program(source)?;
     let script = compiler::Compiler::compile(&program)?;
-    vm::Vm::new().interpret(script)
+    vm::Vm::with_output(Box::new(std::io::sink())).interpret(script)
 }
 
 /// Lex, parse, and reprint a source string in the canonical `miru fmt` style,

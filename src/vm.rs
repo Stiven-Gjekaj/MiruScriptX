@@ -10,11 +10,12 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::io::Write;
 use std::rc::Rc;
 
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
-use crate::value::{Closure, CompiledFunction, Upvalue, Value};
+use crate::value::{Caller, Closure, CompiledFunction, EmptyInput, Input, Output, Upvalue, Value};
 use crate::MiruError;
 
 /// A single active function call: which closure is running, where its
@@ -26,7 +27,6 @@ struct CallFrame {
 }
 
 /// A stack-based bytecode interpreter.
-#[derive(Default)]
 pub struct Vm {
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
@@ -35,11 +35,66 @@ pub struct Vm {
     /// capturing the same slot share one upvalue, and so they can be closed when
     /// that slot leaves the stack.
     open_upvalues: Vec<(usize, Rc<RefCell<Upvalue>>)>,
+    out: Box<dyn Write>,
+    input: Box<dyn Input>,
+    /// The position of the instruction being executed, so builtins called
+    /// through the [`Caller`] trait can report errors where they happened.
+    line: usize,
+    column: usize,
+}
+
+impl Default for Vm {
+    fn default() -> Self {
+        Vm::new()
+    }
+}
+
+impl Output for Vm {
+    fn write(&mut self, text: &str) {
+        let _ = self.out.write_all(text.as_bytes());
+    }
+}
+
+impl Caller for Vm {
+    fn call_value(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError> {
+        self.call_from_host(callee, args)
+    }
+
+    fn call_error(&self, message: String) -> MiruError {
+        MiruError::with_column(self.line, self.column, message)
+    }
 }
 
 impl Vm {
+    /// Create a VM that writes to standard output.
     pub fn new() -> Vm {
-        Vm::default()
+        Vm::with_output(Box::new(std::io::stdout()))
+    }
+
+    /// Create a VM that writes to a custom sink, as the capture helpers do.
+    pub fn with_output(out: Box<dyn Write>) -> Vm {
+        let mut globals = HashMap::new();
+        crate::builtins::register_map(&mut globals);
+        Vm {
+            stack: Vec::new(),
+            globals,
+            frames: Vec::new(),
+            open_upvalues: Vec::new(),
+            out,
+            input: Box::new(EmptyInput),
+            line: 0,
+            column: 0,
+        }
+    }
+
+    /// Replace the input source that `input()` reads from.
+    pub fn set_input(&mut self, input: Box<dyn Input>) {
+        self.input = input;
+    }
+
+    /// Flush any buffered output.
+    pub fn flush(&mut self) {
+        let _ = self.out.flush();
     }
 
     /// Execute a compiled program. The whole program is itself a function (an
@@ -55,10 +110,13 @@ impl Vm {
             ip: 0,
             slot_base: 0,
         });
-        self.run()
+        self.run_frames(0)
     }
 
-    fn run(&mut self) -> Result<Value, MiruError> {
+    /// Run the bytecode loop until the frame at `base_depth` returns, yielding its
+    /// result. `base_depth` is 0 for a whole program; a higher value runs a single
+    /// nested call made from a host builtin.
+    fn run_frames(&mut self, base_depth: usize) -> Result<Value, MiruError> {
         // Keep the current frame's closure, instruction pointer, and stack base in
         // locals. `closure` is a cloned handle, so `chunk` borrows it rather than
         // `self`, leaving `self` free to mutate as instructions execute. The three
@@ -288,13 +346,15 @@ impl Vm {
                 OpCode::Call => {
                     let argcount = chunk.code[ip] as usize;
                     ip += 1;
-                    // Save where to resume, then enter the callee's frame.
+                    // Save where to resume, then enter the callee. A builtin runs
+                    // in place and leaves the frame stack untouched.
                     self.frames.last_mut().expect("a call frame").ip = ip;
-                    self.call_value(argcount, chunk, op_ip)?;
-                    let frame = self.frames.last().expect("a call frame");
-                    closure = Rc::clone(&frame.closure);
-                    ip = frame.ip;
-                    slot_base = frame.slot_base;
+                    if self.call_at_stack(argcount, chunk, op_ip)? {
+                        let frame = self.frames.last().expect("a call frame");
+                        closure = Rc::clone(&frame.closure);
+                        ip = frame.ip;
+                        slot_base = frame.slot_base;
+                    }
                     continue;
                 }
                 OpCode::Pop => {
@@ -306,7 +366,10 @@ impl Vm {
                     // Close any upvalues that captured this frame's locals before
                     // they leave the stack.
                     self.close_upvalues_from(frame.slot_base);
-                    if self.frames.is_empty() {
+                    if self.frames.len() == base_depth {
+                        // Drop the callee and its arguments; the result goes back
+                        // to whoever started this loop.
+                        self.stack.truncate(frame.slot_base.saturating_sub(1));
                         return Ok(result);
                     }
                     // Drop the callee and its arguments and locals, then leave the
@@ -324,15 +387,17 @@ impl Vm {
     }
 
     /// Enter a function call: the callee sits just beneath its `argcount`
-    /// arguments on the stack. Pushes a new frame, or fails if the callee is not
-    /// callable or the arity is wrong.
-    fn call_value(
+    /// arguments on the stack. A user function pushes a new frame; a native
+    /// builtin runs immediately and leaves its result in place. Returns whether a
+    /// frame was pushed, so the run loop knows to switch frames.
+    fn call_at_stack(
         &mut self,
         argcount: usize,
         chunk: &Chunk,
         op_ip: usize,
-    ) -> Result<(), MiruError> {
-        let callee = self.stack[self.stack.len() - argcount - 1].clone();
+    ) -> Result<bool, MiruError> {
+        let callee_slot = self.stack.len() - argcount - 1;
+        let callee = self.stack[callee_slot].clone();
         match callee {
             Value::Closure(closure) => {
                 let arity = closure.function.arity;
@@ -352,13 +417,99 @@ impl Vm {
                     ip: 0,
                     slot_base,
                 });
-                Ok(())
+                Ok(true)
+            }
+            // Builtins run to completion here, so no frame is pushed: the callee
+            // and its arguments are replaced by the single result value.
+            Value::Builtin(_) | Value::HostBuiltin(_) => {
+                let args = self.stack.split_off(callee_slot + 1);
+                self.stack.pop();
+                let (line, column) = chunk.position(op_ip);
+                let result = self.call_native(callee, args, line, column)?;
+                self.stack.push(result);
+                Ok(false)
             }
             other => Err(runtime_error(
                 chunk,
                 op_ip,
                 format!("a {} is not callable", other.type_name()),
             )),
+        }
+    }
+
+    /// Run a native builtin, with `line` and `column` as the position its errors
+    /// report. Shared by bytecode calls and calls made from host builtins.
+    fn call_native(
+        &mut self,
+        callee: Value,
+        args: Vec<Value>,
+        line: usize,
+        column: usize,
+    ) -> Result<Value, MiruError> {
+        let (saved_line, saved_column) = (self.line, self.column);
+        self.line = line;
+        self.column = column;
+        let result = match callee {
+            Value::Builtin(builtin) => {
+                // Move the input reader out so the VM can also be borrowed as the
+                // output sink during the call, then restore it.
+                let mut input = std::mem::replace(&mut self.input, Box::new(EmptyInput));
+                let result = (builtin.func)(self, &mut *input, args);
+                self.input = input;
+                result.map_err(|message| MiruError::with_column(line, column, message))
+            }
+            Value::HostBuiltin(builtin) => (builtin.func)(self, args),
+            other => Err(MiruError::with_column(
+                line,
+                column,
+                format!("a {} is not callable", other.type_name()),
+            )),
+        };
+        self.line = saved_line;
+        self.column = saved_column;
+        result
+    }
+
+    /// Apply a function value from outside the bytecode loop, as a higher-order
+    /// builtin does. A user function runs on a nested loop that stops when its
+    /// frame returns, so the result comes back here rather than to the
+    /// interrupted frame.
+    fn call_from_host(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError> {
+        match callee {
+            Value::Closure(closure) => {
+                let arity = closure.function.arity;
+                if args.len() != arity {
+                    let name = closure.function.name.as_deref().unwrap_or("<anonymous>");
+                    return Err(self.call_error(format!(
+                        "function {name} expects {arity} argument(s) but received {}",
+                        args.len()
+                    )));
+                }
+                // Mirror the bytecode layout: the callee sits beneath its args.
+                let callee_slot = self.stack.len();
+                self.stack.push(Value::Closure(Rc::clone(&closure)));
+                let slot_base = self.stack.len();
+                for arg in args {
+                    self.stack.push(arg);
+                }
+                let depth = self.frames.len();
+                self.frames.push(CallFrame {
+                    closure,
+                    ip: 0,
+                    slot_base,
+                });
+                let result = self.run_frames(depth);
+                if result.is_err() {
+                    // Unwind the partial call so the stack stays consistent.
+                    self.frames.truncate(depth);
+                    self.stack.truncate(callee_slot);
+                }
+                result
+            }
+            other => {
+                let (line, column) = (self.line, self.column);
+                self.call_native(other, args, line, column)
+            }
         }
     }
 

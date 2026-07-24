@@ -7,7 +7,6 @@ use std::rc::Rc;
 use crate::ast::Stmt;
 use crate::chunk::Chunk;
 use crate::environment::Env;
-use crate::interpreter::Interpreter;
 use crate::MiruError;
 
 /// A sink that side-effecting builtins such as `print` write to. The
@@ -82,12 +81,24 @@ pub struct Builtin {
     pub func: BuiltinFn,
 }
 
-/// The signature of a higher-order builtin: one handed the interpreter so it can
-/// apply a function argument, for example to each element of an array.
-pub type HostFn = fn(&mut Interpreter, Vec<Value>) -> Result<Value, MiruError>;
+/// An execution engine that can apply a function value to arguments. Both the
+/// tree-walking interpreter and the bytecode VM implement this, so higher-order
+/// builtins such as `map` work identically on either engine.
+pub trait Caller {
+    /// Call `callee` with `args`, returning its result. Errors carry the current
+    /// source position of whichever engine is running.
+    fn call_value(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError>;
 
-/// A native builtin that receives the interpreter itself, used by the
-/// higher-order builtins `map`, `filter`, and `reduce`.
+    /// Build an error at the engine's current source position.
+    fn call_error(&self, message: String) -> MiruError;
+}
+
+/// The signature of a higher-order builtin: one handed the running engine so it
+/// can apply a function argument, for example to each element of an array.
+pub type HostFn = fn(&mut dyn Caller, Vec<Value>) -> Result<Value, MiruError>;
+
+/// A native builtin that receives the running engine, used by the higher-order
+/// builtins `map`, `filter`, and `reduce`.
 #[derive(Clone)]
 pub struct HostBuiltin {
     pub name: &'static str,

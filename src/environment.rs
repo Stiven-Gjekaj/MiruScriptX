@@ -38,6 +38,15 @@ pub fn define(env: &Env, name: &str, value: Value) {
     env.borrow_mut().values.insert(name.to_string(), value);
 }
 
+/// Every binding defined directly in this scope, as owned pairs.
+pub fn bindings(env: &Env) -> Vec<(String, Value)> {
+    env.borrow()
+        .values
+        .iter()
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect()
+}
+
 /// Look up a name, walking up the scope chain. Returns `None` if undefined.
 pub fn get(env: &Env, name: &str) -> Option<Value> {
     let parent = {

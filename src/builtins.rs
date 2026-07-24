@@ -9,8 +9,8 @@ use std::cmp::Ordering;
 use std::rc::Rc;
 
 use crate::environment::{self, Env};
-use crate::interpreter::Interpreter;
-use crate::value::{Builtin, BuiltinFn, HostBuiltin, HostFn, Input, Output, Value};
+
+use crate::value::{Builtin, BuiltinFn, Caller, HostBuiltin, HostFn, Input, Output, Value};
 use crate::MiruError;
 
 /// Register every builtin into the given (global) scope.
@@ -51,6 +51,17 @@ pub fn register(env: &Env) {
     define_host(env, "map", map);
     define_host(env, "filter", filter);
     define_host(env, "reduce", reduce);
+}
+
+/// Register every builtin into a plain name-to-value map, as the bytecode VM's
+/// globals are stored. Built from the same list as [`register`], so both engines
+/// expose exactly the same builtins.
+pub fn register_map(globals: &mut std::collections::HashMap<String, Value>) {
+    let env = environment::new_global();
+    register(&env);
+    for (name, value) in environment::bindings(&env) {
+        globals.insert(name, value);
+    }
 }
 
 fn define(env: &Env, name: &'static str, func: BuiltinFn) {
@@ -699,14 +710,14 @@ fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Resul
 /// `map(array, f)` returns a new array holding `f(x)` for each element `x`, in
 /// order. The function is applied through the interpreter, so it may be a
 /// user-defined function, a closure, or another builtin.
-fn map(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError> {
+fn map(interp: &mut dyn Caller, args: Vec<Value>) -> Result<Value, MiruError> {
     if args.len() != 2 {
-        return Err(interp.error(format!("map expects 2 argument(s) but got {}", args.len())));
+        return Err(interp.call_error(format!("map expects 2 argument(s) but got {}", args.len())));
     }
     let items = match &args[0] {
         Value::Array(items) => items.borrow().clone(),
         other => {
-            return Err(interp.error(format!(
+            return Err(interp.call_error(format!(
                 "map expects an array but got a {}",
                 other.type_name()
             )))
@@ -715,16 +726,16 @@ fn map(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError> {
     let func = args[1].clone();
     let mut result = Vec::with_capacity(items.len());
     for item in items {
-        result.push(interp.call(func.clone(), vec![item])?);
+        result.push(interp.call_value(func.clone(), vec![item])?);
     }
     Ok(Value::Array(Rc::new(RefCell::new(result))))
 }
 
 /// `filter(array, f)` returns a new array of the elements for which `f(x)` is
 /// truthy, keeping their original order.
-fn filter(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError> {
+fn filter(interp: &mut dyn Caller, args: Vec<Value>) -> Result<Value, MiruError> {
     if args.len() != 2 {
-        return Err(interp.error(format!(
+        return Err(interp.call_error(format!(
             "filter expects 2 argument(s) but got {}",
             args.len()
         )));
@@ -732,7 +743,7 @@ fn filter(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError
     let items = match &args[0] {
         Value::Array(items) => items.borrow().clone(),
         other => {
-            return Err(interp.error(format!(
+            return Err(interp.call_error(format!(
                 "filter expects an array but got a {}",
                 other.type_name()
             )))
@@ -741,7 +752,10 @@ fn filter(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError
     let func = args[1].clone();
     let mut result = Vec::new();
     for item in items {
-        if interp.call(func.clone(), vec![item.clone()])?.is_truthy() {
+        if interp
+            .call_value(func.clone(), vec![item.clone()])?
+            .is_truthy()
+        {
             result.push(item);
         }
     }
@@ -751,9 +765,9 @@ fn filter(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError
 /// `reduce(array, f, init)` folds the array from the left: starting with the
 /// accumulator `init`, it computes `f(acc, x)` for each element in order and
 /// returns the final accumulator.
-fn reduce(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError> {
+fn reduce(interp: &mut dyn Caller, args: Vec<Value>) -> Result<Value, MiruError> {
     if args.len() != 3 {
-        return Err(interp.error(format!(
+        return Err(interp.call_error(format!(
             "reduce expects 3 argument(s) but got {}",
             args.len()
         )));
@@ -761,7 +775,7 @@ fn reduce(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError
     let items = match &args[0] {
         Value::Array(items) => items.borrow().clone(),
         other => {
-            return Err(interp.error(format!(
+            return Err(interp.call_error(format!(
                 "reduce expects an array but got a {}",
                 other.type_name()
             )))
@@ -770,7 +784,7 @@ fn reduce(interp: &mut Interpreter, args: Vec<Value>) -> Result<Value, MiruError
     let func = args[1].clone();
     let mut acc = args[2].clone();
     for item in items {
-        acc = interp.call(func.clone(), vec![acc, item])?;
+        acc = interp.call_value(func.clone(), vec![acc, item])?;
     }
     Ok(acc)
 }

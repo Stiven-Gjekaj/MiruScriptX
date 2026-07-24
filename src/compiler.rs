@@ -1003,4 +1003,83 @@ mod tests {
             agree(source);
         }
     }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_builtins() {
+        let corpus = [
+            "len([1, 2, 3])",
+            "len(\"hello\")",
+            "type(1) + type(\"a\")",
+            "str(42) + \"!\"",
+            "range(4)",
+            "range(2, 5)",
+            "let a = [1]\npush(a, 2)\na",
+            "upper(\"abc\") + lower(\"DEF\")",
+            "trim(\"  hi  \")",
+            "split(\"a,b,c\", \",\")",
+            "join([1, 2, 3], \"-\")",
+            "sort([3, 1, 2])",
+            "reverse([1, 2, 3])",
+            "slice([1, 2, 3, 4], 1, 3)",
+            "abs(-5) + min(3, 1) + max(2, 7)",
+            "floor(2.7) + ceil(2.1) + round(2.5)",
+            "sqrt(16)",
+            "pow(2, 8)",
+            "int(\"42\") + int(2.9)",
+            "float(3)",
+            "keys({\"b\": 2, \"a\": 1})",
+            "values({\"b\": 2, \"a\": 1})",
+            "has({\"a\": 1}, \"a\")",
+            "contains([1, 2], 2)",
+            "index_of([10, 20], 20)",
+            "find(\"hello\", \"l\")",
+            "pop([1, 2, 3])",
+            // A builtin used inside a function and a loop.
+            "fn total(xs) {\n  let sum = 0\n  for x in xs { sum = sum + x }\n  return sum\n}\ntotal(range(5))",
+            // Builtin errors report the same message at the same place.
+            "len(1)",
+            "upper(5)",
+            "sqrt(-1)",
+            "pop([])",
+            "int(\"abc\")",
+            "sort([1, \"a\"])",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
+
+    #[test]
+    fn vm_matches_the_tree_walker_on_higher_order_builtins() {
+        let corpus = [
+            "map([1, 2, 3], fn(x) { return x * 2 })",
+            "filter([1, 2, 3, 4], fn(x) { return x % 2 == 0 })",
+            "reduce([1, 2, 3, 4], fn(acc, x) { return acc + x }, 0)",
+            "map([], fn(x) { return x })",
+            "reduce([], fn(acc, x) { return acc + x }, 42)",
+            // A named function passed by name.
+            "fn double(x) { return x * 2 }\nmap([1, 2, 3], double)",
+            // A builtin passed as the function argument.
+            "map([-1, -2, 3], abs)",
+            // A closure capturing an outer variable.
+            "let n = 10\nlet add = fn(x) { return x + n }\nmap([1, 2, 3], add)",
+            // Chained higher-order calls.
+            "reduce(map(filter([1, 2, 3, 4, 5], fn(x) { return x % 2 == 1 }), fn(x) { return x * x }), fn(a, b) { return a + b }, 0)",
+            // Nested: a map inside the function applied by another map.
+            "map([1, 2], fn(x) { return reduce([1, 2, 3], fn(a, b) { return a + b }, x) })",
+            // Higher-order builtins used inside a user function.
+            "fn sum(xs) { return reduce(xs, fn(a, b) { return a + b }, 0) }\nsum([4, 5, 6])",
+            // Errors from the applied function propagate identically.
+            "map([1, 0], fn(x) { return 1 / x })",
+            // Errors in the higher-order builtins themselves.
+            "map(5, fn(x) { return x })",
+            "map([1, 2], 3)",
+            "map([1, 2])",
+            "filter(5, fn(x) { return true })",
+            "reduce([1, 2], fn(a, b) { return a })",
+        ];
+        for source in corpus {
+            agree(source);
+        }
+    }
 }

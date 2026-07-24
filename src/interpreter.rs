@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
 use crate::environment::{self, Env};
-use crate::value::{EmptyInput, Function, Input, Output, Value};
+use crate::value::{Caller, EmptyInput, Function, Input, Output, Value};
 use crate::MiruError;
 
 /// How execution should continue after a statement.
@@ -40,6 +40,16 @@ impl Default for Interpreter {
 impl Output for Interpreter {
     fn write(&mut self, text: &str) {
         let _ = self.out.write_all(text.as_bytes());
+    }
+}
+
+impl Caller for Interpreter {
+    fn call_value(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError> {
+        self.call(callee, args)
+    }
+
+    fn call_error(&self, message: String) -> MiruError {
+        self.error(message)
     }
 }
 
