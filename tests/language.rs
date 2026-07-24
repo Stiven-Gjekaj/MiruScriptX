@@ -228,3 +228,29 @@ fn map_index_key_must_be_a_string() {
         .message
         .contains("map key must be a string"));
 }
+
+#[test]
+fn a_literal_repeated_past_the_constant_limit_still_compiles() {
+    // A `Constant` operand is one byte, so a chunk holds 256 of them. Each
+    // occurrence of a literal used to take its own slot, which made this
+    // perfectly ordinary program fail to compile at line 257.
+    let mut source = String::from("let n = 0\n");
+    for _ in 0..300 {
+        source.push_str("n = n + 1\n");
+    }
+    source.push('n');
+    assert_eq!(repr(&source), "300");
+}
+
+#[test]
+fn distinct_literals_still_run_out_of_constant_slots() {
+    // The limit is real, it just counts distinct values now. Reaching it is an
+    // ordinary error with a position, not a panic or a wrong answer.
+    let mut source = String::from("let n = 0\n");
+    for i in 0..300 {
+        source.push_str(&format!("n = n + {i}\n"));
+    }
+    assert!(error(&source)
+        .message
+        .contains("too many constants in one chunk"));
+}

@@ -185,6 +185,29 @@ impl Value {
             _ => false,
         }
     }
+
+    /// Whether two values are interchangeable as a compiled constant, so that a
+    /// chunk can store one entry for both.
+    ///
+    /// This is deliberately stricter than [`Value::equals`] and is not a
+    /// substitute for it. Language equality promotes across the numeric types,
+    /// so `1` equals `1.0`; sharing a constant slot between them would rewrite
+    /// one literal as the other and change what `type` and `str` report about
+    /// it. Floats compare by their bits for the same reason, which keeps `0.0`
+    /// and `-0.0` apart.
+    ///
+    /// Only the kinds a literal can produce are ever equal here. The rest carry
+    /// identity rather than a value, and none of them reaches a constant pool.
+    pub fn same_constant(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Str(a), Value::Str(b)) => a == b,
+            (Value::Nil, Value::Nil) => true,
+            _ => false,
+        }
+    }
 }
 
 impl std::fmt::Display for Value {

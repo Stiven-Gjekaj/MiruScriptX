@@ -261,8 +261,26 @@ impl Chunk {
         self.write(op as u8, line, column);
     }
 
-    /// Add a constant to the pool and return its index, for use as an operand.
+    /// Add a constant to the pool and return its index, for use as an operand,
+    /// reusing the entry for a value already in the pool.
+    ///
+    /// Reuse is what makes the pool usable, not a saving. A `Constant` operand
+    /// is one byte, so a chunk holds at most 256 of them, and without this every
+    /// *occurrence* of a literal spent one: a three-hundred-line program that
+    /// added `1` to a counter on each line failed to compile. The limit now
+    /// counts distinct values, which is a bound a real program can live within.
+    ///
+    /// The scan is linear, and bounded by that same cap: the compiler refuses a
+    /// chunk the moment the pool outgrows one byte, so it never searches more
+    /// than 257 entries.
     pub fn add_constant(&mut self, value: Value) -> usize {
+        if let Some(index) = self
+            .constants
+            .iter()
+            .position(|existing| existing.same_constant(&value))
+        {
+            return index;
+        }
         self.constants.push(value);
         self.constants.len() - 1
     }
@@ -464,6 +482,31 @@ mod tests {
         assert_eq!(chunk.add_constant(Value::Int(1)), 0);
         assert_eq!(chunk.add_constant(Value::Int(2)), 1);
         assert_eq!(chunk.constants.len(), 2);
+    }
+
+    #[test]
+    fn add_constant_reuses_an_entry_for_the_same_value() {
+        let mut chunk = Chunk::new();
+        assert_eq!(chunk.add_constant(Value::Int(7)), 0);
+        assert_eq!(chunk.add_constant(Value::Str(Rc::new("hi".to_string()))), 1);
+        assert_eq!(chunk.add_constant(Value::Int(7)), 0);
+        // Strings match on their contents, not on which allocation they are.
+        assert_eq!(chunk.add_constant(Value::Str(Rc::new("hi".to_string()))), 1);
+        assert_eq!(chunk.constants.len(), 2);
+    }
+
+    #[test]
+    fn add_constant_keeps_values_of_different_types_apart() {
+        let mut chunk = Chunk::new();
+        // 1 and 1.0 are equal to the language but are not the same constant:
+        // sharing a slot would rewrite one literal as the other and change what
+        // `type` and `str` report.
+        assert_eq!(chunk.add_constant(Value::Int(1)), 0);
+        assert_eq!(chunk.add_constant(Value::Float(1.0)), 1);
+        // And 0.0 and -0.0, which compare equal but do not print the same.
+        assert_eq!(chunk.add_constant(Value::Float(0.0)), 2);
+        assert_eq!(chunk.add_constant(Value::Float(-0.0)), 3);
+        assert_eq!(chunk.constants.len(), 4);
     }
 
     #[test]
