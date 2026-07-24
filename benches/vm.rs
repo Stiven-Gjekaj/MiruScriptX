@@ -16,6 +16,26 @@
 //! An optimization that does not move these numbers is not an optimization, and
 //! should be reverted rather than kept for the complexity it adds.
 //!
+//! Take the baseline immediately before the change, not from an earlier
+//! session. These numbers drift by more than a typical change is worth
+//! depending on what else the machine is doing, so only a paired before and
+//! after taken minutes apart compares like with like.
+//!
+//! # Re-run a lone regression before believing it
+//!
+//! The short workloads (`arrays`, `strings`, `higher_order`, all well under a
+//! millisecond) report a regression from interference often enough that it
+//! happened three times over the v0.5 optimization work, each time on a change
+//! with no mechanism to explain it and each time reversing on a clean re-run.
+//! A regression is worth acting on when the change gives some reason to expect
+//! one, or when it survives running that workload again on a quiet machine.
+//! Criterion's own signal for this is the confidence interval: the spurious
+//! ones came with intervals several times wider than the same workload's usual.
+//!
+//! This cuts the other way too. Re-running until a number flatters the change
+//! is how benchmarks come to mean nothing, so re-run once and take what it
+//! says.
+//!
 //! # Baseline
 //!
 //! Measured at the start of the v0.5 optimization work, on the machine used for
