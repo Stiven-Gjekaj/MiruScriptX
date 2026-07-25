@@ -138,6 +138,25 @@ request templates, and a branded README with a project logo.
   result array and call back into a nested bytecode loop once per element, and
   nothing in v0.5 touched either.
 
+- Widen the one-byte operands that cap what a program may contain. Four of them
+  exist, and v0.5 fixed a fifth that was worse than any of these, so they are
+  worth going through deliberately rather than one at a time as each is hit:
+
+  | Operand | Cap | Reachable? |
+  | ------- | --- | ---------- |
+  | `Closure`'s function index | 256 functions per chunk | Yes. A 300-function file is an ordinary library, and it does not compile. |
+  | A local's stack slot | 256 locals in scope | Unlikely by hand. |
+  | `Array`'s element count | 255 elements in one literal | Unlikely; building with `push` in a loop has no such limit. |
+  | `Map`'s entry count | 255 entries in one literal | Same. |
+
+  Only the first is worth calling a defect. All four fail loudly, with a message
+  and a position, rather than miscompiling, which is why none of them surfaced in
+  testing. Widening them costs a byte per affected instruction to buy headroom
+  most programs will never use, so it wants measuring like any other change.
+
+  While in there, give "too many local variables in scope" the column and caret
+  that every other error in the language carries. It reports a line only.
+
 ## How versions are cut
 
 Within a milestone, work lands as small, numbered commits (for example `v0.2.1`
