@@ -1,0 +1,114 @@
+name: Playground
+
+# Builds the WebAssembly playground and publishes it to GitHub Pages.
+#
+# Deliberately separate from ci.yml. A failure here means the demo did not
+# deploy, not that the language is broken, and the two should not be reported as
+# the same thing.
+#
+# Requires the repository's Pages source to be set to "GitHub Actions"
+# (Settings, Pages, Build and deployment). Without it the deploy step fails with
+# a 404 that does not explain itself.
+
+on:
+  push:
+    branches: ["main"]
+  # So a deploy can be triggered by hand without pushing, which is also how to
+  # test the Pages setting before anything is merged.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it, so a half-published
+# site is never left behind.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # Must equal the pin in playground/Cargo.toml. wasm-bindgen generates glue
+  # that only a CLI of the identical version can consume, and the mismatch error
+  # does not name its cause, so the step below checks the two agree and fails
+  # with a message that does.
+  WASM_BINDGEN_VERSION: "0.2.126"
+
+jobs:
+  build:
+    name: Build the playground
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+
+      - name: Check the wasm-bindgen pin matches this workflow
+        run: |
+          pinned=$(grep -oP 'wasm-bindgen = "=\K[0-9.]+' playground/Cargo.toml)
+          if [ "$pinned" != "$WASM_BINDGEN_VERSION" ]; then
+            echo "playground/Cargo.toml pins wasm-bindgen $pinned," >&2
+            echo "but this workflow installs $WASM_BINDGEN_VERSION." >&2
+            echo "They have to match. Update WASM_BINDGEN_VERSION in this file." >&2
+            exit 1
+          fi
+          echo "wasm-bindgen $pinned, matching the CLI this workflow installs"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: pages-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install wasm-bindgen-cli
+        # The prebuilt binary rather than `cargo install`, which compiles a large
+        # tree to produce a tool that already ships as one.
+        run: |
+          url="https://github.com/wasm-bindgen/wasm-bindgen/releases/download"
+          name="wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl"
+          curl -sSL "${url}/${WASM_BINDGEN_VERSION}/${name}.tar.gz" | tar xz
+          install -m755 "${name}/wasm-bindgen" /usr/local/bin/wasm-bindgen
+          wasm-bindgen --version
+
+      - name: Build the WebAssembly module
+        run: cargo build --release --target wasm32-unknown-unknown -p miruscriptx-playground
+
+      - name: Generate the JavaScript glue
+        run: |
+          wasm-bindgen --target web --no-typescript \
+            --out-dir playground/web/pkg \
+            target/wasm32-unknown-unknown/release/miruscriptx_playground.wasm
+
+      - name: Check the page has everything it needs
+        # A missing file here publishes a blank page that loads without error,
+        # which is worse than failing.
+        run: |
+          for file in index.html style.css main.js favicon.svg \
+                      pkg/miruscriptx_playground.js \
+                      pkg/miruscriptx_playground_bg.wasm; do
+            test -s "playground/web/$file" || { echo "missing $file" >&2; exit 1; }
+          done
+          echo "all files present"
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playground/web
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
