@@ -1,6 +1,6 @@
 [package]
 name = "miruscriptx"
-version = "0.6.11"
+version = "0.6.12"
 edition = "2021"
 description = "MiruScriptX: a small, general-purpose scripting language written in Rust."
 license = "MIT"
@@ -10,7 +10,10 @@ readme = "README.md"
 keywords = ["language", "interpreter", "scripting"]
 categories = ["compilers"]
 
-[dependencies]
+# rustyline drives the REPL's line editing and history, which only src/repl.rs
+# uses, and that module belongs to the binary rather than the library. Excluding
+# it from wasm keeps the library buildable for a target that has no terminal.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rustyline = "18"
 
 [lib]
