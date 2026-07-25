@@ -155,7 +155,9 @@ impl<'g> Compiler<'g> {
                                 target.line,
                                 target.column,
                             );
-                        } else if let Some(upvalue) = self.resolve_upvalue(name)? {
+                        } else if let Some(upvalue) =
+                            self.resolve_upvalue(name, target.line, target.column)?
+                        {
                             self.chunk
                                 .write_op(OpCode::SetUpvalue, target.line, target.column);
                             self.chunk.write(upvalue as u8, target.line, target.column);
@@ -290,7 +292,12 @@ impl<'g> Compiler<'g> {
     /// Resolve `name` as an upvalue of the current function, capturing it through
     /// any functions in between. Returns `None` when `name` is not a local of any
     /// enclosing function, so the caller falls back to a global.
-    fn resolve_upvalue(&mut self, name: &str) -> Result<Option<u16>, MiruError> {
+    fn resolve_upvalue(
+        &mut self,
+        name: &str,
+        line: usize,
+        column: usize,
+    ) -> Result<Option<u16>, MiruError> {
         let mut found = None;
         for level in (0..self.enclosing.len()).rev() {
             if let Some(slot) = local_slot(&self.enclosing[level].locals, name) {
@@ -305,16 +312,23 @@ impl<'g> Compiler<'g> {
         self.enclosing[level].locals[slot as usize].captured = true;
         // The function just inside the declaring one captures its local; each
         // function deeper in captures the previous one's upvalue.
-        let mut index = self.add_upvalue(level + 1, true, slot)?;
+        let mut index = self.add_upvalue(level + 1, true, slot, line, column)?;
         for deeper in (level + 2)..=self.enclosing.len() {
-            index = self.add_upvalue(deeper, false, index)?;
+            index = self.add_upvalue(deeper, false, index, line, column)?;
         }
         Ok(Some(index))
     }
 
     /// Add (or reuse) an upvalue at function `level`, where `level` equal to the
     /// number of enclosing functions means the current one.
-    fn add_upvalue(&mut self, level: usize, is_local: bool, index: u16) -> Result<u16, MiruError> {
+    fn add_upvalue(
+        &mut self,
+        level: usize,
+        is_local: bool,
+        index: u16,
+        line: usize,
+        column: usize,
+    ) -> Result<u16, MiruError> {
         let spec = UpvalueSpec { is_local, index };
         let upvalues = if level == self.enclosing.len() {
             &mut self.upvalues
@@ -329,8 +343,9 @@ impl<'g> Compiler<'g> {
         // distinct variables is not a program anyone writes, and the emission
         // sites below rely on the cast being lossless.
         if upvalues.len() >= u8::MAX as usize {
-            return Err(MiruError::new(
-                0,
+            return Err(MiruError::with_column(
+                line,
+                column,
                 "too many captured variables in one function",
             ));
         }
@@ -360,10 +375,10 @@ impl<'g> Compiler<'g> {
         let (end_line, end_column) = body.last().map(|s| (s.line, 1)).unwrap_or((line, column));
         self.end_scope(end_line, end_column);
         self.emit_loop(loop_start, line, column)?;
-        self.patch_jump(exit_jump)?;
+        self.patch_jump(exit_jump, line, column)?;
         self.chunk.write_op(OpCode::Pop, line, column);
         for break_jump in context.breaks {
-            self.patch_jump(break_jump)?;
+            self.patch_jump(break_jump, line, column)?;
         }
         Ok(())
     }
@@ -413,9 +428,9 @@ impl<'g> Compiler<'g> {
         self.end_scope(end_line, end_column);
         self.emit_loop(loop_start, line, column)?;
 
-        self.patch_jump(exit_jump)?;
+        self.patch_jump(exit_jump, line, column)?;
         for break_jump in context.breaks {
-            self.patch_jump(break_jump)?;
+            self.patch_jump(break_jump, line, column)?;
         }
         self.end_scope(line, column);
         Ok(())
@@ -423,7 +438,7 @@ impl<'g> Compiler<'g> {
 
     fn break_statement(&mut self, line: usize) -> Result<(), MiruError> {
         let Some(body_depth) = self.loops.last().map(|context| context.body_depth) else {
-            return Err(MiruError::new(line, "break outside of a loop"));
+            return Err(MiruError::with_column(line, 1, "break outside of a loop"));
         };
         self.pop_locals_to_depth(body_depth, line, 1);
         let jump = self.emit_jump(OpCode::Jump, line, 1);
@@ -441,7 +456,11 @@ impl<'g> Compiler<'g> {
             .last()
             .map(|context| (context.start, context.body_depth))
         else {
-            return Err(MiruError::new(line, "continue outside of a loop"));
+            return Err(MiruError::with_column(
+                line,
+                1,
+                "continue outside of a loop",
+            ));
         };
         self.pop_locals_to_depth(body_depth, line, 1);
         self.emit_loop(start, line, 1)
@@ -539,12 +558,12 @@ impl<'g> Compiler<'g> {
         self.chunk.write_op(OpCode::Pop, line, column);
         self.block(then_branch)?;
         let end_jump = self.emit_jump(OpCode::Jump, line, column);
-        self.patch_jump(else_jump)?;
+        self.patch_jump(else_jump, line, column)?;
         self.chunk.write_op(OpCode::Pop, line, column);
         if let Some(else_branch) = else_branch {
             self.block(else_branch)?;
         }
-        self.patch_jump(end_jump)?;
+        self.patch_jump(end_jump, line, column)?;
         Ok(())
     }
 
@@ -598,7 +617,7 @@ impl<'g> Compiler<'g> {
             ExprKind::Identifier(name) => {
                 if let Some(slot) = self.resolve_local(name) {
                     self.local_access(OpCode::GetLocal, OpCode::GetLocalLong, slot, line, column);
-                } else if let Some(upvalue) = self.resolve_upvalue(name)? {
+                } else if let Some(upvalue) = self.resolve_upvalue(name, line, column)? {
                     self.chunk.write_op(OpCode::GetUpvalue, line, column);
                     self.chunk.write(upvalue as u8, line, column);
                 } else {
@@ -657,7 +676,7 @@ impl<'g> Compiler<'g> {
                 self.chunk.write_op(OpCode::Pop, line, column);
                 self.expression(right)?;
                 self.chunk.write_op(OpCode::Truthy, line, column);
-                self.patch_jump(jump)?;
+                self.patch_jump(jump, line, column)?;
             }
             ExprKind::Call { callee, arguments } => {
                 self.expression(callee)?;
@@ -699,10 +718,14 @@ impl<'g> Compiler<'g> {
     }
 
     /// Fill in a jump emitted earlier so it lands at the current end of the code.
-    fn patch_jump(&mut self, operand: usize) -> Result<(), MiruError> {
+    ///
+    /// The position is the construct the jump belongs to, so that overflowing a
+    /// jump distance reports a place in the source rather than nothing at all.
+    fn patch_jump(&mut self, operand: usize, line: usize, column: usize) -> Result<(), MiruError> {
         let distance = self.chunk.code.len() - (operand + 2);
-        let distance = u16::try_from(distance)
-            .map_err(|_| MiruError::new(0, "the compiled body is too large to jump over"))?;
+        let distance = u16::try_from(distance).map_err(|_| {
+            MiruError::with_column(line, column, "the compiled body is too large to jump over")
+        })?;
         self.chunk.code[operand] = (distance >> 8) as u8;
         self.chunk.code[operand + 1] = (distance & 0xff) as u8;
         Ok(())
@@ -712,8 +735,9 @@ impl<'g> Compiler<'g> {
     fn emit_loop(&mut self, target: usize, line: usize, column: usize) -> Result<(), MiruError> {
         self.chunk.write_op(OpCode::Loop, line, column);
         let distance = self.chunk.code.len() + 2 - target;
-        let distance = u16::try_from(distance)
-            .map_err(|_| MiruError::new(0, "the loop body is too large to compile"))?;
+        let distance = u16::try_from(distance).map_err(|_| {
+            MiruError::with_column(line, column, "the loop body is too large to compile")
+        })?;
         self.chunk.write((distance >> 8) as u8, line, column);
         self.chunk.write((distance & 0xff) as u8, line, column);
         Ok(())
