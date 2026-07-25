@@ -12,6 +12,10 @@ use crate::globals::Globals;
 use crate::value::{CompiledFunction, Value};
 use crate::MiruError;
 
+/// The message for exceeding the local slot cap. Shared so the two places that
+/// can hit it word it the same way.
+const TOO_MANY_LOCALS: &str = "too many local variables in scope";
+
 /// A local variable in scope during compilation, at a known stack slot (its
 /// index in the list) and the block depth where it was declared. `captured`
 /// records whether a nested function closes over it, so it is closed rather than
@@ -28,7 +32,7 @@ struct Local {
 #[derive(Clone, Copy, PartialEq)]
 struct UpvalueSpec {
     is_local: bool,
-    index: u8,
+    index: u16,
 }
 
 /// A function whose compilation is paused while a nested function inside it is
@@ -144,13 +148,17 @@ impl<'g> Compiler<'g> {
                 match &target.kind {
                     ExprKind::Identifier(name) => {
                         if let Some(slot) = self.resolve_local(name) {
-                            self.chunk
-                                .write_op(OpCode::SetLocal, target.line, target.column);
-                            self.chunk.write(slot, target.line, target.column);
+                            self.local_access(
+                                OpCode::SetLocal,
+                                OpCode::SetLocalLong,
+                                slot,
+                                target.line,
+                                target.column,
+                            );
                         } else if let Some(upvalue) = self.resolve_upvalue(name)? {
                             self.chunk
                                 .write_op(OpCode::SetUpvalue, target.line, target.column);
-                            self.chunk.write(upvalue, target.line, target.column);
+                            self.chunk.write(upvalue as u8, target.line, target.column);
                         } else {
                             self.named_global(OpCode::SetGlobal, name, target.line, target.column)?;
                         }
@@ -247,7 +255,7 @@ impl<'g> Compiler<'g> {
         self.chunk.write(upvalues.len() as u8, line, column);
         for upvalue in upvalues {
             self.chunk.write(u8::from(upvalue.is_local), line, column);
-            self.chunk.write(upvalue.index, line, column);
+            self.write_u16(upvalue.index, line, column);
         }
         Ok(())
     }
@@ -282,7 +290,7 @@ impl<'g> Compiler<'g> {
     /// Resolve `name` as an upvalue of the current function, capturing it through
     /// any functions in between. Returns `None` when `name` is not a local of any
     /// enclosing function, so the caller falls back to a global.
-    fn resolve_upvalue(&mut self, name: &str) -> Result<Option<u8>, MiruError> {
+    fn resolve_upvalue(&mut self, name: &str) -> Result<Option<u16>, MiruError> {
         let mut found = None;
         for level in (0..self.enclosing.len()).rev() {
             if let Some(slot) = local_slot(&self.enclosing[level].locals, name) {
@@ -306,7 +314,7 @@ impl<'g> Compiler<'g> {
 
     /// Add (or reuse) an upvalue at function `level`, where `level` equal to the
     /// number of enclosing functions means the current one.
-    fn add_upvalue(&mut self, level: usize, is_local: bool, index: u8) -> Result<u8, MiruError> {
+    fn add_upvalue(&mut self, level: usize, is_local: bool, index: u16) -> Result<u16, MiruError> {
         let spec = UpvalueSpec { is_local, index };
         let upvalues = if level == self.enclosing.len() {
             &mut self.upvalues
@@ -314,8 +322,12 @@ impl<'g> Compiler<'g> {
             &mut self.enclosing[level].upvalues
         };
         if let Some(position) = upvalues.iter().position(|existing| *existing == spec) {
-            return Ok(position as u8);
+            return Ok(position as u16);
         }
+        // GetUpvalue and SetUpvalue address an upvalue with one byte. Unlike a
+        // local slot, this cap is not worth lifting: a function closing over 256
+        // distinct variables is not a program anyone writes, and the emission
+        // sites below rely on the cast being lossless.
         if upvalues.len() >= u8::MAX as usize {
             return Err(MiruError::new(
                 0,
@@ -323,7 +335,7 @@ impl<'g> Compiler<'g> {
             ));
         }
         upvalues.push(spec);
-        Ok((upvalues.len() - 1) as u8)
+        Ok((upvalues.len() - 1) as u16)
     }
 
     /// Compile `while cond { .. }`. The condition is re-checked at the top of each
@@ -372,15 +384,15 @@ impl<'g> Compiler<'g> {
         // in source ('$' is not a valid identifier), so they never clash.
         self.expression(iterable)?;
         self.chunk.write_op(OpCode::IterSnapshot, line, column);
-        let seq_slot = u8::try_from(self.locals.len())
-            .map_err(|_| MiruError::new(line, "too many local variables in scope"))?;
+        let seq_slot = u16::try_from(self.locals.len())
+            .map_err(|_| MiruError::with_column(line, column, TOO_MANY_LOCALS))?;
         self.declare_local("$seq", line)?;
         self.constant(Value::Int(0), line, column)?;
         self.declare_local("$idx", line)?;
 
         let loop_start = self.chunk.code.len();
         self.chunk.write_op(OpCode::ForNext, line, column);
-        self.chunk.write(seq_slot, line, column);
+        self.write_u16(seq_slot, line, column);
         self.chunk.write(0xff, line, column);
         self.chunk.write(0xff, line, column);
         let exit_jump = self.chunk.code.len() - 2;
@@ -496,8 +508,8 @@ impl<'g> Compiler<'g> {
     /// Record a new local at the current scope depth. Its slot is its position in
     /// the list, which is where its value already sits on the stack.
     fn declare_local(&mut self, name: &str, line: usize) -> Result<(), MiruError> {
-        if self.locals.len() > u8::MAX as usize {
-            return Err(MiruError::new(line, "too many local variables in scope"));
+        if self.locals.len() > u16::MAX as usize {
+            return Err(MiruError::with_column(line, 1, TOO_MANY_LOCALS));
         }
         self.locals.push(Local {
             name: name.to_string(),
@@ -508,7 +520,7 @@ impl<'g> Compiler<'g> {
     }
 
     /// Find a local variable's stack slot by name, searching innermost first.
-    fn resolve_local(&self, name: &str) -> Option<u8> {
+    fn resolve_local(&self, name: &str) -> Option<u16> {
         local_slot(&self.locals, name)
     }
 
@@ -585,11 +597,10 @@ impl<'g> Compiler<'g> {
             }
             ExprKind::Identifier(name) => {
                 if let Some(slot) = self.resolve_local(name) {
-                    self.chunk.write_op(OpCode::GetLocal, line, column);
-                    self.chunk.write(slot, line, column);
+                    self.local_access(OpCode::GetLocal, OpCode::GetLocalLong, slot, line, column);
                 } else if let Some(upvalue) = self.resolve_upvalue(name)? {
                     self.chunk.write_op(OpCode::GetUpvalue, line, column);
-                    self.chunk.write(upvalue, line, column);
+                    self.chunk.write(upvalue as u8, line, column);
                 } else {
                     self.named_global(OpCode::GetGlobal, name, line, column)?;
                 }
@@ -761,6 +772,25 @@ impl<'g> Compiler<'g> {
         Ok(())
     }
 
+    /// Emit a local read or write, picking the short or wide encoding.
+    ///
+    /// Locals are the most frequently touched thing in a function body, so the
+    /// one-byte form is used wherever the slot fits. A function with more than
+    /// 256 locals in scope pays an extra byte on the ones past that, and no
+    /// other function pays anything.
+    fn local_access(&mut self, short: OpCode, long: OpCode, slot: u16, line: usize, column: usize) {
+        match u8::try_from(slot) {
+            Ok(slot) => {
+                self.chunk.write_op(short, line, column);
+                self.chunk.write(slot, line, column);
+            }
+            Err(_) => {
+                self.chunk.write_op(long, line, column);
+                self.write_u16(slot, line, column);
+            }
+        }
+    }
+
     /// Write a two-byte big-endian operand, the encoding every wide operand in a
     /// chunk uses.
     fn write_u16(&mut self, value: u16, line: usize, column: usize) {
@@ -802,11 +832,11 @@ fn fusable_operand(value: &Value) -> bool {
 }
 
 /// Find a local's stack slot by name in a scope, searching innermost first.
-fn local_slot(locals: &[Local], name: &str) -> Option<u8> {
+fn local_slot(locals: &[Local], name: &str) -> Option<u16> {
     locals
         .iter()
         .rposition(|local| local.name == name)
-        .map(|slot| slot as u8)
+        .map(|slot| slot as u16)
 }
 
 fn binary_opcode(op: BinaryOp) -> OpCode {

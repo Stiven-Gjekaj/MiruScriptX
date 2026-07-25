@@ -358,9 +358,21 @@ impl Vm {
                         let value = self.stack[slot_base + slot].clone();
                         self.stack.push(value);
                     }
+                    OpCode::GetLocalLong => {
+                        let slot = read_u16(chunk, ip) as usize;
+                        ip += 2;
+                        let value = self.stack[slot_base + slot].clone();
+                        self.stack.push(value);
+                    }
                     OpCode::SetLocal => {
                         let slot = chunk.code[ip] as usize;
                         ip += 1;
+                        let value = self.pop();
+                        self.stack[slot_base + slot] = value;
+                    }
+                    OpCode::SetLocalLong => {
+                        let slot = read_u16(chunk, ip) as usize;
+                        ip += 2;
                         let value = self.pop();
                         self.stack[slot_base + slot] = value;
                     }
@@ -422,9 +434,9 @@ impl Vm {
                         }
                     }
                     OpCode::ForNext => {
-                        let seq_slot = slot_base + chunk.code[ip] as usize;
-                        let jump = read_u16(chunk, ip + 1);
-                        ip += 3;
+                        let seq_slot = slot_base + read_u16(chunk, ip) as usize;
+                        let jump = read_u16(chunk, ip + 2);
+                        ip += 4;
                         let index = match &self.stack[seq_slot + 1] {
                             Value::Int(n) => *n,
                             _ => unreachable!("for-in index is not an integer"),
@@ -453,8 +465,8 @@ impl Vm {
                         let mut upvalues = Vec::with_capacity(upvalue_count);
                         for _ in 0..upvalue_count {
                             let is_local = chunk.code[ip] != 0;
-                            let operand = chunk.code[ip + 1] as usize;
-                            ip += 2;
+                            let operand = read_u16(chunk, ip + 1) as usize;
+                            ip += 3;
                             let upvalue = if is_local {
                                 self.capture_upvalue(slot_base + operand)
                             } else {

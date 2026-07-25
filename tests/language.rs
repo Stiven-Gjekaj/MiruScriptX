@@ -286,3 +286,41 @@ fn an_array_literal_may_hold_more_than_two_hundred_and_fifty_five_elements() {
     let source = format!("let a = [{}]\nlen(a)", vec!["7"; 300].join(", "));
     assert_eq!(repr(&source), "300");
 }
+
+#[test]
+fn a_function_may_hold_more_than_two_hundred_and_fifty_six_locals() {
+    // Local slots were one byte. The slots past 255 now use GetLocalLong and
+    // SetLocalLong; everything below keeps the short form.
+    let mut source = String::from("fn big() {\n");
+    for i in 0..300 {
+        source.push_str(&format!("  let v{i} = {}\n", i % 7));
+    }
+    source.push_str("  v299 = v298 + 1\n  return v299 + v0\n}\nbig()");
+    // v298 is 298 % 7 == 4, so v299 becomes 5; v0 is 0.
+    assert_eq!(repr(&source), "5");
+}
+
+#[test]
+fn a_closure_captures_a_local_past_the_short_slot_range() {
+    // Closure's per-upvalue operand holds a local slot when the flag says local,
+    // so it had to widen along with local slots. Crossing the local slot and
+    // upvalue index widths here would not fail to compile, it would capture the
+    // wrong variable, which is why this asserts a value rather than success.
+    let mut source = String::from("fn outer() {\n");
+    for i in 0..300 {
+        source.push_str(&format!("  let v{i} = {i}\n"));
+    }
+    source.push_str("  fn inner() { return v299 + v260 }\n  return inner()\n}\nouter()");
+    assert_eq!(repr(&source), "559");
+}
+
+#[test]
+fn a_for_loop_works_past_the_short_slot_range() {
+    // The for-loop's hidden sequence slot is a local slot too.
+    let mut source = String::from("fn big() {\n");
+    for i in 0..300 {
+        source.push_str(&format!("  let v{i} = {i}\n"));
+    }
+    source.push_str("  let total = 0\n  for x in [1, 2, 3] { total = total + x }\n  return total + v299\n}\nbig()");
+    assert_eq!(repr(&source), "305");
+}

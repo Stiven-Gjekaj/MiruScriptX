@@ -89,15 +89,24 @@ pub enum OpCode {
     /// Pop the iterable, check it is an array, and push a snapshot to iterate. A
     /// runtime error otherwise.
     IterSnapshot,
-    /// Drive a `for` loop. Operands: the snapshot's slot (one byte) and a
-    /// big-endian exit distance (two bytes). The index lives in the next slot. If
-    /// the index is past the end, jump by the distance; otherwise push the next
-    /// element and advance the index.
+    /// Drive a `for` loop. Operands: the snapshot's slot (two bytes, big-endian)
+    /// and a big-endian exit distance (two bytes). The index lives in the next
+    /// slot. If the index is past the end, jump by the distance; otherwise push
+    /// the next element and advance the index.
+    ///
+    /// The slot is wide because it is a local slot like any other, and locals
+    /// are addressed by two bytes once a function has more than 256 of them.
+    /// This instruction runs once per iteration rather than in an inner loop, so
+    /// it takes the byte rather than needing a `Long` twin.
     ForNext,
     /// Push a closure built from a nested function. Operands: the function's
-    /// index in the pool (one byte), an upvalue count (one byte), then two bytes
-    /// per upvalue: whether it captures a local (1) or an enclosing upvalue (0),
-    /// and that local slot or upvalue index.
+    /// index in the pool (two bytes, big-endian), an upvalue count (one byte),
+    /// then three bytes per upvalue: whether it captures a local (1) or an
+    /// enclosing upvalue (0), then two big-endian bytes holding that local slot
+    /// or upvalue index.
+    ///
+    /// The per-upvalue index is wide for the same reason as `ForNext`: when the
+    /// flag says local, the index *is* a local slot.
     Closure,
     /// Push the value of one of the current closure's upvalues. One operand byte:
     /// the upvalue index.
@@ -136,12 +145,22 @@ pub enum OpCode {
     /// instructions in the language, so it keeps its short encoding for the
     /// programs that fit and pays the extra byte only where it is needed.
     ConstantLong,
+    /// Push the value of a local variable whose slot does not fit in one byte.
+    /// Two operand bytes, big-endian.
+    ///
+    /// The wide form of [`OpCode::GetLocal`], and the same bargain as
+    /// [`OpCode::ConstantLong`]: reading a local is the other hottest
+    /// instruction in the language, so the short form stays for the functions
+    /// that fit in 256 slots, which is nearly all of them.
+    GetLocalLong,
+    /// The wide form of [`OpCode::SetLocal`]. Two operand bytes, big-endian.
+    SetLocalLong,
 }
 
 /// Every opcode in declaration order, so a byte decodes by indexing rather than
 /// by comparison. The order must match the enum, which `opcodes_match_their_byte`
 /// checks.
-const OPCODES: [OpCode; 42] = [
+const OPCODES: [OpCode; 44] = [
     OpCode::Constant,
     OpCode::Nil,
     OpCode::True,
@@ -184,6 +203,8 @@ const OPCODES: [OpCode; 42] = [
     OpCode::Return,
     OpCode::BinaryConst,
     OpCode::ConstantLong,
+    OpCode::GetLocalLong,
+    OpCode::SetLocalLong,
 ];
 
 impl OpCode {
@@ -255,6 +276,8 @@ impl OpCode {
             OpCode::Return => "RETURN",
             OpCode::BinaryConst => "BINARY_CONST",
             OpCode::ConstantLong => "CONSTANT_LONG",
+            OpCode::GetLocalLong => "GET_LOCAL_LONG",
+            OpCode::SetLocalLong => "SET_LOCAL_LONG",
         }
     }
 }
@@ -436,6 +459,12 @@ impl Chunk {
                 let _ = writeln!(out, "{:<14}slot {slot}", op.name());
                 offset + 2
             }
+            Some(op @ (OpCode::GetLocalLong | OpCode::SetLocalLong)) => {
+                let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let _ = writeln!(out, "{:<14}slot {}", op.name(), (high << 8) | low);
+                offset + 3
+            }
             Some(op @ OpCode::ConstantLong) => {
                 let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
                 let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
@@ -481,15 +510,17 @@ impl Chunk {
                     "{:<14}fn {function} ({upvalues} upvalue(s))",
                     OpCode::Closure.name()
                 );
-                offset + 4 + upvalues * 2
+                offset + 4 + upvalues * 3
             }
             Some(OpCode::ForNext) => {
-                let slot = self.code.get(offset + 1).copied().unwrap_or(0);
-                let high = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
-                let low = self.code.get(offset + 3).copied().unwrap_or(0) as usize;
-                let target = offset + 4 + ((high << 8) | low);
+                let slot_high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
+                let slot_low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let slot = (slot_high << 8) | slot_low;
+                let high = self.code.get(offset + 3).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 4).copied().unwrap_or(0) as usize;
+                let target = offset + 5 + ((high << 8) | low);
                 let _ = writeln!(out, "{:<14}slot {slot} -> {target}", OpCode::ForNext.name());
-                offset + 4
+                offset + 5
             }
             Some(op) => {
                 let _ = writeln!(out, "{}", op.name());
