@@ -165,7 +165,20 @@ request templates, and a branded README with a project logo.
   It lives in its own crate. `wasm-bindgen` brings 12 crates, none of which are
   involved in running a `.miru` file.
 
-## v0.7: the builtin bridge
+## The road to 1.0
+
+Four milestones. v0.7 finishes the engine work v0.5 measured but could not
+reach. v0.8 and v0.9 add the two things that separate a script runner from a
+language you could build something in: a way to split a program across files,
+and a way to survive a failure. v1.0 is the promise, the packaging, and the
+specification.
+
+Two features are deliberately **not** on this road. User-defined types stay out:
+maps already serve as records, and Lua and early JavaScript both reached
+maturity without them. Static typing stays out: it would be a different
+language, not a later version of this one.
+
+## v0.7: the builtin bridge, and errors that underline
 
 - Optimize the path a higher-order builtin takes to call back into the language.
   v0.5 measured every workload and `higher_order` was the only one that did not
@@ -176,13 +189,103 @@ request templates, and a branded README with a project logo.
 
   That nesting is also why `MAX_HOST_CALL_DEPTH` has to be as low as 64 while
   ordinary calls get 10,000: each level costs machine stack rather than a heap
-  frame. A trampoline keeping everything on one dispatch loop would fix both the
-  speed and the asymmetry, and it is an engine redesign, which is why it has a
-  milestone rather than a commit.
+  frame. Removing it fixes the speed and the asymmetry together, and it is an
+  engine redesign, which is why it has a milestone rather than a commit.
+
+  Two designs are worth prototyping before committing to either. A *trampoline*
+  has the builtin return "call this, then resume me" to the one dispatch loop,
+  which keeps `map` native but turns it into a state machine. Writing the
+  higher-order builtins *in MiruScriptX itself* removes the bridge entirely,
+  since they become ordinary functions using ordinary `Call` opcodes, at the
+  cost of needing somewhere to put a prelude, which v0.8 provides. The choice
+  gets made with a benchmark in hand, not on paper.
 
 - Underline a whole token in an error rather than pointing a caret at its first
-  character. The spans this needs already exist, added in v0.6 for syntax
-  highlighting.
+  character. The spans this needs already exist, added in v0.6 for highlighting.
+
+- Raise `MAX_HOST_CALL_DEPTH` to match `MAX_CALL_DEPTH` once nothing nests a
+  real Rust call per level. That the two can finally be one number is the
+  clearest evidence the redesign worked.
+
+## v0.8: modules
+
+A program is one file today, and every name lives in one flat table alongside
+about forty builtins. This is the largest milestone of the four.
+
+- An `import` form that binds a module under a name, so a module's functions are
+  reached through it rather than dumped into the importing scope. Explicit
+  beats convenient here: a reader should be able to tell where a name came from
+  without checking every import at the top of the file.
+
+- **The architectural work is namespacing `Globals`.** It is one flat, shared
+  table (`src/globals.rs`), which is exactly what lets a REPL session resolve a
+  name defined by an earlier input. Modules need separate slot spaces without
+  losing that, and the compiler resolves every global to a slot at compile time,
+  so this reaches into the hottest naming path in the engine.
+
+- Resolution relative to the importing file, with a cycle check that reports the
+  chain rather than recursing until the stack gives out.
+
+- The playground has no filesystem. Either imports resolve against a bundled
+  virtual set of files, or the page states plainly that it runs single files.
+  Decide honestly rather than letting the browser silently behave differently
+  from the terminal.
+
+- A prelude becomes possible, which is where the higher-order builtins may end
+  up if v0.7 goes that way.
+
+## v0.9: failure as a value
+
+Any runtime error kills the program today. Nothing defensive can be written: not
+a bad index, not a failed conversion, not a missing key that matters.
+
+- Errors become values rather than exceptions. No unwinding and no non-local
+  jumps, which suits a VM whose control flow is entirely jumps, and which keeps
+  the frame stack and the trace machinery from v0.6 intact. It is more typing at
+  a call site than `try`/`catch`, and that is the trade: which operations can
+  fail stays visible in the source.
+
+- The decisions to make, each of which changes what the language feels like:
+
+  - Which failures become values and which stay fatal. Not everything should be
+    catchable; a call depth limit is a bug, not a condition to handle.
+  - Whether an error is a new `Value` variant or a map with a known shape.
+  - How a caller checks one without every call site growing three lines.
+  - What happens to an unchecked error: silently ignored is the failure mode
+    that makes this style hated, so it should be hard to drop one by accident.
+
+- The trace captured in v0.6 should survive into a caught error. Knowing a
+  failure happened is much less useful than knowing where it came from.
+
+## v1.0: the promise, the package, and the specification
+
+- **A stability guarantee**, which is what the version number actually means.
+  Stable: the language's syntax, the behaviour of every builtin, the CLI's
+  commands and exit codes, and the rendered shape of an error. Explicitly not
+  stable: the bytecode format, opcode numbering, the Rust API, and anything
+  `miru disasm` prints. Written down as its own document, so the line is
+  findable rather than folded into a changelog.
+
+- **Prebuilt binaries.** Cloning and building is the only way to get `miru`
+  today. A tag-triggered workflow producing static binaries for Linux
+  (x86_64 and aarch64, musl so they run anywhere), macOS (Intel and Apple
+  Silicon), and Windows, attached to a GitHub release, plus a one-line install
+  script.
+
+- **crates.io.** `miruscriptx` is free; `miru` is taken by an unrelated crate at
+  0.0.0. That costs nothing, since the package is already named `miruscriptx`
+  and Cargo installs a binary named `miru` from it either way.
+
+- **A written specification.** A grammar and the semantics behind it, separate
+  from the wiki, which teaches rather than defines. The place to state what is
+  currently only true because the implementation says so: evaluation order,
+  numeric promotion and overflow, truthiness, scoping and capture, and every
+  limit a program can hit.
+
+- Re-check the word "small" in the README against the real line count. It is
+  honest at v0.6 (7,666 lines of Rust, roughly 1,500 of them comments and
+  blanks), and modules and error handling will push it up. If it stops being
+  true, change the word rather than hide the number.
 
 ## How versions are cut
 
