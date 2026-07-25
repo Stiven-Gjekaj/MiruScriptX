@@ -265,6 +265,11 @@ impl Vm {
                         ip += 1;
                         self.stack.push(chunk.constants[index].clone());
                     }
+                    OpCode::ConstantLong => {
+                        let index = read_u16(chunk, ip) as usize;
+                        ip += 2;
+                        self.stack.push(chunk.constants[index].clone());
+                    }
                     OpCode::Nil => self.stack.push(Value::Nil),
                     OpCode::True => self.stack.push(Value::Bool(true)),
                     OpCode::False => self.stack.push(Value::Bool(false)),

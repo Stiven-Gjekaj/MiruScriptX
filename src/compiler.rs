@@ -611,9 +611,18 @@ impl<'g> Compiler<'g> {
                 // constant as an operand of the operator costs the same three
                 // bytes as loading it separately, but is one instruction rather
                 // than two and never puts it on the stack.
-                match fold(right).filter(fusable_operand) {
+                // BinaryConst carries the index in one byte. Past that the pair
+                // is emitted unfused rather than widening the instruction for
+                // every program that never reaches so many constants.
+                let fused = match fold(right).filter(fusable_operand) {
                     Some(value) => {
                         let index = self.constant_index(value, line, column)?;
+                        u8::try_from(index).ok()
+                    }
+                    None => None,
+                };
+                match fused {
+                    Some(index) => {
                         self.chunk.write_op(OpCode::BinaryConst, line, column);
                         self.chunk.write(binary_opcode(*op) as u8, line, column);
                         self.chunk.write(index, line, column);
@@ -663,9 +672,9 @@ impl<'g> Compiler<'g> {
         value: Value,
         line: usize,
         column: usize,
-    ) -> Result<u8, MiruError> {
+    ) -> Result<u16, MiruError> {
         let index = self.chunk.add_constant(value);
-        u8::try_from(index)
+        u16::try_from(index)
             .map_err(|_| MiruError::with_column(line, column, "too many constants in one chunk"))
     }
 
@@ -713,10 +722,24 @@ impl<'g> Compiler<'g> {
     }
 
     /// Emit a `Constant` instruction that pushes `value`.
+    /// Emit an instruction that pushes `value`.
+    ///
+    /// Loading a constant is one of the hottest instructions in the language, so
+    /// the one-byte form is used wherever the index fits and the wide one only
+    /// past that. A program with few constants, which is nearly all of them,
+    /// emits exactly the bytecode it did before this existed.
     fn constant(&mut self, value: Value, line: usize, column: usize) -> Result<(), MiruError> {
         let index = self.constant_index(value, line, column)?;
-        self.chunk.write_op(OpCode::Constant, line, column);
-        self.chunk.write(index, line, column);
+        match u8::try_from(index) {
+            Ok(short) => {
+                self.chunk.write_op(OpCode::Constant, line, column);
+                self.chunk.write(short, line, column);
+            }
+            Err(_) => {
+                self.chunk.write_op(OpCode::ConstantLong, line, column);
+                self.write_u16(index, line, column);
+            }
+        }
         Ok(())
     }
 

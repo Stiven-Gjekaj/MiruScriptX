@@ -121,13 +121,26 @@ pub enum OpCode {
     /// instruction and without the round trip through the stack. All three of
     /// its bytes carry the operator's position, so an error it raises points
     /// where the unfused pair pointed.
+    ///
+    /// The constant index is one byte, so this is not emitted for a constant
+    /// beyond the first 256. Such a program falls back to the unfused pair
+    /// rather than growing this instruction for every program that never needs
+    /// it.
     BinaryConst,
+    /// Push `constants[operand]` where the index does not fit in one byte. Two
+    /// operand bytes, big-endian.
+    ///
+    /// The wide form of [`OpCode::Constant`], emitted only when the pool has
+    /// outgrown a single byte. Loading a constant is one of the two hottest
+    /// instructions in the language, so it keeps its short encoding for the
+    /// programs that fit and pays the extra byte only where it is needed.
+    ConstantLong,
 }
 
 /// Every opcode in declaration order, so a byte decodes by indexing rather than
 /// by comparison. The order must match the enum, which `opcodes_match_their_byte`
 /// checks.
-const OPCODES: [OpCode; 41] = [
+const OPCODES: [OpCode; 42] = [
     OpCode::Constant,
     OpCode::Nil,
     OpCode::True,
@@ -169,6 +182,7 @@ const OPCODES: [OpCode; 41] = [
     OpCode::Pop,
     OpCode::Return,
     OpCode::BinaryConst,
+    OpCode::ConstantLong,
 ];
 
 impl OpCode {
@@ -239,6 +253,7 @@ impl OpCode {
             OpCode::Pop => "POP",
             OpCode::Return => "RETURN",
             OpCode::BinaryConst => "BINARY_CONST",
+            OpCode::ConstantLong => "CONSTANT_LONG",
         }
     }
 }
@@ -383,6 +398,18 @@ impl Chunk {
                 let slot = self.code.get(offset + 1).copied().unwrap_or(0);
                 let _ = writeln!(out, "{:<14}slot {slot}", op.name());
                 offset + 2
+            }
+            Some(op @ OpCode::ConstantLong) => {
+                let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let index = (high << 8) | low;
+                let value = self
+                    .constants
+                    .get(index)
+                    .map(Value::repr)
+                    .unwrap_or_else(|| "?".to_string());
+                let _ = writeln!(out, "{:<14}{index} ({value})", op.name());
+                offset + 3
             }
             Some(op @ (OpCode::Array | OpCode::Map)) => {
                 let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;

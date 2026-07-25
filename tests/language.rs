@@ -243,16 +243,28 @@ fn a_literal_repeated_past_the_constant_limit_still_compiles() {
 }
 
 #[test]
-fn distinct_literals_still_run_out_of_constant_slots() {
-    // The limit is real, it just counts distinct values now. Reaching it is an
-    // ordinary error with a position, not a panic or a wrong answer.
+fn a_chunk_may_hold_more_than_two_hundred_and_fifty_six_distinct_constants() {
+    // v0.5 made the constant pool count distinct values rather than every
+    // occurrence, which was the bug, but left the cap itself at what one operand
+    // byte could address. ConstantLong retires it: the pool is addressed by two
+    // bytes when it outgrows one.
     let mut source = String::from("let n = 0\n");
     for i in 0..300 {
         source.push_str(&format!("n = n + {i}\n"));
     }
-    assert!(error(&source)
-        .message
-        .contains("too many constants in one chunk"));
+    source.push('n');
+    // The sum of 0 through 299.
+    assert_eq!(repr(&source), "44850");
+}
+
+#[test]
+fn a_map_literal_may_hold_more_than_two_hundred_and_fifty_five_entries() {
+    // Three hundred entries need three hundred distinct key strings, so this
+    // exercises the entry count and the constant pool at once. It is the shape
+    // a generated lookup table takes.
+    let entries: Vec<String> = (0..300).map(|i| format!("\"k{i}\": {i}")).collect();
+    let source = format!("let m = {{{}}}\nlen(m) + m[\"k299\"]", entries.join(", "));
+    assert_eq!(repr(&source), "599");
 }
 
 #[test]
