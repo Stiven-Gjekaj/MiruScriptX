@@ -109,3 +109,43 @@ fn printed_output_accumulates_across_inputs() {
     let printed = String::from_utf8(buffer.borrow().clone()).expect("utf-8");
     assert_eq!(printed, "first\nsecond 2\n");
 }
+
+#[test]
+fn a_traced_error_does_not_leak_into_the_next_input() {
+    // The frames an error's trace is built from are torn down as the failed
+    // input unwinds. A session goes on running afterwards, so the next error
+    // has to describe its own call path and not inherit the previous one.
+    let mut session = Session::with_output(Box::new(std::io::sink()));
+
+    session
+        .eval("fn inner(a) { return a + 1 }\nfn outer() { return inner(nil) }")
+        .expect("definitions run");
+
+    let first = session.eval("outer()").err().expect("outer fails");
+    assert_eq!(
+        first
+            .trace
+            .iter()
+            .map(|entry| entry.function.as_deref().unwrap_or("<anonymous>"))
+            .collect::<Vec<_>>(),
+        vec!["inner", "outer"]
+    );
+
+    // A shallower failure afterwards reports only its own frame.
+    let second = session.eval("inner(nil)").err().expect("inner fails");
+    assert_eq!(
+        second
+            .trace
+            .iter()
+            .map(|entry| entry.function.as_deref().unwrap_or("<anonymous>"))
+            .collect::<Vec<_>>(),
+        vec!["inner"]
+    );
+
+    // And a failure with no call at all carries no trace.
+    let third = session.eval("nil + 1").err().expect("top level fails");
+    assert!(third.trace.is_empty(), "trace was {:?}", third.trace);
+
+    // The session is still usable.
+    assert_eq!(eval(&mut session, "1 + 1"), "ok 2");
+}

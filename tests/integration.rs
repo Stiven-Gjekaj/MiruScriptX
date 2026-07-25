@@ -217,3 +217,31 @@ fn runtime_error_reports_line_and_fails() {
         "stderr was: {stderr}"
     );
 }
+
+#[test]
+fn a_runtime_error_prints_the_call_path() {
+    let path = std::env::temp_dir().join("miru_integration_trace.miru");
+    std::fs::write(
+        &path,
+        "fn add(a) {\n  return a + 1\n}\nfn total() {\n  return add(nil)\n}\ntotal()\n",
+    )
+    .expect("write temp file");
+    let output = miru().arg("run").arg(&path).output().expect("runs");
+    let _ = std::fs::remove_file(&path);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf-8");
+    // The caret still marks where it broke.
+    assert!(
+        stderr.contains("line 2, column 12"),
+        "stderr was:\n{stderr}"
+    );
+    // And the trace says how it was reached, innermost first.
+    let add = stderr
+        .find("in add, called from line 5")
+        .unwrap_or_else(|| panic!("no add frame in:\n{stderr}"));
+    let total = stderr
+        .find("in total, called from line 7")
+        .unwrap_or_else(|| panic!("no total frame in:\n{stderr}"));
+    assert!(add < total, "frames out of order in:\n{stderr}");
+}
