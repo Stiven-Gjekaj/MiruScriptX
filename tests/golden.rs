@@ -853,3 +853,43 @@ fn operators_with_a_constant_right_operand_keep_their_results_and_positions() {
         ("let x = 1\nx != nil", "ok true"),
     ]);
 }
+
+#[test]
+fn runtime_errors_carry_the_call_path_they_came_through() {
+    check_rendered(&[
+        // One call deep. The caret says where it broke; the trace says how it
+        // was reached.
+        (
+            "fn add(a) {\n  return a + 1\n}\nadd(nil)",
+            "error (line 2, column 12): cannot add a nil and a int\n      return a + 1\n               ^\n  in add, called from line 4",
+        ),
+        // Two deep, innermost first.
+        (
+            "fn add(a) {\n  return a + 1\n}\nfn total(xs) {\n  let s = 0\n  s = add(nil)\n  return s\n}\ntotal([1])",
+            "error (line 2, column 12): cannot add a nil and a int\n      return a + 1\n               ^\n  in add, called from line 6\n  in total, called from line 9",
+        ),
+        // At the top level there is no call path, so nothing is appended and the
+        // rendering is what it always was.
+        (
+            "nil + 1",
+            "error (line 1, column 5): cannot add a nil and a int\n    nil + 1\n        ^",
+        ),
+        // A closure called by a builtin. This is the case the capture has to get
+        // right: `map` runs its callback on a nested bytecode loop, and the
+        // frames are torn down as the error leaves it.
+        (
+            "fn double(x) {\n  return x * nil\n}\nmap([1], double)",
+            "error (line 2, column 12): cannot multiply a int and a nil\n      return x * nil\n               ^\n  in double, called from line 4",
+        ),
+        // An anonymous function is named as such rather than left blank.
+        (
+            "map([1], fn(x) { return x * nil })",
+            "error (line 1, column 27): cannot multiply a int and a nil\n    map([1], fn(x) { return x * nil })\n                              ^\n  in <anonymous>, called from line 1",
+        ),
+        // A syntax error never has a call path: there is no call stack yet.
+        (
+            "let = 1",
+            "error (line 1, column 5): expected an identifier after 'let' but found '='\n    let = 1\n        ^",
+        ),
+    ]);
+}

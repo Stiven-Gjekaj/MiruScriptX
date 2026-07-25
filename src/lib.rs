@@ -257,25 +257,36 @@ impl MiruError {
         }
     }
 
-    /// Render the error with the offending source line and a caret under the
-    /// column. Falls back to the one-line [`Display`](std::fmt::Display) form
-    /// when the line or column is unknown or out of range.
+    /// Render the error with the offending source line, a caret under the
+    /// column, and the path of calls it came through.
+    ///
+    /// The source line and caret are omitted when the line or column is unknown
+    /// or out of range, and the trace when there is none, so an error with
+    /// neither renders as the one-line [`Display`](std::fmt::Display) form.
     pub fn render(&self, source: &str) -> String {
-        let header = self.to_string();
-        if self.line == 0 || self.column == 0 {
-            return header;
+        use std::fmt::Write;
+
+        let mut out = self.to_string();
+        if let Some(text) = self
+            .line
+            .checked_sub(1)
+            .filter(|_| self.column > 0)
+            .and_then(|index| source.lines().nth(index))
+        {
+            // Build the caret indent from the source itself so that tabs before
+            // the column keep the caret aligned.
+            let mut caret = String::new();
+            for ch in text.chars().take(self.column - 1) {
+                caret.push(if ch == '\t' { '\t' } else { ' ' });
+            }
+            caret.push('^');
+            let _ = write!(out, "\n    {text}\n    {caret}");
         }
-        let Some(text) = source.lines().nth(self.line - 1) else {
-            return header;
-        };
-        // Build the caret indent from the source itself so that tabs before the
-        // column keep the caret aligned.
-        let mut caret = String::new();
-        for ch in text.chars().take(self.column - 1) {
-            caret.push(if ch == '\t' { '\t' } else { ' ' });
+        for entry in &self.trace {
+            let name = entry.function.as_deref().unwrap_or("<anonymous>");
+            let _ = write!(out, "\n  in {name}, called from line {}", entry.line);
         }
-        caret.push('^');
-        format!("{header}\n    {text}\n    {caret}")
+        out
     }
 }
 
