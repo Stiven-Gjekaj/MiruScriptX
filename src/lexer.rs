@@ -12,6 +12,22 @@ use crate::formatter::{Comment, Trivia};
 use crate::token::{Token, TokenKind};
 use crate::MiruError;
 
+/// Where each token and comment sits in the source, in **char** offsets.
+///
+/// Char offsets rather than byte offsets, because that is the lexer's own model
+/// (it scans a `Vec<char>`) and the one `MiruError::render` already uses when it
+/// builds a caret indent. A consumer indexing UTF-16 units, as JavaScript does
+/// by default, has to iterate code points instead or every span after a
+/// multi-byte character will be wrong.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Spans {
+    /// One `(start, len)` per token, in the same order as the returned tokens.
+    pub tokens: Vec<(usize, usize)>,
+    /// One `(start, len)` per comment, including the leading `//`. Comments are
+    /// not tokens, but they still have to be coloured.
+    pub comments: Vec<(usize, usize)>,
+}
+
 pub struct Lexer {
     chars: Vec<char>,
     pos: usize,
@@ -23,6 +39,13 @@ pub struct Lexer {
     collect_trivia: bool,
     comments: Vec<Comment>,
     blank_before: HashSet<usize>,
+    /// When set, the lexer records where every token and comment sits, which a
+    /// syntax highlighter needs and nothing else does.
+    collect_spans: bool,
+    spans: Spans,
+    /// Where the token currently being scanned began, so its span can be closed
+    /// once its end is known.
+    token_start: usize,
     /// The last line that carried a token or comment, used to spot blank lines.
     last_content_line: usize,
 }
@@ -38,6 +61,9 @@ impl Lexer {
             collect_trivia: false,
             comments: Vec::new(),
             blank_before: HashSet::new(),
+            collect_spans: false,
+            spans: Spans::default(),
+            token_start: 0,
             last_content_line: 0,
         }
     }
@@ -60,6 +86,21 @@ impl Lexer {
         Ok((tokens, trivia))
     }
 
+    /// Tokenize like [`tokenize`](Lexer::tokenize), and also record where every
+    /// token and comment sits in the source.
+    ///
+    /// A span cannot be recovered from a token afterwards, because a token's
+    /// value does not determine the text it came from: `"a\nb"` is seven source
+    /// characters and a three-character string, and `1.50` and `1.5` lex to the
+    /// same float. The lexer knows the answer while it is scanning and used to
+    /// throw it away.
+    pub fn tokenize_with_spans(source: &str) -> Result<(Vec<Token>, Spans), MiruError> {
+        let mut lexer = Lexer::new(source);
+        lexer.collect_spans = true;
+        let tokens = lexer.run()?;
+        Ok((tokens, lexer.spans))
+    }
+
     fn run(&mut self) -> Result<Vec<Token>, MiruError> {
         let mut tokens: Vec<Token> = Vec::new();
         loop {
@@ -80,6 +121,11 @@ impl Lexer {
                 self.note_content_line(token.line);
             }
 
+            if self.collect_spans {
+                self.spans
+                    .tokens
+                    .push((self.token_start, self.pos - self.token_start));
+            }
             tokens.push(token);
             if is_eof {
                 break;
@@ -106,13 +152,20 @@ impl Lexer {
     fn next_token(&mut self) -> Result<Token, MiruError> {
         loop {
             let c = match self.peek() {
-                None => return Ok(Token::new(TokenKind::Eof, self.line, self.column())),
+                None => {
+                    // Eof stands at the end and covers nothing. Without setting
+                    // this it would inherit the previous token's start and
+                    // report a span overlapping it.
+                    self.token_start = self.pos;
+                    return Ok(Token::new(TokenKind::Eof, self.line, self.column()));
+                }
                 Some(c) => c,
             };
 
             if c == '\n' {
                 let line = self.line;
                 let column = self.column();
+                self.token_start = self.pos;
                 self.advance();
                 self.line += 1;
                 self.line_start = self.pos;
@@ -131,6 +184,7 @@ impl Lexer {
                 // A comment is a leading (own-line) comment when only whitespace
                 // precedes it on the line; otherwise it trails code.
                 let comment_line = self.line;
+                let comment_start = self.pos;
                 let own_line = self.chars[self.line_start..self.pos]
                     .iter()
                     .all(|ch| ch.is_whitespace());
@@ -142,6 +196,11 @@ impl Lexer {
                         break;
                     }
                     self.advance();
+                }
+                if self.collect_spans {
+                    self.spans
+                        .comments
+                        .push((comment_start, self.pos - comment_start));
                 }
                 if self.collect_trivia {
                     let text: String = self.chars[start..self.pos].iter().collect();
@@ -155,6 +214,7 @@ impl Lexer {
                 continue;
             }
 
+            self.token_start = self.pos;
             return self.read_token(c);
         }
     }
@@ -428,6 +488,73 @@ impl Lexer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Slice a source string by a char span, the way a consumer must.
+    fn slice(source: &str, (start, len): (usize, usize)) -> String {
+        source.chars().skip(start).take(len).collect()
+    }
+
+    #[test]
+    fn spans_cover_the_text_a_token_came_from() {
+        // Each of these is a case where the token's value does not determine its
+        // source text, which is the whole reason spans have to be recorded
+        // rather than reconstructed.
+        let source = "let s = \"a\\nb\"\nlet f = 1.50\n";
+        let (tokens, spans) = Lexer::tokenize_with_spans(source).expect("lexes");
+        assert_eq!(tokens.len(), spans.tokens.len());
+
+        let text: Vec<String> = spans.tokens.iter().map(|s| slice(source, *s)).collect();
+        // The string keeps its quotes and its two-character escape, seven source
+        // characters for a value of three.
+        assert!(text.contains(&"\"a\\nb\"".to_string()), "{text:?}");
+        // The float keeps the trailing zero that its value does not remember.
+        assert!(text.contains(&"1.50".to_string()), "{text:?}");
+    }
+
+    #[test]
+    fn spans_stay_aligned_after_a_multi_byte_character() {
+        // Offsets are chars, not bytes. A three-byte character before a token
+        // must move its span by one, not by three.
+        let source = "// \u{4e2d}\nlet x = 1";
+        let (_, spans) = Lexer::tokenize_with_spans(source).expect("lexes");
+        let text: Vec<String> = spans.tokens.iter().map(|s| slice(source, *s)).collect();
+        assert!(text.contains(&"let".to_string()), "{text:?}");
+        assert!(text.contains(&"x".to_string()), "{text:?}");
+        assert_eq!(spans.comments.len(), 1);
+        assert_eq!(slice(source, spans.comments[0]), "// \u{4e2d}");
+    }
+
+    #[test]
+    fn every_span_slices_back_to_something_and_none_overlap() {
+        let source = "fn f(a) {\n  // add one\n  return a + 1\n}\nf(2)\n";
+        let (tokens, spans) = Lexer::tokenize_with_spans(source).expect("lexes");
+        assert_eq!(tokens.len(), spans.tokens.len());
+
+        // Every span lies inside the source, and the ones with width run in
+        // order without overlapping. Newline tokens have width, Eof has none.
+        let total = source.chars().count();
+        let mut previous_end = 0;
+        for span in &spans.tokens {
+            assert!(span.0 + span.1 <= total, "span {span:?} past the end");
+            assert!(
+                span.0 >= previous_end,
+                "span {span:?} overlaps the one before"
+            );
+            previous_end = span.0 + span.1;
+        }
+        assert_eq!(slice(source, spans.comments[0]), "// add one");
+    }
+
+    #[test]
+    fn collecting_spans_does_not_change_the_tokens() {
+        // The ordinary path must be unaffected, which is the point of making
+        // this opt in.
+        for source in ["", "let x = 1", "fn f() {\n  // c\n  return 1\n}\n"] {
+            let plain = Lexer::tokenize(source).expect("lexes");
+            let (with_spans, _) = Lexer::tokenize_with_spans(source).expect("lexes");
+            assert_eq!(plain, with_spans, "differed for {source:?}");
+        }
+    }
     use crate::token::TokenKind;
 
     fn kinds(source: &str) -> Vec<TokenKind> {
