@@ -1,6 +1,14 @@
 # Next steps
 
-You now know all of MiruScriptX v0.4. Here is where to go from here.
+You now know all of MiruScriptX v0.6. Here is where to go from here.
+
+## Try it without installing anything
+
+The [playground](https://stiven-gjekaj.github.io/miruscriptx/) runs MiruScriptX
+in your browser. It is the same lexer, compiler, and virtual machine as the
+`miru` command, built to WebAssembly, so anything that works there works on your
+machine and the other way round. It has the example programs ready to load, a
+Format button, and a tab showing the bytecode your program compiles to.
 
 ## Practice
 

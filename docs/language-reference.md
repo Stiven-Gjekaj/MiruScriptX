@@ -944,6 +944,46 @@ error (line 1, column 3): division by zero
       ^
 ```
 
+## Where an error came from
+
+An error inside a function also shows the path of calls that reached it, so you
+can see not just where the program broke but how it got there.
+
+```
+fn double(n) {
+  return n * 2
+}
+fn total(xs) {
+  let sum = 0
+  for x in xs {
+    sum = sum + double(x)
+  }
+  return sum
+}
+print(total([1, 2, nil]))
+```
+
+```
+error (line 2, column 12): cannot multiply a nil and a int
+      return n * 2
+               ^
+  in double, called from line 7
+  in total, called from line 11
+```
+
+Read it from the top down. The caret says the multiplication failed because `n`
+was `nil`. The trace then says `double` was called from line 7, inside `total`,
+and `total` was called from line 11. The `nil` came from the array on that last
+line, which is the thing to fix.
+
+Each line names a function and the line its call was written on, innermost
+first. A program that fails outside any function has no trace, because there is
+no call path to report.
+
+Very deep traces are shortened in the middle rather than printed in full, so
+runaway recursion reports its error rather than burying it under ten thousand
+identical lines.
+
 ## Exit codes
 
 Run a file with `miru run` and a successful program exits with status 0. Any
@@ -953,7 +993,15 @@ status, so scripts and continuous integration can tell success from failure.
 
 # Next steps
 
-You now know all of MiruScriptX v0.4. Here is where to go from here.
+You now know all of MiruScriptX v0.6. Here is where to go from here.
+
+## Try it without installing anything
+
+The [playground](https://stiven-gjekaj.github.io/miruscriptx/) runs MiruScriptX
+in your browser. It is the same lexer, compiler, and virtual machine as the
+`miru` command, built to WebAssembly, so anything that works there works on your
+machine and the other way round. It has the example programs ready to load, a
+Format button, and a tab showing the bytecode your program compiles to.
 
 ## Practice
 
