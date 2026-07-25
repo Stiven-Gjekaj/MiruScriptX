@@ -6,6 +6,7 @@
 //! runtime error can point a caret at the exact place it happened even though
 //! the syntax tree is long gone by then.
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::value::{CompiledFunction, Value};
@@ -258,6 +259,39 @@ impl OpCode {
     }
 }
 
+/// A value's identity as a constant, used to find an existing pool entry.
+///
+/// This exists rather than hashing a [`Value`] directly because pool identity is
+/// stricter than language equality: `1` and `1.0` are equal to the language but
+/// must not share a slot, or one literal would be rewritten as the other and
+/// change what `type` and `str` report. Floats key on their bits for the same
+/// reason, which also keeps `0.0` and `-0.0` apart.
+///
+/// Only the kinds a literal can produce have a key. Everything else carries
+/// identity rather than a value, never reaches a constant pool, and simply does
+/// not participate in reuse.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum ConstantKey {
+    Int(i64),
+    Float(u64),
+    Bool(bool),
+    Str(Rc<String>),
+    Nil,
+}
+
+impl ConstantKey {
+    fn of(value: &Value) -> Option<ConstantKey> {
+        match value {
+            Value::Int(n) => Some(ConstantKey::Int(*n)),
+            Value::Float(f) => Some(ConstantKey::Float(f.to_bits())),
+            Value::Bool(b) => Some(ConstantKey::Bool(*b)),
+            Value::Str(s) => Some(ConstantKey::Str(Rc::clone(s))),
+            Value::Nil => Some(ConstantKey::Nil),
+            _ => None,
+        }
+    }
+}
+
 /// A compiled chunk of bytecode: the instructions, the constants they reference,
 /// and the source position of every byte.
 #[derive(Clone, Default)]
@@ -268,6 +302,9 @@ pub struct Chunk {
     pub positions: Vec<(usize, usize)>,
     /// Nested functions this chunk can turn into closures, by index.
     pub functions: Vec<Rc<CompiledFunction>>,
+    /// Where each constant already in the pool sits, so reuse is a lookup rather
+    /// than a search. Compile-time only; the VM addresses constants by index.
+    constant_slots: HashMap<ConstantKey, usize>,
 }
 
 impl Chunk {
@@ -290,25 +327,25 @@ impl Chunk {
     /// Add a constant to the pool and return its index, for use as an operand,
     /// reusing the entry for a value already in the pool.
     ///
-    /// Reuse is what makes the pool usable, not a saving. A `Constant` operand
-    /// is one byte, so a chunk holds at most 256 of them, and without this every
-    /// *occurrence* of a literal spent one: a three-hundred-line program that
-    /// added `1` to a counter on each line failed to compile. The limit now
-    /// counts distinct values, which is a bound a real program can live within.
+    /// Reuse is what makes the pool usable, not a saving. Without it every
+    /// *occurrence* of a literal took a slot: a three-hundred-line program that
+    /// added `1` to a counter on each line failed to compile, back when the pool
+    /// was capped at what one operand byte could address.
     ///
-    /// The scan is linear, and bounded by that same cap: the compiler refuses a
-    /// chunk the moment the pool outgrows one byte, so it never searches more
-    /// than 257 entries.
+    /// The lookup is by hash. It was a linear scan while that cap was 256, which
+    /// bounded the search; `ConstantLong` raised the cap to 65,536 and took the
+    /// bound with it, turning compilation of a constant-heavy program quadratic.
     pub fn add_constant(&mut self, value: Value) -> usize {
-        if let Some(index) = self
-            .constants
-            .iter()
-            .position(|existing| existing.same_constant(&value))
-        {
-            return index;
+        let key = ConstantKey::of(&value);
+        if let Some(index) = key.as_ref().and_then(|key| self.constant_slots.get(key)) {
+            return *index;
         }
         self.constants.push(value);
-        self.constants.len() - 1
+        let index = self.constants.len() - 1;
+        if let Some(key) = key {
+            self.constant_slots.insert(key, index);
+        }
+        index
     }
 
     /// Add a nested function and return its index, for use as a `Closure` operand.
