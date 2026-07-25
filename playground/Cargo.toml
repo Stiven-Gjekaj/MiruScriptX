@@ -15,4 +15,4 @@ miruscriptx = { path = ".." }
 # the same version can consume, and a mismatch fails the build with a version
 # error rather than anything that names the cause. The version here and the one
 # installed by .github/workflows/pages.yml move together.
-wasm-bindgen = "=0.2.100"
+wasm-bindgen = "=0.2.126"
