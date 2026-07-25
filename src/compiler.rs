@@ -555,17 +555,17 @@ impl<'g> Compiler<'g> {
             ExprKind::Bool(false) => self.chunk.write_op(OpCode::False, line, column),
             ExprKind::Nil => self.chunk.write_op(OpCode::Nil, line, column),
             ExprKind::Array(elements) => {
-                let count = u8::try_from(elements.len()).map_err(|_| {
+                let count = u16::try_from(elements.len()).map_err(|_| {
                     MiruError::with_column(line, column, "array literal has too many elements")
                 })?;
                 for element in elements {
                     self.expression(element)?;
                 }
                 self.chunk.write_op(OpCode::Array, line, column);
-                self.chunk.write(count, line, column);
+                self.write_u16(count, line, column);
             }
             ExprKind::Map(entries) => {
-                let count = u8::try_from(entries.len()).map_err(|_| {
+                let count = u16::try_from(entries.len()).map_err(|_| {
                     MiruError::with_column(line, column, "map literal has too many entries")
                 })?;
                 for (key, value) in entries {
@@ -573,7 +573,7 @@ impl<'g> Compiler<'g> {
                     self.expression(value)?;
                 }
                 self.chunk.write_op(OpCode::Map, line, column);
-                self.chunk.write(count, line, column);
+                self.write_u16(count, line, column);
             }
             ExprKind::Index { target, index } => {
                 self.expression(target)?;

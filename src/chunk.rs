@@ -384,13 +384,13 @@ impl Chunk {
                 let _ = writeln!(out, "{:<14}slot {slot}", op.name());
                 offset + 2
             }
-            Some(
-                op @ (OpCode::Array
-                | OpCode::Map
-                | OpCode::Call
-                | OpCode::GetUpvalue
-                | OpCode::SetUpvalue),
-            ) => {
+            Some(op @ (OpCode::Array | OpCode::Map)) => {
+                let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let _ = writeln!(out, "{:<14}{}", op.name(), (high << 8) | low);
+                offset + 3
+            }
+            Some(op @ (OpCode::Call | OpCode::GetUpvalue | OpCode::SetUpvalue)) => {
                 let operand = self.code.get(offset + 1).copied().unwrap_or(0);
                 let _ = writeln!(out, "{:<14}{operand}", op.name());
                 offset + 2

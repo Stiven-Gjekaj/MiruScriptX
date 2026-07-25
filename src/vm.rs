@@ -360,15 +360,15 @@ impl Vm {
                         self.stack[slot_base + slot] = value;
                     }
                     OpCode::Array => {
-                        let count = chunk.code[ip] as usize;
-                        ip += 1;
+                        let count = read_u16(chunk, ip) as usize;
+                        ip += 2;
                         let start = self.stack.len() - count;
                         let items = self.stack.split_off(start);
                         self.stack.push(Value::Array(Rc::new(RefCell::new(items))));
                     }
                     OpCode::Map => {
-                        let count = chunk.code[ip] as usize;
-                        ip += 1;
+                        let count = read_u16(chunk, ip) as usize;
+                        ip += 2;
                         let start = self.stack.len() - count * 2;
                         let pairs = self.stack.split_off(start);
                         let mut entries = BTreeMap::new();

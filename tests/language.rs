@@ -266,3 +266,11 @@ fn a_file_may_hold_more_than_two_hundred_and_fifty_six_functions() {
     source.push_str("f299(1)");
     assert_eq!(repr(&source), "300");
 }
+
+#[test]
+fn an_array_literal_may_hold_more_than_two_hundred_and_fifty_five_elements() {
+    // Array's element count was one byte. The values here repeat so that the
+    // constant pool is not what is being tested.
+    let source = format!("let a = [{}]\nlen(a)", vec!["7"; 300].join(", "));
+    assert_eq!(repr(&source), "300");
+}
