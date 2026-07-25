@@ -239,3 +239,53 @@ footer a {
 footer span {
   margin: 0 0.4rem;
 }
+
+/*
+ * Token colours. The spans these apply to come from the language's own lexer,
+ * so what looks like a keyword here is what the language treats as one.
+ */
+#highlight .keyword {
+  color: #b4472f;
+  font-weight: 600;
+}
+
+#highlight .builtin {
+  color: #7048a8;
+}
+
+#highlight .string {
+  color: #2c7a4b;
+}
+
+#highlight .number,
+#highlight .literal {
+  color: #a8621b;
+}
+
+#highlight .comment {
+  color: #7b8794;
+  font-style: italic;
+}
+
+@media (prefers-color-scheme: dark) {
+  #highlight .keyword {
+    color: #e2795c;
+  }
+
+  #highlight .builtin {
+    color: #c3a0f0;
+  }
+
+  #highlight .string {
+    color: #7fc99a;
+  }
+
+  #highlight .number,
+  #highlight .literal {
+    color: #e0aa6a;
+  }
+
+  #highlight .comment {
+    color: #7b8794;
+  }
+}

@@ -66,6 +66,17 @@ impl Globals {
         true
     }
 
+    /// Whether a name has a slot in this table.
+    ///
+    /// Unlike [`Globals::slot_for`] this only asks, and so takes `&self`: it is
+    /// a membership test rather than a step towards emitting code. The
+    /// playground uses it to colour builtins, by populating a table with
+    /// [`crate::builtins::register`] and asking it, rather than keeping a second
+    /// list of builtin names that could fall out of step with the real one.
+    pub fn contains(&self, name: &str) -> bool {
+        self.by_name.contains_key(name)
+    }
+
     /// The name a slot was created for, for error messages.
     pub fn name(&self, slot: u16) -> &str {
         &self.names[slot as usize]
@@ -86,6 +97,17 @@ mod tests {
         // resolve a name an earlier one defined.
         assert_eq!(globals.slot_for("a"), Some(a));
         assert_eq!(globals.name(a), "a");
+    }
+
+    #[test]
+    fn contains_reports_membership_without_creating_a_slot() {
+        let mut globals = Globals::new();
+        assert!(!globals.contains("print"));
+        crate::builtins::register(&mut globals);
+        assert!(globals.contains("print"));
+        // Asking does not invent a slot, which is what separates this from
+        // slot_for.
+        assert!(!globals.contains("definitely_not_a_builtin"));
     }
 
     #[test]

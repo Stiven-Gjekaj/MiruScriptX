@@ -6,13 +6,14 @@ import init, {
   run,
   format,
   disassemble,
+  highlight,
   version,
   example_names,
   example_source,
 } from "./pkg/miruscriptx_playground.js";
 
 const source = document.getElementById("source");
-const highlight = document.querySelector("#highlight code");
+const highlighted = document.querySelector("#highlight code");
 const output = document.getElementById("output");
 const examples = document.getElementById("examples");
 const runButton = document.getElementById("run");
@@ -25,22 +26,54 @@ const bytecodeTab = document.getElementById("tab-bytecode");
 let view = "output";
 
 /**
- * Repaint the layer behind the textarea.
+ * Repaint the layer behind the textarea, colouring it.
  *
- * For now this only mirrors the text, which keeps the two layers aligned and
- * proves the geometry is right before any colour is involved. Highlighting
- * replaces the body of this function and nothing else.
+ * The spans come from the real lexer, so what gets coloured as a keyword is
+ * exactly what the language treats as one. Nothing here knows the grammar.
+ *
+ * Offsets are char indices, which is why the text is split into an array of
+ * code points first: indexing a JavaScript string directly counts UTF-16 units,
+ * and a single astral character would shift every span after it.
  *
  * The trailing newline matters: a <pre> collapses one at the end, so without it
  * the last line would sit half a line higher than the textarea's.
  */
 function paint() {
-  highlight.textContent = source.value + "\n";
+  const text = source.value;
+  const chars = Array.from(text);
+  const fragment = document.createDocumentFragment();
+  let at = 0;
+
+  const plain = (upto) => {
+    if (upto > at) {
+      fragment.append(chars.slice(at, upto).join(""));
+      at = upto;
+    }
+  };
+
+  for (const span of highlight(text)) {
+    // Defensive: the spans are sorted and disjoint, and a test in the Rust
+    // crate keeps them that way, but skipping a stray overlap loses colour
+    // whereas honouring one would duplicate text.
+    if (span.start < at) continue;
+    plain(span.start);
+    const element = document.createElement("span");
+    element.className = span.class;
+    element.textContent = chars
+      .slice(span.start, span.start + span.length)
+      .join("");
+    fragment.append(element);
+    at = span.start + span.length;
+  }
+  plain(chars.length);
+  fragment.append("\n");
+
+  highlighted.replaceChildren(fragment);
 }
 
 /** Keep the layer behind the textarea scrolled to the same place. */
 function syncScroll() {
-  const pre = highlight.parentElement;
+  const pre = highlighted.parentElement;
   pre.scrollTop = source.scrollTop;
   pre.scrollLeft = source.scrollLeft;
 }

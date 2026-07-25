@@ -16,6 +16,9 @@
 //! all, exactly as the binary prints it, paired with a flag saying which of the
 //! two happened.
 
+use miruscriptx::globals::Globals;
+use miruscriptx::lexer::Lexer;
+use miruscriptx::token::TokenKind;
 use miruscriptx::MiruError;
 use wasm_bindgen::prelude::*;
 
@@ -124,6 +127,120 @@ pub fn example_source(name: &str) -> String {
         .unwrap_or_default()
 }
 
+/// A run of source text to colour: where it starts, how long it is, and what
+/// kind of thing it is.
+///
+/// Offsets are **char** indices, not UTF-16 units, because that is what the
+/// lexer counts in. JavaScript must walk code points (`Array.from`) rather than
+/// index the string directly, or every span after a multi-byte character lands
+/// in the wrong place.
+#[wasm_bindgen]
+pub struct Highlight {
+    start: usize,
+    len: usize,
+    class: String,
+}
+
+#[wasm_bindgen]
+impl Highlight {
+    #[wasm_bindgen(getter)]
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    /// How many characters the span covers.
+    ///
+    /// Named `length` rather than `len` because it is a width, not the size of
+    /// a collection, so the pairing with `is_empty` that `len` implies would be
+    /// meaningless here. It also reads as ordinary JavaScript on the other side.
+    #[wasm_bindgen(getter)]
+    pub fn length(&self) -> usize {
+        self.len
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn class(&self) -> String {
+        self.class.clone()
+    }
+}
+
+/// Whether a name is one of the language's builtins.
+///
+/// Answered by populating a real global table with the real registration
+/// function and asking it, so the set can never drift from the one a program
+/// actually sees. Building the table costs a few dozen map inserts, which is
+/// nothing against repainting an editor.
+fn is_builtin(name: &str) -> bool {
+    let mut globals = Globals::new();
+    miruscriptx::builtins::register(&mut globals);
+    globals.contains(name)
+}
+
+/// Classify a token for colouring.
+///
+/// This lives here rather than in the language crate because which things share
+/// a colour is a presentation question, not a property of the grammar. What the
+/// language owns is the token kinds; the playground decides that `fn` and `if`
+/// look alike and that `+` and `,` do not.
+fn class_of(kind: &TokenKind) -> Option<&'static str> {
+    let class = match kind {
+        TokenKind::Int(_) | TokenKind::Float(_) => "number",
+        TokenKind::Str(_) => "string",
+        TokenKind::Fn
+        | TokenKind::Let
+        | TokenKind::Return
+        | TokenKind::If
+        | TokenKind::Else
+        | TokenKind::While
+        | TokenKind::For
+        | TokenKind::In
+        | TokenKind::Break
+        | TokenKind::Continue => "keyword",
+        TokenKind::True | TokenKind::False | TokenKind::Nil => "literal",
+        TokenKind::Ident(name) if is_builtin(name) => "builtin",
+        // Identifiers, operators, delimiters, newlines, and end of input are
+        // left as ordinary text. Colouring punctuation makes code busier to
+        // read rather than clearer.
+        _ => return None,
+    };
+    Some(class)
+}
+
+/// The spans to colour in a source string, in order.
+///
+/// A program that does not lex yields nothing rather than an error: someone
+/// typing has an unterminated string most of the time, and the editor should
+/// simply stop colouring until it is closed rather than flash a complaint.
+#[wasm_bindgen]
+pub fn highlight(source: &str) -> Vec<Highlight> {
+    let Ok((tokens, spans)) = Lexer::tokenize_with_spans(source) else {
+        return Vec::new();
+    };
+
+    let mut out: Vec<Highlight> = tokens
+        .iter()
+        .zip(spans.tokens.iter())
+        .filter(|(_, (_, len))| *len > 0)
+        .filter_map(|(token, (start, len))| {
+            class_of(&token.kind).map(|class| Highlight {
+                start: *start,
+                len: *len,
+                class: class.to_string(),
+            })
+        })
+        .chain(spans.comments.iter().map(|(start, len)| Highlight {
+            start: *start,
+            len: *len,
+            class: "comment".to_string(),
+        }))
+        .collect();
+
+    // Comments are appended after the tokens, so the whole list needs sorting
+    // before a consumer can walk it and the source together.
+    out.sort_by_key(|span| span.start);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +301,68 @@ mod tests {
     #[test]
     fn an_unknown_example_yields_nothing_rather_than_panicking() {
         assert_eq!(example_source("nope"), "");
+    }
+
+    #[test]
+    fn highlighting_classifies_the_parts_of_a_program() {
+        let source = "// note\nlet n = 1\nprint(\"hi\")\nif true { n = n + 1 }";
+        let chars: Vec<char> = source.chars().collect();
+        let spans = highlight(source);
+
+        let classified: Vec<(String, String)> = spans
+            .iter()
+            .map(|s| {
+                (
+                    s.class.clone(),
+                    chars[s.start..s.start + s.len].iter().collect::<String>(),
+                )
+            })
+            .collect();
+
+        for expected in [
+            ("comment", "// note"),
+            ("keyword", "let"),
+            ("number", "1"),
+            ("builtin", "print"),
+            ("string", "\"hi\""),
+            ("keyword", "if"),
+            ("literal", "true"),
+        ] {
+            let pair = (expected.0.to_string(), expected.1.to_string());
+            assert!(
+                classified.contains(&pair),
+                "missing {expected:?} in {classified:?}"
+            );
+        }
+
+        // A user's own name is left as ordinary text, and so is punctuation.
+        assert!(
+            !classified
+                .iter()
+                .any(|(_, text)| text == "n" || text == "+"),
+            "{classified:?}"
+        );
+    }
+
+    #[test]
+    fn highlighting_is_ordered_and_never_overlaps() {
+        // The page walks the spans and the source together, so out-of-order or
+        // overlapping spans would corrupt the rendered text rather than just
+        // mis-colour it.
+        let source = "fn f(a) {\n  // c\n  return \"x\" + a\n}\n";
+        let mut end = 0;
+        for span in highlight(source) {
+            assert!(span.start >= end, "span at {} overlaps {end}", span.start);
+            end = span.start + span.len;
+        }
+        assert!(end <= source.chars().count());
+    }
+
+    #[test]
+    fn a_program_that_does_not_lex_highlights_as_nothing() {
+        // Half-typed input is the common case in an editor, not an error worth
+        // reporting.
+        assert!(highlight("let s = \"unterminated").is_empty());
     }
 
     #[test]
