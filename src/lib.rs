@@ -216,10 +216,27 @@ fn strip_trailing_newline(mut line: String) -> String {
 /// own source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraceEntry {
-    /// The name of the function the call was made from, or `None` at the top
-    /// level of a script and for an anonymous function.
+    /// The name of the function that was entered, or `None` for an anonymous
+    /// one.
     pub function: Option<String>,
     pub line: usize,
+}
+
+/// How many innermost and outermost entries a rendered trace keeps when the
+/// path is too long to print whole.
+///
+/// Runaway recursion reaches ten thousand frames, and printing every one buries
+/// the error in its own trace. The two ends are the parts that carry
+/// information: where it broke, and how the program got into the recursion.
+const TRACE_HEAD: usize = 5;
+const TRACE_TAIL: usize = 5;
+
+/// Append one trace line.
+fn write_trace_entry(out: &mut String, entry: &TraceEntry) {
+    use std::fmt::Write;
+
+    let name = entry.function.as_deref().unwrap_or("<anonymous>");
+    let _ = write!(out, "\n  in {name}, called from line {}", entry.line);
 }
 
 /// An error produced anywhere in the pipeline (lexing, parsing, or running),
@@ -282,9 +299,24 @@ impl MiruError {
             caret.push('^');
             let _ = write!(out, "\n    {text}\n    {caret}");
         }
-        for entry in &self.trace {
-            let name = entry.function.as_deref().unwrap_or("<anonymous>");
-            let _ = write!(out, "\n  in {name}, called from line {}", entry.line);
+        // Elide the middle of a long path rather than the data itself: `trace`
+        // stays complete for anything that wants to inspect it, and only what
+        // is printed is shortened. The threshold is one past what elision could
+        // fit, so it never replaces a single frame with a line saying one frame
+        // was replaced, which also keeps the count plural.
+        if self.trace.len() > TRACE_HEAD + TRACE_TAIL + 1 {
+            for entry in &self.trace[..TRACE_HEAD] {
+                write_trace_entry(&mut out, entry);
+            }
+            let elided = self.trace.len() - TRACE_HEAD - TRACE_TAIL;
+            let _ = write!(out, "\n  ... {elided} more frames");
+            for entry in &self.trace[self.trace.len() - TRACE_TAIL..] {
+                write_trace_entry(&mut out, entry);
+            }
+        } else {
+            for entry in &self.trace {
+                write_trace_entry(&mut out, entry);
+            }
         }
         out
     }
@@ -305,6 +337,39 @@ impl std::error::Error for MiruError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Build an error carrying `count` identical trace entries.
+    fn traced(count: usize) -> MiruError {
+        let mut error = MiruError::with_column(1, 1, "boom");
+        error.trace = (0..count)
+            .map(|_| TraceEntry {
+                function: Some("r".to_string()),
+                line: 1,
+            })
+            .collect();
+        error
+    }
+
+    #[test]
+    fn a_long_trace_is_elided_in_the_middle() {
+        // The threshold is the last length elision cannot shorten. At it, every
+        // frame prints; one past it, the middle collapses.
+        let full = traced(TRACE_HEAD + TRACE_TAIL + 1).render("x");
+        assert_eq!(full.matches("in r, called from line 1").count(), 11);
+        assert!(!full.contains("more frames"), "{full}");
+
+        let elided = traced(TRACE_HEAD + TRACE_TAIL + 2).render("x");
+        assert_eq!(
+            elided.matches("in r, called from line 1").count(),
+            TRACE_HEAD + TRACE_TAIL
+        );
+        // Never "1 more frames": the threshold is set so at least two collapse.
+        assert!(elided.contains("... 2 more frames"), "{elided}");
+
+        let deep = traced(10_000).render("x");
+        assert!(deep.contains("... 9990 more frames"), "{deep}");
+        assert_eq!(deep.lines().count(), 1 + 2 + TRACE_HEAD + 1 + TRACE_TAIL);
+    }
 
     fn out(source: &str) -> String {
         run_capture(source).expect("program should run")

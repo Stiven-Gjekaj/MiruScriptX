@@ -886,6 +886,14 @@ fn runtime_errors_carry_the_call_path_they_came_through() {
             "map([1], fn(x) { return x * nil })",
             "error (line 1, column 27): cannot multiply a int and a nil\n    map([1], fn(x) { return x * nil })\n                              ^\n  in <anonymous>, called from line 1",
         ),
+        // Runaway recursion would otherwise print ten thousand identical lines
+        // and bury the error in its own trace. The two ends carry the
+        // information: where it broke, and how the program entered the
+        // recursion, which is the "line 2" entry at the bottom.
+        (
+            "fn r(n) { return r(n + 1) }\nr(1)",
+            "error (line 1, column 18): call depth limit of 10000 exceeded\n    fn r(n) { return r(n + 1) }\n                     ^\n  in r, called from line 1\n  in r, called from line 1\n  in r, called from line 1\n  in r, called from line 1\n  in r, called from line 1\n  ... 9989 more frames\n  in r, called from line 1\n  in r, called from line 1\n  in r, called from line 1\n  in r, called from line 1\n  in r, called from line 2",
+        ),
         // A syntax error never has a call path: there is no call stack yet.
         (
             "let = 1",
