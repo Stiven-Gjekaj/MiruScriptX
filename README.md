@@ -6,8 +6,6 @@
 
 _Compiled to bytecode, run on a stack virtual machine_
 
-**[Try it in your browser](https://stiven-gjekaj.github.io/miruscriptx/)**, no install required
-
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
@@ -21,7 +19,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 </p>
 
 <p align="center">
-  <a href="https://stiven-gjekaj.github.io/miruscriptx/"><b>Try it in your browser</b></a> |
+  <a href="https://stiven-gjekaj.github.io/MiruScriptX/"><b>Try it in your browser</b></a> |
   <a href="#quick-start"><b>Quick Start</b></a> |
   <a href="#features"><b>Features</b></a> |
   <a href="#examples"><b>Examples</b></a> |

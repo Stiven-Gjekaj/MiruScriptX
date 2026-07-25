@@ -26,7 +26,7 @@ semantic versioning.
   A very deep trace is shortened in the middle when rendered, never when
   captured, so runaway recursion reports its error in fourteen lines rather than
   ten thousand and two.
-- A [playground](https://stiven-gjekaj.github.io/miruscriptx/) that runs the
+- A [playground](https://stiven-gjekaj.github.io/MiruScriptX/) that runs the
   language in a browser, built to WebAssembly from the same lexer, compiler, and
   virtual machine as the `miru` command. It has an editor with syntax
   highlighting, the bundled example programs, a Format button, and a tab showing

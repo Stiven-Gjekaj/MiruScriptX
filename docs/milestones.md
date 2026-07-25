@@ -148,7 +148,7 @@ request templates, and a branded README with a project logo.
 - Every compiler error carries a position. Checking the claim that one error was
   missing a column turned up five, two of which reported no line either.
 
-- A WebAssembly build and a [playground](https://stiven-gjekaj.github.io/miruscriptx/).
+- A WebAssembly build and a [playground](https://stiven-gjekaj.github.io/MiruScriptX/).
   The library needed one line of `Cargo.toml` to compile for
   `wasm32-unknown-unknown`, which is the evidence that this was packaging rather
   than porting: the compiler and VM are computation over a string, with no
