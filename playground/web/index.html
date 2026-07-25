@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MiruScriptX playground</title>
+    <meta
+      name="description"
+      content="Run MiruScriptX in your browser. The same compiler and virtual machine as the command line tool, built to WebAssembly."
+    />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>MiruScriptX</h1>
+      <p class="tagline">
+        Compiled to bytecode, run on a stack virtual machine, here in your
+        browser.
+      </p>
+      <p class="version">Loading<span id="version"></span></p>
+    </header>
+
+    <main>
+      <section class="pane">
+        <div class="pane-head">
+          <label for="examples">Example</label>
+          <select id="examples" disabled></select>
+          <span class="spacer"></span>
+          <button id="run" type="button" disabled>Run</button>
+          <button id="format" type="button" disabled>Format</button>
+        </div>
+
+        <!--
+          A textarea holds the real text; the <pre> behind it holds a
+          highlighted copy. Both share a font and metrics so they line up
+          exactly. Keeping the textarea real is the point: native undo,
+          selection, and mobile keyboards keep working, and the highlighting
+          can never desynchronise from what actually runs.
+        -->
+        <div class="editor">
+          <pre id="highlight" aria-hidden="true"><code></code></pre>
+          <textarea
+            id="source"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            autocorrect="off"
+            aria-label="MiruScriptX source code"
+          ></textarea>
+        </div>
+      </section>
+
+      <section class="pane">
+        <div class="pane-head">
+          <div class="tabs" role="tablist">
+            <button
+              id="tab-output"
+              class="tab active"
+              role="tab"
+              aria-selected="true"
+              aria-controls="output"
+              type="button"
+            >
+              Output
+            </button>
+            <button
+              id="tab-bytecode"
+              class="tab"
+              role="tab"
+              aria-selected="false"
+              aria-controls="output"
+              type="button"
+            >
+              Bytecode
+            </button>
+          </div>
+        </div>
+        <pre id="output" role="tabpanel" aria-live="polite"></pre>
+      </section>
+    </main>
+
+    <footer>
+      <a href="https://github.com/stiven-gjekaj/miruscriptx">Source on GitHub</a>
+      <span aria-hidden="true">/</span>
+      <a
+        href="https://github.com/stiven-gjekaj/miruscriptx/blob/main/docs/language-reference.md"
+        >Language reference</a
+      >
+      <span aria-hidden="true">/</span>
+      <a
+        href="https://github.com/stiven-gjekaj/miruscriptx/blob/main/docs/architecture.md"
+        >How it works</a
+      >
+    </footer>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

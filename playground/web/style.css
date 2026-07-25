@@ -1,0 +1,241 @@
+/*
+ * The playground's styling. No framework and no web fonts: the page loads a
+ * WebAssembly module and three small local files, and nothing else.
+ *
+ * The editor is a textarea layered over a <pre>. Every metric they share is
+ * declared once, in the .editor block, because a difference of half a pixel in
+ * any of them shows up as highlighting that drifts away from the text as you
+ * scroll down.
+ */
+
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --panel: #f6f7f9;
+  --border: #d8dce2;
+  --text: #1b1f24;
+  --muted: #5c6570;
+  --accent: #b4472f;
+  --error: #a4232a;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --panel: #1b1f26;
+    --border: #2c333d;
+    --text: #e6e9ee;
+    --muted: #9aa4b2;
+    --accent: #e2795c;
+    --error: #f0736f;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem 1rem 2rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+header {
+  max-width: 76rem;
+  margin: 0 auto 1.25rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+
+.tagline {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+
+.version {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+main {
+  max-width: 76rem;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+/* One column once two panes side by side would be too narrow to read code in. */
+@media (max-width: 60rem) {
+  main {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pane {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border-bottom: 1px solid var(--border);
+  min-height: 3rem;
+  flex-wrap: wrap;
+}
+
+.pane-head label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+button,
+select {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled),
+select:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled,
+select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#run {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.tab {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tab.active {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/*
+ * The editor stack. The textarea and the <pre> are both absolutely positioned
+ * over the same box and must agree on every one of these metrics.
+ */
+.editor {
+  position: relative;
+  height: 26rem;
+}
+
+.editor > #highlight,
+.editor > #source {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0.75rem;
+  border: 0;
+  font-family: var(--mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  word-wrap: normal;
+}
+
+#highlight {
+  pointer-events: none;
+  color: var(--text);
+  background: transparent;
+}
+
+#source {
+  resize: none;
+  background: transparent;
+  /*
+   * The text itself is drawn by the <pre> underneath. Making it transparent
+   * here rather than hiding the textarea keeps the caret, the selection, and
+   * every native editing behaviour intact.
+   */
+  color: transparent;
+  caret-color: var(--accent);
+}
+
+#source::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+#source:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+#output {
+  margin: 0;
+  padding: 0.75rem;
+  height: 26rem;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  white-space: pre;
+  background: var(--bg);
+}
+
+#output.failed {
+  color: var(--error);
+}
+
+footer {
+  max-width: 76rem;
+  margin: 1.25rem auto 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+footer a {
+  color: var(--muted);
+}
+
+footer span {
+  margin: 0 0.4rem;
+}

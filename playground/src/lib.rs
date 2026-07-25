@@ -90,6 +90,40 @@ pub fn version() -> String {
     miruscriptx::VERSION.to_string()
 }
 
+/// The example programs shipped with the language, as `(name, source)` pairs.
+///
+/// Inlined at build time with `include_str!` rather than fetched, so the page
+/// makes no network request after the module loads and cannot show an example
+/// that has drifted from the one in the repository. These are the same files
+/// `tests/integration.rs` runs through the real binary.
+///
+/// `greeter.miru` is deliberately absent: it calls `input()`, and the
+/// playground has nowhere to read a line from.
+const EXAMPLES: &[(&str, &str)] = &[
+    ("greet", include_str!("../../examples/greet.miru")),
+    ("fib", include_str!("../../examples/fib.miru")),
+    ("fizzbuzz", include_str!("../../examples/fizzbuzz.miru")),
+    ("contacts", include_str!("../../examples/contacts.miru")),
+    ("transform", include_str!("../../examples/transform.miru")),
+];
+
+/// The names of the bundled examples, in the order they should be offered.
+#[wasm_bindgen]
+pub fn example_names() -> Vec<String> {
+    EXAMPLES.iter().map(|(name, _)| name.to_string()).collect()
+}
+
+/// The source of one bundled example, or an empty string if there is no such
+/// example.
+#[wasm_bindgen]
+pub fn example_source(name: &str) -> String {
+    EXAMPLES
+        .iter()
+        .find(|(candidate, _)| *candidate == name)
+        .map(|(_, source)| source.to_string())
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,6 +167,23 @@ mod tests {
         let listing = disassemble("1 + 2");
         assert!(listing.ok);
         assert!(listing.text.contains("== script =="), "{}", listing.text);
+    }
+
+    #[test]
+    fn every_bundled_example_runs() {
+        // The dropdown must not be able to offer a program that fails, and an
+        // example that calls input() would, since the page has no stdin.
+        for name in example_names() {
+            let source = example_source(&name);
+            assert!(!source.is_empty(), "{name} has no source");
+            let outcome = run(&source);
+            assert!(outcome.ok, "{name} failed:\n{}", outcome.text);
+        }
+    }
+
+    #[test]
+    fn an_unknown_example_yields_nothing_rather_than_panicking() {
+        assert_eq!(example_source("nope"), "");
     }
 
     #[test]
