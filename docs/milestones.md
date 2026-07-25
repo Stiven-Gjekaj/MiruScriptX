@@ -282,10 +282,33 @@ a bad index, not a failed conversion, not a missing key that matters.
   numeric promotion and overflow, truthiness, scoping and capture, and every
   limit a program can hit.
 
-- Re-check the word "small" in the README against the real line count. It is
-  honest at v0.6 (7,666 lines of Rust, roughly 1,500 of them comments and
-  blanks), and modules and error handling will push it up. If it stops being
-  true, change the word rather than hide the number.
+- **Retire the word "small."** It was honest early and is still defensible at
+  v0.6 (7,666 lines of Rust, roughly 1,500 of them comments and blanks), but
+  modules and error handling will push it past the point where it describes
+  anything useful. By 1.0 the interesting claim is not that the language is
+  short; it is that it is *finished*, and written from scratch: a bytecode
+  compiler, a virtual machine, closures, modules, a formatter, a disassembler,
+  a stability guarantee, and a specification. Lead with that instead. The exact
+  wording is a matter of voice rather than fact, so it is left open, but the
+  direction is to claim completeness rather than size and to keep "written from
+  scratch in Rust", which is the part that actually distinguishes it.
+
+- **Move the workflows to Node 24.** GitHub is migrating the Actions runtime off
+  Node 20 and warns on any action still declaring it. Nothing is broken today,
+  and the deploy that raised the warning succeeded, so this is maintenance
+  rather than a fix: bump `actions/checkout`, `actions/cache`,
+  `actions/upload-pages-artifact`, and `actions/deploy-pages` to the majors that
+  declare `node24`. Doing it here rather than sooner means the workflows are
+  touched once, alongside the release workflow this milestone adds, instead of
+  twice.
+
+- **Say where the name comes from.** MiruScriptX is a revival of MiruScript, an
+  earlier language by the same author, written in C. The X marks the successor
+  rather than decorating it. A short note in the README, and a line in the specification's
+  introduction, is enough. Worth saying because the lineage is the honest
+  version of why this project exists, and because "the same idea, rebuilt in
+  Rust with a bytecode VM instead of C" tells a reader more about the project
+  than any feature list on the page.
 
 ## How versions are cut
 
