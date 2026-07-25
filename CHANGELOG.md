@@ -8,6 +8,61 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 0.6 (2026-07-25)
+
+### Added
+
+- Call stack traces on runtime errors. An error inside a call reports the path
+  of calls that reached it, innermost first, beneath the caret:
+
+  ```
+  error (line 2, column 12): cannot multiply a nil and a int
+        return n * 2
+                 ^
+    in double, called from line 7
+    in total, called from line 11
+  ```
+
+  A very deep trace is shortened in the middle when rendered, never when
+  captured, so runaway recursion reports its error in fourteen lines rather than
+  ten thousand and two.
+- A [playground](https://stiven-gjekaj.github.io/miruscriptx/) that runs the
+  language in a browser, built to WebAssembly from the same lexer, compiler, and
+  virtual machine as the `miru` command. It has an editor with syntax
+  highlighting, the bundled example programs, a Format button, and a tab showing
+  the bytecode a program compiles to. Published by its own workflow, separate
+  from CI so a failed deploy is not reported as a broken language.
+- `Lexer::tokenize_with_spans`, which records where every token and comment sits.
+  A span cannot be recovered from a token afterwards, because a token's value
+  does not determine its source text.
+- `Globals::contains`, a membership test that does not create a slot.
+- `ConstantLong`, `GetLocalLong`, and `SetLocalLong`.
+
+### Changed
+
+- Every one-byte operand limit is retired. A file may hold more than 256
+  functions, a chunk more than 256 distinct constants, a function more than 256
+  locals, and a literal more than 255 elements or entries. Cold instructions
+  were widened outright; `Constant`, `GetLocal`, and `SetLocal` kept their short
+  encoding and gained wide twins the compiler emits only when an index does not
+  fit, so an ordinary program emits exactly the bytecode it did before.
+- Every compiler error carries a position. Five did not, two of which reported
+  no line either and rendered as a bare `error:` with nothing to point at.
+- Finding an existing constant in the pool is a hash lookup rather than a linear
+  scan. The scan had been bounded by the 256-constant cap; raising the cap took
+  the bound with it and made compilation quadratic. 20,000 distinct constants
+  went from 257 ms to 27 ms.
+- `rustyline` is a non-wasm dependency. It is used only by the REPL, which
+  belongs to the binary, so the library now compiles for
+  `wasm32-unknown-unknown` unchanged.
+- CI builds the WebAssembly target and lints and tests the whole workspace.
+
+### Removed
+
+- `Value::same_constant`, superseded by a `ConstantKey` hash in `src/chunk.rs`.
+  Two definitions of when two constants are the same is how they come to
+  disagree.
+
 ## 0.5 (2026-07-24)
 
 ### Added

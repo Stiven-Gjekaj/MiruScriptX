@@ -107,55 +107,82 @@ request templates, and a branded README with a project logo.
   different resources: 10,000 call frames, and 64 levels of calls made from
   inside a builtin.
 
-## v0.6: better errors, and reach
+## v0.6: better errors, honest limits, and a playground
 
-- Call stack traces on runtime errors. An error raised three functions deep
-  currently reports only the innermost position, so the caret shows where the
-  program broke but not how it got there. The VM already keeps a frame stack
-  with a position per frame, so the information exists; what is missing is
-  carrying it out of the failure and rendering it, something like:
+- Call stack traces on runtime errors. An error inside a call now reports how it
+  was reached, not just where it broke:
 
   ```
-  error (line 2, column 12): cannot add a nil and a int
-      return a + 1
-             ^
-    in add, called from line 6
-    in total, called from line 9
+  error (line 2, column 12): cannot multiply a nil and a int
+        return n * 2
+                 ^
+    in double, called from line 7
+    in total, called from line 11
   ```
 
-  This wants a little care rather than a little code: the position saved in a
-  frame is where that frame will resume, not where the call was written, and a
-  deeply recursive failure needs the middle of the trace elided rather than ten
-  thousand identical lines printed.
+  Both hazards this was expected to have turned out to be real. A frame's saved
+  instruction pointer is where it *resumes*, one instruction past the call, so
+  the trace would have named the line after every call. And the frames are torn
+  down before the error reaches whoever renders it, so the capture had to happen
+  inside the dispatch loop while they were still standing, with a guard that
+  keeps the innermost capture when a builtin such as `map` is in the path.
+  Runaway recursion went from 10,002 lines of output to 14.
 
-- Compile the interpreter to WebAssembly.
-- Ship a live in-browser playground on GitHub Pages so anyone can try
-  MiruScriptX without installing anything.
-- The builtin bridge is the next thing worth optimizing, and v0.5 says so with
-  a number rather than a guess. Every other benchmark workload came down by
-  somewhere between 1.4x and 4.4x; `higher_order` did not move at all, because
-  its cost is not in the dispatch loop. `map`, `filter`, and `reduce` allocate a
-  result array and call back into a nested bytecode loop once per element, and
-  nothing in v0.5 touched either.
+- Every one-byte operand limit retired. A file may hold more than 256 functions,
+  a chunk more than 256 distinct constants, a function more than 256 locals, and
+  a literal more than 255 elements or entries.
 
-- Widen the one-byte operands that cap what a program may contain. Four of them
-  exist, and v0.5 fixed a fifth that was worse than any of these, so they are
-  worth going through deliberately rather than one at a time as each is hit:
+  Only the first was a real defect, but they were fixed together because they
+  are one shape. Cold instructions were widened outright; the three hottest kept
+  their short encoding and gained `ConstantLong`, `GetLocalLong`, and
+  `SetLocalLong`, emitted only when an index does not fit, so an ordinary
+  program emits exactly the bytecode it did before. Two operands widened for a
+  different reason: `Closure`'s per-upvalue index and `ForNext`'s slot both hold
+  a local slot, and crossing those widths would have captured the wrong variable
+  rather than failing to compile.
 
-  | Operand | Cap | Reachable? |
-  | ------- | --- | ---------- |
-  | `Closure`'s function index | 256 functions per chunk | Yes. A 300-function file is an ordinary library, and it does not compile. |
-  | A local's stack slot | 256 locals in scope | Unlikely by hand. |
-  | `Array`'s element count | 255 elements in one literal | Unlikely; building with `push` in a loop has no such limit. |
-  | `Map`'s entry count | 255 entries in one literal | Same. |
+  Raising the constant cap made compilation quadratic, because the pool's linear
+  scan had been justified by that cap bounding it. A hash index took 20,000
+  distinct constants from 257 ms back to 27 ms.
 
-  Only the first is worth calling a defect. All four fail loudly, with a message
-  and a position, rather than miscompiling, which is why none of them surfaced in
-  testing. Widening them costs a byte per affected instruction to buy headroom
-  most programs will never use, so it wants measuring like any other change.
+- Every compiler error carries a position. Checking the claim that one error was
+  missing a column turned up five, two of which reported no line either.
 
-  While in there, give "too many local variables in scope" the column and caret
-  that every other error in the language carries. It reports a line only.
+- A WebAssembly build and a [playground](https://stiven-gjekaj.github.io/miruscriptx/).
+  The library needed one line of `Cargo.toml` to compile for
+  `wasm32-unknown-unknown`, which is the evidence that this was packaging rather
+  than porting: the compiler and VM are computation over a string, with no
+  filesystem, process, time, or thread use.
+
+  The page has an editor, the example programs, a Format button, and a tab
+  showing the bytecode. Errors cross into the browser as rendered text, so the
+  caret and the call trace are the same ones the terminal prints. Syntax
+  highlighting runs the real lexer rather than a second grammar in JavaScript,
+  which is what `Lexer::tokenize_with_spans` is for: a token's value does not
+  determine its source text, so spans have to be recorded rather than
+  reconstructed.
+
+  It lives in its own crate. `wasm-bindgen` brings 12 crates, none of which are
+  involved in running a `.miru` file.
+
+## v0.7: the builtin bridge
+
+- Optimize the path a higher-order builtin takes to call back into the language.
+  v0.5 measured every workload and `higher_order` was the only one that did not
+  move, because its cost is not in the dispatch loop that v0.5 rewrote. `map`
+  allocates a `Vec` per element and goes through `Vm::call_value` into
+  `call_from_host` into a nested `run_frames`, which is a real Rust call per
+  element.
+
+  That nesting is also why `MAX_HOST_CALL_DEPTH` has to be as low as 64 while
+  ordinary calls get 10,000: each level costs machine stack rather than a heap
+  frame. A trampoline keeping everything on one dispatch loop would fix both the
+  speed and the asymmetry, and it is an engine redesign, which is why it has a
+  milestone rather than a commit.
+
+- Underline a whole token in an error rather than pointing a caret at its first
+  character. The spans this needs already exist, added in v0.6 for syntax
+  highlighting.
 
 ## How versions are cut
 
