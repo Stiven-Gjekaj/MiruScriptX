@@ -54,6 +54,33 @@ struct CallFrame {
     slot_base: usize,
 }
 
+/// How many bytes a `Call` instruction occupies: the opcode and its argument
+/// count. [`CallFrame::call_site`] steps back over exactly this much.
+const CALL_INSTRUCTION_LEN: usize = 2;
+
+impl CallFrame {
+    /// The source position of the call this frame is suspended at.
+    ///
+    /// `ip` is where the frame will *resume*, which the `Call` arm sets after
+    /// reading the operand, so it points just past the call rather than at it.
+    /// A trace wants the position a reader can find in their source, so step
+    /// back over the instruction to reach the opcode byte, whose position entry
+    /// is the call expression's.
+    ///
+    /// Returns `None` for a frame that is not suspended at a call: the script
+    /// frame before it has executed anything, and any frame whose `ip` has not
+    /// advanced past a call. Such a frame contributes no line to a trace rather
+    /// than a wrong one.
+    fn call_site(&self) -> Option<(usize, usize)> {
+        let offset = self.ip.checked_sub(CALL_INSTRUCTION_LEN)?;
+        let chunk = &self.closure.function.chunk;
+        if OpCode::from_u8(*chunk.code.get(offset)?) != Some(OpCode::Call) {
+            return None;
+        }
+        Some(chunk.position(offset))
+    }
+}
+
 /// A stack-based bytecode interpreter.
 pub struct Vm {
     stack: Vec<Value>,
@@ -163,10 +190,54 @@ impl Vm {
         result
     }
 
-    /// Run the bytecode loop until the frame at `base_depth` returns, yielding its
-    /// result. `base_depth` is 0 for a whole program; a higher value runs a single
-    /// nested call made from a host builtin.
+    /// Run the bytecode loop until the frame at `base_depth` returns, yielding
+    /// its result, attaching the call path to any error on the way out.
+    ///
+    /// This has to happen here rather than where the caller finally receives the
+    /// error, because by then the frames are gone: [`Vm::interpret`] clears them
+    /// and [`Vm::call_from_host`] truncates them, both before their error
+    /// propagates. Here they are still intact.
+    ///
+    /// The `is_empty` guard is what makes a call made from inside a builtin come
+    /// out right. Such a call runs on its own nested `run_frames`, which
+    /// captures the full path while its frames are alive; this outer one then
+    /// sees an error that already has a trace and leaves it alone rather than
+    /// replacing it with the shallower view it can still see.
     fn run_frames(&mut self, base_depth: usize) -> Result<Value, MiruError> {
+        let mut result = self.run_frames_inner(base_depth);
+        if let Err(error) = &mut result {
+            if error.trace.is_empty() {
+                error.trace = self.capture_trace();
+            }
+        }
+        result
+    }
+
+    /// The call path currently on the frame stack, innermost first.
+    ///
+    /// Each entry names a function that was entered and the line the call to it
+    /// was written on, so it reads as "in add, called from line 6". That pairs
+    /// each frame's name with its *caller's* call site, not its own: a frame
+    /// knows where it is suspended, which is where it calls onward, so the line
+    /// a function was reached by lives one frame out.
+    ///
+    /// The outermost frame is the script, which nothing called, so the walk
+    /// stops before it.
+    fn capture_trace(&self) -> Vec<crate::TraceEntry> {
+        (1..self.frames.len())
+            .rev()
+            .filter_map(|index| {
+                let (line, _) = self.frames[index - 1].call_site()?;
+                Some(crate::TraceEntry {
+                    function: self.frames[index].closure.function.name.clone(),
+                    line,
+                })
+            })
+            .collect()
+    }
+
+    /// The bytecode loop itself. See [`Vm::run_frames`], which wraps it.
+    fn run_frames_inner(&mut self, base_depth: usize) -> Result<Value, MiruError> {
         // Two loops, one per frame and one per instruction. The outer loop keeps
         // the current frame's closure, instruction pointer, stack base, and chunk
         // in locals; the inner one runs until a call or return changes frames and
@@ -846,6 +917,46 @@ mod tests {
         let index = chunk.add_constant(value) as u8;
         chunk.write_op(OpCode::Constant, 1, 1);
         chunk.write(index, 1, 1);
+    }
+
+    #[test]
+    fn a_frame_reports_the_call_it_is_suspended_at() {
+        // Hand-assembled so the layout is known exactly: a wrong offset cannot
+        // pass by landing on the right position by accident.
+        let mut chunk = Chunk::new();
+        chunk.write_op(OpCode::Nil, 1, 1);
+        chunk.write_op(OpCode::Nil, 1, 1);
+        let call = chunk.code.len();
+        chunk.write_op(OpCode::Call, 7, 3);
+        chunk.write(0, 7, 3);
+        chunk.write_op(OpCode::Return, 8, 1);
+
+        let function = Rc::new(CompiledFunction {
+            name: Some("outer".to_string()),
+            arity: 0,
+            chunk,
+        });
+        let closure = Rc::new(Closure {
+            function,
+            upvalues: Vec::new(),
+        });
+
+        // Suspended at the call. `ip` points past it, at where the frame will
+        // resume, and the reported position is still the call's own.
+        let frame = CallFrame {
+            closure: Rc::clone(&closure),
+            ip: call + CALL_INSTRUCTION_LEN,
+            slot_base: 0,
+        };
+        assert_eq!(frame.call_site(), Some((7, 3)));
+
+        // Not suspended at a call: report nothing rather than a wrong line.
+        let fresh = CallFrame {
+            closure,
+            ip: 0,
+            slot_base: 0,
+        };
+        assert_eq!(fresh.call_site(), None);
     }
 
     #[test]
