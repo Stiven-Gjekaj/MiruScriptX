@@ -6,19 +6,22 @@
 
 _Compiled to bytecode, run on a stack virtual machine_
 
+**[Try it in your browser](https://stiven-gjekaj.github.io/miruscriptx/)**, no install required
+
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
-  <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="2 direct dependencies, 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-221_passing-427819?style=for-the-badge" alt="221 tests passing"/>
+  <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
+  <img src="https://img.shields.io/badge/tests-246_passing-427819?style=for-the-badge" alt="246 tests passing"/>
 </p>
 
 <p align="center">
   <a href="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml"><img src="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <img src="https://img.shields.io/badge/version-0.5-blue?style=flat-square" alt="Version 0.5"/>
+  <img src="https://img.shields.io/badge/version-0.6-blue?style=flat-square" alt="Version 0.6"/>
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"/>
 </p>
 
 <p align="center">
+  <a href="https://stiven-gjekaj.github.io/miruscriptx/"><b>Try it in your browser</b></a> |
   <a href="#quick-start"><b>Quick Start</b></a> |
   <a href="#features"><b>Features</b></a> |
   <a href="#examples"><b>Examples</b></a> |
@@ -82,6 +85,7 @@ for name in people {
 - A disassembler (`miru disasm`) that prints the bytecode for a program
 - Errors with a line, a column, and a caret under the problem
 - Minimal dependencies: rustyline at runtime, criterion for benchmarks
+- A WebAssembly build and an in-browser playground, in a separate crate
 - Unit, golden, session, and end-to-end tests, benchmarks, and CI
 
 </td>
@@ -168,17 +172,23 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 
 | Stage | Files | Lines | Responsibility |
 | ----- | ----- | ----- | -------------- |
-| **Lexer** | token.rs, lexer.rs | 753 | Source text to tokens, with line and column tracking |
+| **Lexer** | token.rs, lexer.rs | 880 | Source text to tokens, with line, column, and span tracking |
 | **Parser** | ast.rs, parser.rs | 1031 | Recursive descent plus a Pratt expression parser |
-| **Runtime model** | value.rs, ops.rs, builtins.rs | 1630 | Values, operator and indexing rules, the builtin library |
-| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 2380 | Compiles the AST to bytecode and runs it on a stack VM |
+| **Runtime model** | value.rs, ops.rs, builtins.rs | 1607 | Values, operator and indexing rules, the builtin library |
+| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 2710 | Compiles the AST to bytecode and runs it on a stack VM |
 | **Formatter** | formatter.rs | 617 | Reprints a program in canonical form (`miru fmt`) |
 | **CLI and REPL** | main.rs, repl.rs | 331 | File runner, `fmt` and `disasm` commands, and the REPL |
-| **Library** | lib.rs | 392 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **15 files** | **7134** | Written from scratch in Rust |
+| **Library** | lib.rs | 490 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
+| **Total** | **15 files** | **7666** | Written from scratch in Rust |
+
+The playground is a separate crate: 379 lines of Rust binding the language to
+WebAssembly, and 551 of hand-written HTML, CSS, and JavaScript. It is counted
+apart because it is not the language, and neither its code nor its dependencies
+are involved in running a `.miru` file.
 
 ```
 src/         the language (lexer, parser, compiler, VM, CLI, REPL)
+playground/  WebAssembly bindings and the in-browser playground
 examples/    runnable .miru programs
 wiki/        step-by-step learning lessons
 docs/        language reference, architecture, and roadmap
