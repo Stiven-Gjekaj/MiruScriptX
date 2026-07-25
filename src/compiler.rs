@@ -240,10 +240,10 @@ impl<'g> Compiler<'g> {
             arity: params.len(),
             chunk,
         });
-        let index = u8::try_from(self.chunk.add_function(function))
+        let index = u16::try_from(self.chunk.add_function(function))
             .map_err(|_| MiruError::with_column(line, column, "too many functions in one chunk"))?;
         self.chunk.write_op(OpCode::Closure, line, column);
-        self.chunk.write(index, line, column);
+        self.write_u16(index, line, column);
         self.chunk.write(upvalues.len() as u8, line, column);
         for upvalue in upvalues {
             self.chunk.write(u8::from(upvalue.is_local), line, column);
@@ -734,9 +734,15 @@ impl<'g> Compiler<'g> {
             MiruError::with_column(line, column, "too many global variables in one program")
         })?;
         self.chunk.write_op(op, line, column);
-        self.chunk.write((slot >> 8) as u8, line, column);
-        self.chunk.write((slot & 0xff) as u8, line, column);
+        self.write_u16(slot, line, column);
         Ok(())
+    }
+
+    /// Write a two-byte big-endian operand, the encoding every wide operand in a
+    /// chunk uses.
+    fn write_u16(&mut self, value: u16, line: usize, column: usize) {
+        self.chunk.write((value >> 8) as u8, line, column);
+        self.chunk.write((value & 0xff) as u8, line, column);
     }
 }
 

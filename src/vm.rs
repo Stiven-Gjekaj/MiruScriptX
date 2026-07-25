@@ -440,8 +440,8 @@ impl Vm {
                         }
                     }
                     OpCode::Closure => {
-                        let index = chunk.code[ip] as usize;
-                        ip += 1;
+                        let index = read_u16(chunk, ip) as usize;
+                        ip += 2;
                         let function = Rc::clone(&chunk.functions[index]);
                         let upvalue_count = chunk.code[ip] as usize;
                         ip += 1;

@@ -408,14 +408,16 @@ impl Chunk {
                 offset + 2
             }
             Some(OpCode::Closure) => {
-                let function = self.code.get(offset + 1).copied().unwrap_or(0);
-                let upvalues = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let function = (high << 8) | low;
+                let upvalues = self.code.get(offset + 3).copied().unwrap_or(0) as usize;
                 let _ = writeln!(
                     out,
                     "{:<14}fn {function} ({upvalues} upvalue(s))",
                     OpCode::Closure.name()
                 );
-                offset + 3 + upvalues * 2
+                offset + 4 + upvalues * 2
             }
             Some(OpCode::ForNext) => {
                 let slot = self.code.get(offset + 1).copied().unwrap_or(0);

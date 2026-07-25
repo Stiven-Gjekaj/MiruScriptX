@@ -254,3 +254,15 @@ fn distinct_literals_still_run_out_of_constant_slots() {
         .message
         .contains("too many constants in one chunk"));
 }
+
+#[test]
+fn a_file_may_hold_more_than_two_hundred_and_fifty_six_functions() {
+    // Closure's function index was one byte, so a library of three hundred
+    // small functions failed to compile at the two hundred and fifty seventh.
+    let mut source = String::new();
+    for i in 0..300 {
+        source.push_str(&format!("fn f{i}(x) {{ return x + {i} }}\n"));
+    }
+    source.push_str("f299(1)");
+    assert_eq!(repr(&source), "300");
+}
