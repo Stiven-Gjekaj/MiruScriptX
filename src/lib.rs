@@ -209,14 +209,32 @@ fn strip_trailing_newline(mut line: String) -> String {
     line
 }
 
+/// One function on the call path an error came through.
+///
+/// `line` is where the *call* was written, not where that function will resume,
+/// so a trace reads as the sequence of call sites a reader can look up in their
+/// own source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceEntry {
+    /// The name of the function the call was made from, or `None` at the top
+    /// level of a script and for an anonymous function.
+    pub function: Option<String>,
+    pub line: usize,
+}
+
 /// An error produced anywhere in the pipeline (lexing, parsing, or running),
 /// tagged with the 1-based source line and column where it occurred (0 when
 /// unknown).
+///
+/// A runtime error raised inside a call also carries the path of calls it came
+/// through, innermost first. Lexing and parsing errors leave `trace` empty:
+/// there is no call stack yet when they happen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MiruError {
     pub line: usize,
     pub column: usize,
     pub message: String,
+    pub trace: Vec<TraceEntry>,
 }
 
 impl MiruError {
@@ -227,11 +245,15 @@ impl MiruError {
 
     /// Create an error at a specific line and column. A `column` of `0` means
     /// the column is unknown.
+    ///
+    /// The trace starts empty. The VM fills it in as the error leaves the frame
+    /// it was raised in, which is the only place the frames still exist.
     pub fn with_column(line: usize, column: usize, message: impl Into<String>) -> MiruError {
         MiruError {
             line,
             column,
             message: message.into(),
+            trace: Vec::new(),
         }
     }
 
