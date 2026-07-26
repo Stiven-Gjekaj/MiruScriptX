@@ -809,6 +809,44 @@ fn higher_order_builtins() {
 }
 
 #[test]
+fn higher_order_builtins_iterate_a_snapshot_of_their_input() {
+    // A callback that pushes to the array it is being applied to does not
+    // extend the iteration: each builtin copies its input before it starts, so
+    // it walks the array as it was when it was handed over.
+    //
+    // This is not an accident of how `map` happens to be written. `for x in xs`
+    // does the same, through OpCode::IterSnapshot, so the two agree. Pinning
+    // both together is the point: an optimization that drops the copy from the
+    // builtins would make them disagree with the loop, and that is a language
+    // change rather than a faster implementation.
+    //
+    // Nothing tested this before v0.7 went looking for the cost of that copy.
+    // The callbacks are named rather than written inline because a newline is
+    // insignificant inside parentheses, so a multi-line function body written
+    // directly as a call argument does not parse. That is unrelated to what
+    // these cases are about.
+    check_all(&[
+        (
+            "let xs = [1, 2, 3]\nfn tap(x) {\n  push(xs, x)\n  return x\n}\nlet ys = map(xs, tap)\n[len(xs), len(ys)]",
+            "ok [6, 3]",
+        ),
+        (
+            "let xs = [1, 2, 3]\nfn keep(x) {\n  push(xs, x)\n  return true\n}\nlet ys = filter(xs, keep)\n[len(xs), len(ys)]",
+            "ok [6, 3]",
+        ),
+        (
+            "let xs = [1, 2, 3]\nfn add(a, b) {\n  push(xs, b)\n  return a + b\n}\nlet total = reduce(xs, add, 0)\n[len(xs), total]",
+            "ok [6, 6]",
+        ),
+        // The loop, for comparison. Same shape, same answer.
+        (
+            "let xs = [1, 2, 3]\nlet n = 0\nfor x in xs {\n  push(xs, x)\n  n = n + 1\n}\n[len(xs), n]",
+            "ok [6, 3]",
+        ),
+    ]);
+}
+
+#[test]
 fn a_program_evaluates_to_its_last_expression() {
     check_all(&[("1\n2\n3", "ok 3"), ("1 + 1\n2 + 2", "ok 4")]);
 }
