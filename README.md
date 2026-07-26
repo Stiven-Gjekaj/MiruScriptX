@@ -258,6 +258,14 @@ what changed between versions.
 
 ---
 
+## Support
+
+If you find MiruScriptX useful, you can support its development here.
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/U1G623RXOE)
+
+---
+
 ## License
 
 Released under the MIT License. See [LICENSE](LICENSE) for the full text, and
