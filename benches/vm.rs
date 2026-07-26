@@ -125,6 +125,35 @@ let evens = filter(doubled, fn(x) { return x % 4 == 0 })
 reduce(evens, fn(a, b) { return a + b }, 0)
 ";
 
+/// The builtin bridge, measured against itself.
+///
+/// These two are a pair and mean nothing apart. `map` reaches a closure by
+/// pushing a call frame and entering a nested bytecode loop, which is a real
+/// Rust call per element. It reaches a native builtin by calling it in place,
+/// with no frame and no nested loop. Everything else about the two programs is
+/// the same, so the gap between them is very nearly the bridge alone.
+///
+/// Very nearly, not exactly: the two callbacks cannot do identical work, since
+/// one is two opcodes and the other is a Rust match. That difference is a few
+/// nanoseconds against a gap of roughly fifty, so it does not change the
+/// reading, but it is the reason this is a close comparison rather than a
+/// clean subtraction.
+///
+/// `higher_order` cannot show any of this. It runs `range`, `map`, `filter`,
+/// and `reduce` together, so a change to the bridge arrives diluted by three
+/// other things, which is how a real win reads as noise and gets discarded. It
+/// stays as it is, unchanged, because it is the series that has to remain
+/// comparable to the v0.5 table above.
+const BRIDGE_CLOSURE: &str = "
+let xs = range(20000)
+len(map(xs, fn(x) { return x }))
+";
+
+const BRIDGE_BUILTIN: &str = "
+let xs = range(20000)
+len(map(xs, abs))
+";
+
 /// Repeated global reads and writes, which resolve by name.
 ///
 /// The values are deliberately kept bounded (they cycle with period seven)
@@ -186,6 +215,8 @@ fn workloads(c: &mut Criterion) {
         ("loop_sum", LOOP_SUM),
         ("arrays", ARRAYS),
         ("higher_order", HIGHER_ORDER),
+        ("bridge_closure", BRIDGE_CLOSURE),
+        ("bridge_builtin", BRIDGE_BUILTIN),
         ("globals", GLOBALS),
         ("strings", STRINGS),
         ("maps", MAPS),
