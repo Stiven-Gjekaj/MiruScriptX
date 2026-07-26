@@ -80,6 +80,42 @@
 //! `constants` is absent because it did not exist before this work; it was
 //! added partway through, when constant folding turned out not to be exercised
 //! by any of the others.
+//!
+//! # A design rejected on evidence, in v0.7
+//!
+//! v0.7 went after the bridge that paragraph names, and the roadmap had two
+//! candidate designs for it. One was a trampoline, keeping the builtins native
+//! and having them yield "call this, then resume me" to the single dispatch
+//! loop. The other was to stop having a bridge at all, by writing `map`,
+//! `filter`, and `reduce` in MiruScriptX itself as ordinary functions using
+//! ordinary `Call` opcodes.
+//!
+//! The second one measures worse than what it would replace:
+//!
+//! ```text
+//!                                        net    per element
+//! native map, closure callback        104 ms         104 ns
+//! map written in MiruScriptX          169 ms         169 ns
+//! for x in xs { push(ys, f(x)) }      167 ms         167 ns
+//! ```
+//!
+//! A million elements, whole-process wall clock, best of nine, with a
+//! `range(1000000)` baseline of 25 ms subtracted. It trades one nested Rust
+//! loop per element for a bytecode call per element, which is roughly a wash,
+//! and then adds an interpreted loop and an interpreted `push` on top, which is
+//! not. The last two rows are the same program written two ways and agree to
+//! within one percent, which is the cross-check that the measurement is of the
+//! thing it claims.
+//!
+//! So it is recorded here rather than left as an open option in the roadmap. A
+//! design rejected with a number attached is worth more than one never tried,
+//! and this is where somebody would come looking before proposing it again.
+//!
+//! The same measurements say `map` is not slow relative to the language: at
+//! 104 ns per element it already beats the loop a user would write by hand at
+//! 167 ns. `higher_order` did not move in v0.5 because half of its cost sits
+//! outside the dispatch loop those five changes rewrote, which is a different
+//! statement from the builtin being a bad deal.
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;
