@@ -179,6 +179,51 @@ fn syntax_errors_render_with_a_caret() {
 }
 
 #[test]
+fn errors_underline_the_token_they_blame() {
+    // The cases above mostly point at operators, which are one character wide
+    // and render identically before and after underlining. These are the shape
+    // that gains from it: an error blaming a *name*, where the underline shows
+    // which name without the reader counting columns.
+    check_rendered(&[
+        (
+            "let total = 1\nprint(totl)",
+            "error (line 2, column 7): undefined variable 'totl'\n    print(totl)\n          ^^^^",
+        ),
+        (
+            "user_count = 1",
+            "error (line 1, column 1): cannot assign to undefined variable 'user_count'\n    user_count = 1\n    ^^^^^^^^^^",
+        ),
+        // The call site is blamed, so the underline covers the callee's name.
+        (
+            "fn make_adder(x) {\n  return x\n}\nmake_adder(1, 2)",
+            "error (line 4, column 1): function make_adder expects 1 argument(s) but received 2\n    make_adder(1, 2)\n    ^^^^^^^^^^",
+        ),
+        (
+            "let counter = 5\ncounter()",
+            "error (line 2, column 1): a int is not callable\n    counter()\n    ^^^^^^^",
+        ),
+        // Indexing blames the target, which here is a name rather than the
+        // literal the earlier case used.
+        (
+            "let total = 5\ntotal[0]",
+            "error (line 2, column 1): cannot index a int\n    total[0]\n    ^^^^^",
+        ),
+        // A keyword is a token like any other, so a syntax error naming one
+        // underlines the whole keyword.
+        (
+            "let while = 1",
+            "error (line 1, column 5): expected an identifier after 'let' but found 'while'\n    let while = 1\n        ^^^^^",
+        ),
+        // An underline and a call trace in one rendering, which is what a real
+        // failure inside a function looks like.
+        (
+            "fn describe(value) {\n  return missing + value\n}\ndescribe(1)",
+            "error (line 2, column 10): undefined variable 'missing'\n      return missing + value\n             ^^^^^^^\n  in describe, called from line 4",
+        ),
+    ]);
+}
+
+#[test]
 fn runaway_recursion_is_an_error_rather_than_a_hang() {
     check_all(&[
         // Direct and mutual recursion both hit the frame cap.
