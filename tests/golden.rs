@@ -157,11 +157,11 @@ fn syntax_errors_render_with_a_caret() {
         // Loop control outside a loop is caught while parsing, not at runtime.
         (
             "break",
-            "error (line 1, column 1): break outside of a loop\n    break\n    ^",
+            "error (line 1, column 1): break outside of a loop\n    break\n    ^^^^^",
         ),
         (
             "continue",
-            "error (line 1, column 1): continue outside of a loop\n    continue\n    ^",
+            "error (line 1, column 1): continue outside of a loop\n    continue\n    ^^^^^^^^",
         ),
         (
             "@",

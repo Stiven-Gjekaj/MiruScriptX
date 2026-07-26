@@ -274,12 +274,41 @@ impl MiruError {
         }
     }
 
-    /// Render the error with the offending source line, a caret under the
-    /// column, and the path of calls it came through.
+    /// How wide to underline at this error's position: the length of the token
+    /// that starts there, or 1 when there is no such token.
     ///
-    /// The source line and caret are omitted when the line or column is unknown
-    /// or out of range, and the trace when there is none, so an error with
-    /// neither renders as the one-line [`Display`](std::fmt::Display) form.
+    /// The spans come from the lexer, which records them for the playground's
+    /// syntax highlighting, and are index-parallel with the tokens it returns.
+    /// Every token carries its own line and column, so the one at this error's
+    /// position is found by matching on those rather than by converting the
+    /// position into an offset and comparing that.
+    ///
+    /// Re-lexing here costs nothing worth counting. It happens once, on the
+    /// error path, for a program that has already failed.
+    ///
+    /// Both fallbacks are real cases rather than defensive padding. A source
+    /// that does not lex is reporting a lexer error, whose position points at a
+    /// character rather than a token, so there is nothing to measure. And `Eof`
+    /// covers no text at all, so every "found end of input" error would
+    /// otherwise underline zero characters.
+    fn underline_width(&self, source: &str) -> usize {
+        let Ok((tokens, spans)) = crate::lexer::Lexer::tokenize_with_spans(source) else {
+            return 1;
+        };
+        tokens
+            .iter()
+            .zip(&spans.tokens)
+            .find(|(token, _)| token.line == self.line && token.column == self.column)
+            .map_or(1, |(_, (_, len))| (*len).max(1))
+    }
+
+    /// Render the error with the offending source line, an underline under the
+    /// token it blames, and the path of calls it came through.
+    ///
+    /// The source line and underline are omitted when the line or column is
+    /// unknown or out of range, and the trace when there is none, so an error
+    /// with neither renders as the one-line
+    /// [`Display`](std::fmt::Display) form.
     pub fn render(&self, source: &str) -> String {
         use std::fmt::Write;
 
@@ -290,13 +319,21 @@ impl MiruError {
             .filter(|_| self.column > 0)
             .and_then(|index| source.lines().nth(index))
         {
-            // Build the caret indent from the source itself so that tabs before
-            // the column keep the caret aligned.
+            // Build the indent from the source itself so that tabs before the
+            // column keep the underline aligned.
             let mut caret = String::new();
             for ch in text.chars().take(self.column - 1) {
                 caret.push(if ch == '\t' { '\t' } else { ' ' });
             }
-            caret.push('^');
+            // Underline the whole token rather than pointing at its first
+            // character. Capped by what is left of the line, so a token that
+            // somehow ran past the end could not carry the underline with it,
+            // and never below one, since an error at end of input sits one
+            // column past the last character and still has to mark something.
+            let remaining = text.chars().count().saturating_sub(self.column - 1);
+            for _ in 0..self.underline_width(source).min(remaining.max(1)) {
+                caret.push('^');
+            }
             let _ = write!(out, "\n    {text}\n    {caret}");
         }
         // Elide the middle of a long path rather than the data itself: `trace`
@@ -395,6 +432,72 @@ mod tests {
         assert_eq!(
             err.render("\tx"),
             "error (line 1, column 2): boom\n    \tx\n    \t^"
+        );
+    }
+
+    #[test]
+    fn render_underlines_a_whole_token() {
+        // The point of the change: a name is marked over its whole length
+        // rather than at its first character.
+        let err = MiruError::with_column(1, 1, "boom");
+        assert_eq!(
+            err.render("total = 1"),
+            "error (line 1, column 1): boom\n    total = 1\n    ^^^^^"
+        );
+    }
+
+    #[test]
+    fn render_underlines_one_character_when_the_token_is_one_character() {
+        // The common case stays exactly as it was, which is why so few existing
+        // expectations moved: most errors point at an operator.
+        let err = MiruError::with_column(1, 3, "boom");
+        assert_eq!(
+            err.render("1 + 2"),
+            "error (line 1, column 3): boom\n    1 + 2\n      ^"
+        );
+    }
+
+    #[test]
+    fn render_falls_back_to_one_caret_at_end_of_input() {
+        // Eof covers no text, so its recorded span is genuinely zero long. Every
+        // "found end of input" error would underline nothing without the floor.
+        let err = MiruError::with_column(1, 8, "boom");
+        assert_eq!(
+            err.render("let x ="),
+            "error (line 1, column 8): boom\n    let x =\n           ^"
+        );
+    }
+
+    #[test]
+    fn render_falls_back_to_one_caret_when_the_source_does_not_lex() {
+        // A lexer error points at a character rather than a token, so there is
+        // no token to measure and one caret is the right answer.
+        let err = MiruError::with_column(1, 1, "unexpected character '@'");
+        assert_eq!(
+            err.render("@"),
+            "error (line 1, column 1): unexpected character '@'\n    @\n    ^"
+        );
+    }
+
+    #[test]
+    fn render_falls_back_to_one_caret_inside_a_token() {
+        // Column 3 is the middle of `total`, not the start of anything, so
+        // nothing matches and the underline stays a single caret.
+        let err = MiruError::with_column(1, 3, "boom");
+        assert_eq!(
+            err.render("total"),
+            "error (line 1, column 3): boom\n    total\n      ^"
+        );
+    }
+
+    #[test]
+    fn render_measures_a_token_in_characters_rather_than_bytes() {
+        // Three multi-byte characters in quotes are five characters and eleven
+        // bytes. Measuring in bytes would run the underline off the line.
+        let err = MiruError::with_column(1, 1, "boom");
+        assert_eq!(
+            err.render("\"\u{4e2d}\u{4e2d}\u{4e2d}\" + 1"),
+            "error (line 1, column 1): boom\n    \"\u{4e2d}\u{4e2d}\u{4e2d}\" + 1\n    ^^^^^"
         );
     }
 

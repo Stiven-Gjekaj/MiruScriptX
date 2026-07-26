@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-246_passing-427819?style=for-the-badge" alt="246 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-252_passing-427819?style=for-the-badge" alt="252 tests passing"/>
 </p>
 
 <p align="center">
@@ -81,7 +81,7 @@ for name in people {
 - Higher-order builtins: `map`, `filter`, and `reduce`
 - File runner, a source formatter (`miru fmt`), and a REPL with history
 - A disassembler (`miru disasm`) that prints the bytecode for a program
-- Errors with a line, a column, and a caret under the problem
+- Errors with a line, a column, and an underline under the token at fault
 - Minimal dependencies: rustyline at runtime, criterion for benchmarks
 - A WebAssembly build and an in-browser playground, in a separate crate
 - Unit, golden, session, and end-to-end tests, benchmarks, and CI
