@@ -81,6 +81,19 @@ impl CallFrame {
     }
 }
 
+/// What entering a call did, so the dispatch loop knows how to carry on.
+///
+/// This says more than the boolean it replaces because a third outcome is
+/// coming: a higher-order builtin suspends rather than finishing, and the loop
+/// has to tell that apart from a builtin that ran to completion.
+enum CallOutcome {
+    /// A frame was pushed. The loop must pick up the new one.
+    Frame,
+    /// A native builtin ran to completion and left its result on the stack.
+    /// The loop carries on with the current frame.
+    Value,
+}
+
 /// A stack-based bytecode interpreter.
 pub struct Vm {
     stack: Vec<Value>,
@@ -506,10 +519,10 @@ impl Vm {
                         // Save where to resume, then enter the callee. A builtin runs
                         // in place and leaves the frame stack untouched.
                         self.frames.last_mut().expect("a call frame").ip = ip;
-                        if self.call_at_stack(argcount, chunk, op_ip)? {
-                            continue 'frames;
+                        match self.call_at_stack(argcount, chunk, op_ip)? {
+                            CallOutcome::Frame => continue 'frames,
+                            CallOutcome::Value => continue,
                         }
-                        continue;
                     }
                     OpCode::Pop => {
                         self.pop();
@@ -539,14 +552,14 @@ impl Vm {
 
     /// Enter a function call: the callee sits just beneath its `argcount`
     /// arguments on the stack. A user function pushes a new frame; a native
-    /// builtin runs immediately and leaves its result in place. Returns whether a
-    /// frame was pushed, so the run loop knows to switch frames.
+    /// builtin runs immediately and leaves its result in place. The outcome
+    /// tells the run loop how to carry on.
     fn call_at_stack(
         &mut self,
         argcount: usize,
         chunk: &Chunk,
         op_ip: usize,
-    ) -> Result<bool, MiruError> {
+    ) -> Result<CallOutcome, MiruError> {
         let callee_slot = self.stack.len() - argcount - 1;
         let callee = self.stack[callee_slot].clone();
         match callee {
@@ -575,7 +588,7 @@ impl Vm {
                     ip: 0,
                     slot_base,
                 });
-                Ok(true)
+                Ok(CallOutcome::Frame)
             }
             // Builtins run to completion here, so no frame is pushed: the callee
             // and its arguments are replaced by the single result value.
@@ -585,7 +598,7 @@ impl Vm {
                 let (line, column) = chunk.position(op_ip);
                 let result = self.call_native(callee, args, line, column)?;
                 self.stack.push(result);
-                Ok(false)
+                Ok(CallOutcome::Value)
             }
             other => Err(runtime_error(
                 chunk,
