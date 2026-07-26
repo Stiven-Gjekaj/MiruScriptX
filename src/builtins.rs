@@ -753,8 +753,14 @@ impl Args {
 /// and the engine has to touch its value stack to carry the step out, so a
 /// [`Step`] that borrowed from the task would make those two borrows overlap.
 pub enum Step {
-    /// Apply `callee` to `args`, then resume this task with the result.
-    Call { callee: Value, args: Args },
+    /// Apply the task's own callback to these arguments, then resume it with
+    /// the result.
+    ///
+    /// The callee is not carried here. It never varies across a task's steps,
+    /// so repeating it per element only made this enum bigger, and this value
+    /// is built and moved once per element. Naming it cost 32 of the 96 bytes
+    /// that move each time; the engine reads it from the task instead.
+    Call(Args),
     /// The builtin is finished; this is its value.
     Done(Value),
 }
@@ -795,33 +801,37 @@ pub enum HostTask {
 }
 
 impl HostTask {
+    /// The function this task applies. It is the same for every step, which is
+    /// why [`Step::Call`] does not repeat it.
+    pub fn callback(&self) -> &Value {
+        match self {
+            HostTask::Map { func, .. }
+            | HostTask::Filter { func, .. }
+            | HostTask::Reduce { func, .. } => func,
+        }
+    }
+
     /// Advance the builtin one step. `last` is the value the previously
     /// requested call returned, or `None` on the first step.
     pub fn resume(&mut self, last: Option<Value>) -> Step {
         match self {
             HostTask::Map {
-                func,
-                items,
-                next,
-                out,
+                items, next, out, ..
             } => {
                 if let Some(value) = last {
                     out.push(value);
                 }
                 match take_next(items, next) {
                     None => Step::Done(array(std::mem::take(out))),
-                    Some(item) => Step::Call {
-                        callee: func.clone(),
-                        args: Args::One(item),
-                    },
+                    Some(item) => Step::Call(Args::One(item)),
                 }
             }
             HostTask::Filter {
-                func,
                 items,
                 next,
                 out,
                 pending,
+                ..
             } => {
                 // `pending` holds the element the answer is about. Keeping it
                 // means a kept element is moved into the result rather than
@@ -836,18 +846,12 @@ impl HostTask {
                     None => Step::Done(array(std::mem::take(out))),
                     Some(item) => {
                         *pending = Some(item.clone());
-                        Step::Call {
-                            callee: func.clone(),
-                            args: Args::One(item),
-                        }
+                        Step::Call(Args::One(item))
                     }
                 }
             }
             HostTask::Reduce {
-                func,
-                items,
-                next,
-                acc,
+                items, next, acc, ..
             } => {
                 if let Some(value) = last {
                     *acc = value;
@@ -858,10 +862,7 @@ impl HostTask {
                         // Move the accumulator out rather than cloning it. The
                         // call's result puts one back on the next resume.
                         let carried = std::mem::replace(acc, Value::Nil);
-                        Step::Call {
-                            callee: func.clone(),
-                            args: Args::Two(carried, item),
-                        }
+                        Step::Call(Args::Two(carried, item))
                     }
                 }
             }
@@ -980,13 +981,8 @@ mod task_tests {
     /// why it was not the single-argument call the caller expected.
     fn asked_for(step: &Step) -> String {
         match step {
-            Step::Call {
-                args: Args::One(v), ..
-            } => v.repr(),
-            Step::Call {
-                args: Args::Two(a, b),
-                ..
-            } => format!("two: {} {}", a.repr(), b.repr()),
+            Step::Call(Args::One(v)) => v.repr(),
+            Step::Call(Args::Two(a, b)) => format!("two: {} {}", a.repr(), b.repr()),
             Step::Done(v) => format!("done: {}", v.repr()),
         }
     }

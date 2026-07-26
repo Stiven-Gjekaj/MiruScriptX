@@ -728,13 +728,26 @@ impl Vm {
                 .task
                 .resume(last.take());
             match step {
-                Step::Call { callee, args } => match self.begin_task_call(callee, args)? {
-                    TaskCall::Pushed => return Ok(()),
-                    TaskCall::Value(value) => last = Some(value),
-                    // A nested task starts with nothing to be told, so `last`
-                    // stays empty and the next turn of the loop resumes it.
-                    TaskCall::Nested => {}
-                },
+                Step::Call(args) => {
+                    // The callee lives on the task rather than in the step, so
+                    // it is read here. One clone per element either way; the
+                    // step just got 32 bytes smaller for moving it this way.
+                    let callee = self
+                        .tasks
+                        .last()
+                        .expect("a pending task")
+                        .task
+                        .callback()
+                        .clone();
+                    match self.begin_task_call(callee, args)? {
+                        TaskCall::Pushed => return Ok(()),
+                        TaskCall::Value(value) => last = Some(value),
+                        // A nested task starts with nothing to be told, so
+                        // `last` stays empty and the next turn of the loop
+                        // resumes it.
+                        TaskCall::Nested => {}
+                    }
+                }
                 Step::Done(value) => {
                     let finished = self.tasks.pop().expect("a pending task");
                     match finished.sink {
