@@ -1,0 +1,5 @@
+# GitHub reads this file to put a Sponsor button at the top of the repository
+# page. The key here is the Ko-fi username, while the button in README.md points
+# at the same page through its panel ID. Two different identifiers for one
+# destination, so they are not meant to match.
+ko_fi: stivengjekaj
