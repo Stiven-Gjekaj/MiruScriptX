@@ -8,6 +8,59 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 0.7 (2026-07-26)
+
+### Added
+
+- Errors underline the whole token they blame instead of pointing a caret at its
+  first character, so a name is marked over its length:
+
+  ```
+  error (line 2, column 7): undefined variable 'subtotal'
+      print(subtotal)
+            ^^^^^^^^
+  ```
+
+  It needed no new data. `render` re-lexes the source it is already handed and
+  matches a token by line and column, using the spans added in 0.6 for the
+  playground's syntax highlighting, so nothing about a token's extent is carried
+  through the syntax tree, the compiler, or the bytecode's position table. A
+  source that does not lex, and an error at end of input, both fall back to a
+  single caret.
+
+### Changed
+
+- Recursion has one limit instead of two. A function called by `map`, `filter`,
+  or `reduce` used to run on a nested bytecode loop, a real Rust call per level,
+  so recursion through a builtin failed at 64 levels while direct recursion had
+  10,000. The higher-order builtins now suspend and let the single dispatch loop
+  make their calls, so a callback costs an ordinary heap frame. Five hundred
+  levels deep through `map` works; two hundred failed before.
+
+  This is what the change bought. It did not make anything faster, which is what
+  it was built for: `map` with a closure went from 128.4 to 117.1 nanoseconds
+  per element, and with a builtin callback it got worse, 84.6 to 107.4. The
+  nested call the work aimed at removing was never the dominant cost. Kept for
+  the limit rather than the speed; `benches/vm.rs` has the numbers.
+
+- `HostFn`, the signature of a higher-order builtin, no longer receives the
+  virtual machine and returns a task rather than a value. `Vm::call_value` is
+  gone. Both were public, and neither had a caller outside the crate.
+
+### Fixed
+
+- A callback that is an ordinary builtin, as in `map(xs, abs)`, no longer takes
+  the general suspend-and-resume path, which had made it about 43% slower. It is
+  driven straight through instead, leaving it about 27% slower than before this
+  release rather than 43%.
+
+### Known limitations
+
+- A function body of more than one statement does not parse inside `(` or `[`,
+  so a multi-line callback written directly as an argument to `map` is rejected.
+  Binding it to a name first works. Recorded in `docs/milestones.md` with the
+  mechanism and where the fix goes.
+
 ## 0.6 (2026-07-25)
 
 ### Added

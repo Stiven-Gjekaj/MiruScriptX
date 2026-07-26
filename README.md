@@ -14,7 +14,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 
 <p align="center">
   <a href="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml"><img src="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <img src="https://img.shields.io/badge/version-0.6-blue?style=flat-square" alt="Version 0.6"/>
+  <img src="https://img.shields.io/badge/version-0.7-blue?style=flat-square" alt="Version 0.7"/>
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"/>
 </p>
 
