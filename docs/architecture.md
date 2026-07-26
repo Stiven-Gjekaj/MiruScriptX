@@ -48,8 +48,18 @@ way to see what any of this produces.
 Every stage reports problems as a single `MiruError` (defined in `src/lib.rs`),
 so a syntax error and a runtime error are surfaced the same way, both carrying
 the source line and column where they happened. The error's `render` method
-draws the offending source line with a caret under that column, and, for a
-runtime error raised inside a call, the path of calls it came through.
+draws the offending source line with an underline beneath the token at that
+column, and, for a runtime error raised inside a call, the path of calls it came
+through.
+
+The underline's width is recovered rather than stored. `render` re-lexes the
+source it is handed and matches a token by line and column, using the spans the
+lexer already records for the playground's highlighting, so nothing about a
+token's extent has to be carried through the AST, the compiler, or the chunk's
+position table. It costs one extra lex on a program that has already failed. A
+source that does not lex, and an error at end of input, both fall back to a
+single caret, the first because a lexer error points at a character rather than
+a token and the second because `Eof` covers no text at all.
 
 ## Module map
 
