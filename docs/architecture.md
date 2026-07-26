@@ -279,12 +279,18 @@ stack the way a tree walker's would; left alone it grows until memory runs out.
 `MAX_CALL_DEPTH` (10,000) turns that into an ordinary runtime error with a line,
 a column, and a caret.
 
-A user function called *by a builtin*, as `map` calls the function it is given,
-runs on a nested bytecode loop, which is a real Rust call consuming real machine
-stack that the frame count does not account for. That needs its own, much lower
-cap: `MAX_HOST_CALL_DEPTH` is 64, chosen against the smallest stack this may run
-on (a Rust test thread gets two megabytes, where nesting fails somewhere past
-180) rather than the roomiest.
+That is the only cap. Until v0.7 there was a second one, `MAX_HOST_CALL_DEPTH`,
+set to 64: a user function called *by a builtin*, as `map` calls the function it
+is given, used to run on a nested bytecode loop, which is a real Rust call
+consuming real machine stack that a frame count does not account for. Recursion
+that went back through a builtin every time would have exhausted that stack long
+before ten thousand frames accumulated, so it needed its own, far lower limit.
+
+A higher-order builtin now asks the one dispatch loop to make its calls instead
+of making them itself, so a callback costs a heap frame like any other call and
+the frame count accounts for all of it. Recursion through `map` reaches the same
+limit direct recursion does. Two hundred levels deep failed outright before;
+five hundred is unremarkable now.
 
 ## How to extend it
 
