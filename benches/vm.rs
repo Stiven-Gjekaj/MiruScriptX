@@ -39,6 +39,33 @@
 //! twenty percent results in v0.5 are safely clear of it, an eight percent one
 //! is worth a second build before it is trusted.
 //!
+//! # The floor is not four percent everywhere
+//!
+//! That four percent was established on the machine this project is developed
+//! on. It does not hold on a shared or containerized host, and v0.7 found out
+//! the hard way. Six runs of one unchanged binary, no rebuild between them,
+//! gave 1.69, 2.37, 2.44, 2.34, 2.45, and 2.47 ms on the same case: five of
+//! them within six percent of each other and one thirty percent below the rest.
+//!
+//! Criterion's own interval is not the warning here. Each of those runs
+//! reported a confidence interval under one percent wide, so every one of them
+//! looked precise while disagreeing with its neighbours by thirty. A tight
+//! interval measures how consistent a run was with itself, not how repeatable
+//! it is.
+//!
+//! Two rules follow, and v0.7 broke both before it learned them.
+//!
+//! **Run a comparison more than once.** A single before-and-after pair can
+//! report thirty percent that is not there. One did, was believed for an hour,
+//! and had to be retracted in the commit that claimed it.
+//!
+//! **Quote a best of several rather than one run.** The fastest run of a set is
+//! the one least disturbed by whatever else the host was doing, and on this
+//! harness the slow runs cluster while the fast ones scatter, so the minimum is
+//! the more stable end. Four runs was enough here to bring two builds into
+//! clusters four to six percent wide, tight enough to tell a twenty-seven
+//! percent difference from nothing.
+//!
 //! The most useful check is not statistical. Ask what mechanism the change
 //! gives for the number to move, and prefer evidence outside the timer when
 //! there is any: a change that leaves the emitted opcode stream identical
