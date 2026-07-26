@@ -219,6 +219,25 @@ fn runtime_error_reports_line_and_fails() {
 }
 
 #[test]
+fn a_runtime_error_underlines_the_token_it_blames() {
+    let path = std::env::temp_dir().join("miru_integration_underline.miru");
+    std::fs::write(&path, "let total = 1\nprint(missing)\n").expect("write temp file");
+    let output = miru().arg("run").arg(&path).output().expect("runs");
+    let _ = std::fs::remove_file(&path);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf-8");
+    // Seven carets for `missing`, indented to sit underneath it. Asserting the
+    // source line and the underline together is what would catch an underline
+    // of the right width in the wrong place, which checking only the run of
+    // carets would let through.
+    assert!(
+        stderr.contains("\n    print(missing)\n          ^^^^^^^\n"),
+        "stderr was:\n{stderr}"
+    );
+}
+
+#[test]
 fn a_runtime_error_prints_the_call_path() {
     let path = std::env::temp_dir().join("miru_integration_trace.miru");
     std::fs::write(
