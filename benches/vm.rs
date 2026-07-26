@@ -209,6 +209,40 @@ reduce(evens, fn(a, b) { return a + b }, 0)
 /// because the builtin arm still pays `call_native` and `abs` where the closure
 /// arm pays a frame push and a nested loop. The bridge costs at least this
 /// much, not at most.
+///
+/// # Where the builtin arm's 74 ns goes
+///
+/// Measured by *doubling* rather than removing: run a component ten extra times
+/// per element, take the difference, divide by ten. Doubling keeps behavior
+/// identical, so the whole suite still passes while the ablation is in place,
+/// and the tenfold multiplier lifts the effect clear of the layout floor that
+/// would otherwise swallow it. The edits were reverted; only the findings kept.
+///
+/// ```text
+/// per-element Vec (allocate and free)   10.8 ns per element   +128% at 10x
+/// input snapshot (amortized)             6.3 ns per element    +75% at 10x
+/// callback clone                        not resolvable
+/// the rest, roughly 57 ns                not separated
+/// ```
+///
+/// **The callback ablation failed, and saying so is the point.** Ten extra
+/// clones per element measured 21% *faster* than none. Adding work cannot make
+/// a program faster, so that is codegen and layout, not a result. The mechanism
+/// says why it could never have been resolved this way: for a `Value::Builtin`
+/// a clone copies a string reference and a function pointer with no allocation
+/// and no refcount, and for a `Value::Closure` it is one non-atomic increment.
+/// Either is a nanosecond or so, which sits under the floor at this multiplier.
+/// It is left unmeasured rather than reported at a number the method cannot
+/// support.
+///
+/// That the same 10x multiplier resolved the first two at +128% and +75%, and
+/// failed on the third, is the useful shape: it worked where the effect was
+/// real and large, and refused where it was not.
+///
+/// The unseparated remainder is `call_native` saving and restoring the position,
+/// swapping the input reader out and back, the dynamic call into `abs`, the push
+/// onto the result array, and the loop itself. None of it is what this milestone
+/// changes, so it was not worth further ablation.
 const BRIDGE_SETUP: &str = "
 let xs = range(20000)
 len(xs)
