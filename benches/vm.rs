@@ -180,6 +180,40 @@ reduce(evens, fn(a, b) { return a + b }, 0)
 /// other things, which is how a real win reads as noise and gets discarded. It
 /// stays as it is, unchanged, because it is the series that has to remain
 /// comparable to the v0.5 table above.
+/// The two bridge cases without the `map`, so the pair can be read in absolute
+/// terms rather than only as a gap.
+///
+/// A gap says how much one arm costs over the other. It does not say what
+/// either costs, and a milestone that wants to claim it halved something needs
+/// that. Subtracting this leaves what `map` itself does: the snapshot of its
+/// input, an `Rc` bump of the callback per element, a `Vec` per element, and
+/// the result array.
+///
+/// The reading, over twenty thousand elements and net of this case:
+///
+/// ```text
+/// map with a closure   123.1 ns per element
+/// map with a builtin    74.2 ns per element
+/// the difference        48.9 ns per element
+/// ```
+///
+/// Adding this third case to the file, and changing nothing else, moved the
+/// other two by -5.3% and -7.5% while the gap between them moved -1.3%. That is
+/// the layout floor described at the top of this file, caught in the act, and
+/// it says which number to trust: **the gap is the robust measurement and the
+/// absolute figures are not**. Both arms shift together on a rebuild, so a
+/// difference taken within one run survives what either column alone does not.
+/// Quote an absolute only alongside the run it came from.
+///
+/// The gap is also a *lower* bound on the bridge rather than an exact figure,
+/// because the builtin arm still pays `call_native` and `abs` where the closure
+/// arm pays a frame push and a nested loop. The bridge costs at least this
+/// much, not at most.
+const BRIDGE_SETUP: &str = "
+let xs = range(20000)
+len(xs)
+";
+
 const BRIDGE_CLOSURE: &str = "
 let xs = range(20000)
 len(map(xs, fn(x) { return x }))
@@ -251,6 +285,7 @@ fn workloads(c: &mut Criterion) {
         ("loop_sum", LOOP_SUM),
         ("arrays", ARRAYS),
         ("higher_order", HIGHER_ORDER),
+        ("bridge_setup", BRIDGE_SETUP),
         ("bridge_closure", BRIDGE_CLOSURE),
         ("bridge_builtin", BRIDGE_BUILTIN),
         ("globals", GLOBALS),
