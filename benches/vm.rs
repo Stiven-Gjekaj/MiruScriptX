@@ -108,6 +108,38 @@
 //! added partway through, when constant folding turned out not to be exercised
 //! by any of the others.
 //!
+//! # What the v0.7 work came to
+//!
+//! Best of four runs each, the two builds measured back to back, net of the
+//! `bridge_setup` case, in nanoseconds per element:
+//!
+//! ```text
+//!                        before      after
+//! map with a closure     128.4      117.1      -8.8%
+//! map with a builtin      84.6      107.4     +26.9%
+//! ```
+//!
+//! That is the honest result and it is not the one the milestone set out to
+//! get. Replacing the builtin bridge with a trampoline made a closure callback
+//! slightly faster and a native one meaningfully slower. The nested Rust call
+//! per element, which the whole plan was aimed at removing, was never the
+//! dominant cost: a state machine yields a step per element where the loop it
+//! replaced was a plain Rust `for`, and that costs more than the call did.
+//!
+//! It was kept anyway, because it also retires `MAX_HOST_CALL_DEPTH`. Recursion
+//! through `map` used to fail at 64 levels while direct recursion got 10,000;
+//! now there is one limit. That is a correctness fix, not a speed one, and it is
+//! the whole return on this milestone.
+//!
+//! Two smaller results worth keeping:
+//!
+//! - The 48.9 ns gap this milestone was aimed at, measured in v0.7.13, was never
+//!   a removable cost. It was the difference between two callback mechanisms,
+//!   and replacing one of them with another of similar cost is what happened.
+//! - A change can be a simplification and not an optimization. Dropping the
+//!   callee from `Step` removed a field and measured as nothing; it was kept for
+//!   the former reason after being proposed for the latter.
+//!
 //! # A design rejected on evidence, in v0.7
 //!
 //! v0.7 went after the bridge that paragraph names, and the roadmap had two
