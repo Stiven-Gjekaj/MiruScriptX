@@ -1,8 +1,10 @@
 # Error messages
 
 When something goes wrong, MiruScriptX stops and prints a single, precise error.
-Every error names the line and column where it happened and draws a caret (`^`)
-under the exact spot in your source, so you can find the problem quickly.
+Every error names the line and column where it happened and underlines (`^`) the
+exact piece of your source it blames, so you can find the problem quickly. The
+underline covers the whole of whatever it is pointing at, so a one-character
+operator gets one mark and a name gets one per character.
 
 ## Syntax errors
 
@@ -40,13 +42,27 @@ error (line 2, column 10): index 7 is out of range for an array of length 3
              ^
 ```
 
-Here the caret sits under the index `7`. A division by zero points at the
-operator, and an undefined variable points at the name:
+Here the underline sits under the index `7`. A division by zero marks the
+operator, which is one character wide:
 
 ```
 error (line 1, column 3): division by zero
     1 / 0
       ^
+```
+
+An undefined variable marks the name, and there the width does some work: you
+can see which name is the problem without counting columns.
+
+```
+let total = 0
+print(subtotal)
+```
+
+```
+error (line 2, column 7): undefined variable 'subtotal'
+    print(subtotal)
+          ^^^^^^^^
 ```
 
 ## Where an error came from
