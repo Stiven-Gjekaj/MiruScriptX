@@ -180,32 +180,47 @@ language, not a later version of this one.
 
 ## v0.7: the builtin bridge, and errors that underline
 
-- Optimize the path a higher-order builtin takes to call back into the language.
-  v0.5 measured every workload and `higher_order` was the only one that did not
-  move, because its cost is not in the dispatch loop that v0.5 rewrote. `map`
-  allocates a `Vec` per element and goes through `Vm::call_value` into
-  `call_from_host` into a nested `run_frames`, which is a real Rust call per
-  element.
+Shipped. Errors underline the token they blame, there is one call depth limit
+instead of two, and the builtin bridge is gone. The speed the milestone was
+named for did not arrive, which is the interesting part.
 
-  That nesting is also why `MAX_HOST_CALL_DEPTH` has to be as low as 64 while
-  ordinary calls get 10,000: each level costs machine stack rather than a heap
-  frame. Removing it fixes the speed and the asymmetry together, and it is an
-  engine redesign, which is why it has a milestone rather than a commit.
+- **Errors underline rather than point.** `undefined variable 'subtotal'` marks
+  all eight characters instead of the first. It needed no new data: `render`
+  re-lexes the source it is already handed and matches a token by line and
+  column, using the spans v0.6 added for the playground's highlighting.
 
-  Two designs are worth prototyping before committing to either. A *trampoline*
-  has the builtin return "call this, then resume me" to the one dispatch loop,
-  which keeps `map` native but turns it into a state machine. Writing the
-  higher-order builtins *in MiruScriptX itself* removes the bridge entirely,
-  since they become ordinary functions using ordinary `Call` opcodes, at the
-  cost of needing somewhere to put a prelude, which v0.8 provides. The choice
-  gets made with a benchmark in hand, not on paper.
+- **One call depth limit.** `MAX_HOST_CALL_DEPTH` is gone. A callback used to
+  run on a nested bytecode loop, a real Rust call per level, so recursion
+  through `map` died at 64 while direct recursion got 10,000. A higher-order
+  builtin now suspends and lets the one dispatch loop make its calls, so a
+  callback costs a heap frame like anything else. Five hundred levels deep
+  through `map` is unremarkable; two hundred failed outright before.
 
-- Underline a whole token in an error rather than pointing a caret at its first
-  character. The spans this needs already exist, added in v0.6 for highlighting.
+- **The speed did not come, and the reason is worth keeping.** Best of four runs
+  either side: `map` with a closure went 128.4 to 117.1 ns per element, and with
+  a *builtin* callback it got worse, 84.6 to 107.4. The nested Rust call the
+  whole plan aimed at removing was never the dominant cost. A state machine
+  yields a step per element where the loop it replaced was a plain Rust `for`,
+  and that costs more than the call did. The trampoline is kept for the limit
+  fix rather than for speed, and `benches/vm.rs` carries the numbers.
 
-- Raise `MAX_HOST_CALL_DEPTH` to match `MAX_CALL_DEPTH` once nothing nests a
-  real Rust call per level. That the two can finally be one number is the
-  clearest evidence the redesign worked.
+- **Writing the builtins in MiruScriptX was rejected on evidence**, at 1.63x
+  slower than the native `map` that already existed. The roadmap said the choice
+  would be made with a benchmark in hand rather than on paper, and it was.
+
+- **The benchmark harness turned out to be less trustworthy than documented.**
+  Six runs of one unchanged binary spread thirty percent, each reporting a
+  confidence interval under one percent wide. The four percent floor in
+  `benches/vm.rs` was measured on the development machine and does not survive a
+  shared host. One thirty percent result was believed, committed, and retracted
+  an hour later. Two rules came out of it: run a comparison more than once, and
+  quote a best of several.
+
+What v0.8 inherits: the last per-element allocation in the engine. A builtin
+callback still turns its arguments into a `Vec`, because that is what
+`BuiltinFn` takes. Removing it means changing that signature across all
+thirty-seven builtins, several of which move values out of the vector they are
+handed.
 
 ## v0.8: modules
 
@@ -231,8 +246,9 @@ about forty builtins. This is the largest milestone of the four.
   Decide honestly rather than letting the browser silently behave differently
   from the terminal.
 
-- A prelude becomes possible, which is where the higher-order builtins may end
-  up if v0.7 goes that way.
+- A prelude becomes possible. It is no longer where the higher-order builtins
+  might end up: v0.7 measured that design at 1.63x slower than the native one
+  and rejected it, so they stay in Rust.
 
 ## v0.9: failure as a value
 
