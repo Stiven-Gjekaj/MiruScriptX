@@ -276,6 +276,24 @@ mod tests {
     }
 
     #[test]
+    fn an_underline_survives_the_boundary() {
+        // The page shows whatever the terminal shows because the error crosses
+        // as rendered text, so a widened underline needs no work on this side.
+        // That is worth an assertion rather than an assumption: it is exactly
+        // the kind of thing a future envelope of code and message would drop
+        // without any test noticing.
+        let outcome = run("let total = 1\nprint(missing)");
+        assert!(!outcome.ok);
+        assert!(
+            outcome
+                .text
+                .contains("\n    print(missing)\n          ^^^^^^^"),
+            "{}",
+            outcome.text
+        );
+    }
+
+    #[test]
     fn formatting_and_disassembling_forward_to_the_language() {
         let formatted = format("let  x=[1,2]");
         assert!(formatted.ok);
