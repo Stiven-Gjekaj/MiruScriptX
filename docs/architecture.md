@@ -271,7 +271,44 @@ without spawning a process. A parallel `Input` trait feeds `input()` the same
 way: real standard input in the binary, a scripted buffer in
 `run_capture_with_input`.
 
-### Recursion has two different limits
+### A higher-order builtin suspends rather than calling back
+
+`map`, `filter`, and `reduce` apply a function the program supplies. The obvious
+way to write one is a Rust loop that calls the engine per element, and that is
+how they worked through v0.6: `Vm::call_value` entered a *nested* copy of the
+bytecode loop, one real Rust call per element.
+
+They are state machines instead. A `HostTask` says what it wants applied by
+returning `Step::Call(..)`, the one dispatch loop makes that call, and the
+answer comes back through `resume`. `Vm::drive_tasks` is the whole trampoline.
+Three details are load-bearing:
+
+- **`Step` carries owned values and `resume` never sees the engine.** A task
+  lives on the engine's task stack and the engine must touch its value stack to
+  carry a step out, so a `Step` that borrowed from the task would make those two
+  borrows overlap.
+- **`Return` gained no comparison.** It already tested the frame depth against
+  the point where the loop should stop; that number is now the depth a suspended
+  task resumes at, and zero when none is pending. One compare, as before.
+- **A task's result does not always belong on the stack.** `reduce` passes two
+  arguments, which is exactly `map`'s arity, so `reduce([abs, abs], map, ..)`
+  suspends one builtin inside another and the inner value belongs to the outer
+  task. That is what `TaskSink` distinguishes.
+
+**What it bought, and what it cost.** The reason to do it was speed, and that is
+not what it delivered. Measured best-of-four either side, `map` with a closure
+went from 128.4 to 117.1 ns per element, and `map` with a *builtin* callback got
+worse, from 84.6 to 107.4. A state machine yields a step per element where the
+loop it replaced was a plain Rust `for`, and that costs more than the nested
+call it removed. Closing the remaining gap would mean either duplicating all
+three builtins' semantics or changing `BuiltinFn` across all thirty-seven.
+
+It is kept for the limit below, which is a correctness fix rather than a speed
+one, and the numbers are recorded here rather than quietly omitted. The whole
+measurement, including a thirty percent result that turned out to be noise and
+had to be retracted, is in `benches/vm.rs`.
+
+### Recursion has one limit, and used to have two
 
 Runaway recursion cannot be allowed to take the process down, and there are two
 distinct ways it could.
@@ -302,6 +339,31 @@ Write a function in `src/builtins.rs` with the signature
 `fn(&mut dyn Output, &mut dyn Input, Vec<Value>) -> Result<Value, String>`, then
 register it in `register`. Return an `Err(String)` for bad arguments; the VM
 attaches the current line and column automatically.
+
+### Add a higher-order builtin
+
+One that applies a function the caller supplies, as `map` does, is written
+differently, and the shape is not guessable from the one above. It cannot call
+the function itself: it says what it wants applied and is resumed with the
+answer.
+
+Add a variant to `HostTask` holding whatever the walk needs, give `resume` an
+arm for it returning `Step::Call(..)` while there is work and `Step::Done(..)`
+at the end, write a constructor of type `HostFn` that checks arguments and
+builds the task, and register it with `define_host`. The engine does the rest.
+
+Three things are easy to get wrong:
+
+- **`resume` is told the previous answer, not asked for the next call.** Its
+  `last` argument is what the call it asked for last time returned, and `None`
+  on the first step. Record that answer first, then decide what to ask for next.
+- **Move elements out of the task rather than cloning them.** `take_next` swaps
+  in `nil` and hands the element over. `reduce` shows why: its accumulator lives
+  in the task, so the obvious spelling clones it on every single step, where the
+  loop this replaced moved it into the argument list for free.
+- **Test the task without a VM.** `resume` is a pure step function, so a
+  sequencing fault can be caught directly rather than as a wrong program output
+  three layers away. `builtins::task_tests` does this and nothing else.
 
 ### Add an operator
 
