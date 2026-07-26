@@ -645,7 +645,17 @@ impl Vm {
                 let args = self.stack.split_off(callee_slot + 1);
                 self.stack.pop();
                 let (line, column) = chunk.position(op_ip);
-                let task = (builtin.func)(args).map_err(|m| runtime_error(chunk, op_ip, m))?;
+                let mut task = (builtin.func)(args).map_err(|m| runtime_error(chunk, op_ip, m))?;
+                // A callback that is an ordinary builtin never needs a frame,
+                // so the task never needs to leave this function. Driving it
+                // here skips the task stack, the per-element step dispatch, and
+                // the enum that carries a result back out. It is the same state
+                // machine, just turned by a tighter handle.
+                if matches!(task.callback(), Value::Builtin(_)) {
+                    let result = self.run_native_task(&mut task, line, column)?;
+                    self.stack.push(result);
+                    return Ok(CallOutcome::Value);
+                }
                 self.tasks.push(PendingTask {
                     task,
                     resume_at: self.frames.len(),
@@ -709,6 +719,31 @@ impl Vm {
     /// to report against.
     pub fn call_error(&self, message: String) -> MiruError {
         MiruError::with_column(self.line, self.column, message)
+    }
+
+    /// Run a task whose callback is an ordinary builtin all the way through.
+    ///
+    /// Such a callback never needs a frame, so nothing about this task has to
+    /// survive across turns of the dispatch loop and it need not go on the task
+    /// stack at all. The callee is cloned once here rather than once per
+    /// element, which is the other thing the general path cannot do, since
+    /// there the task and the engine are borrowed apart.
+    fn run_native_task(
+        &mut self,
+        task: &mut HostTask,
+        line: usize,
+        column: usize,
+    ) -> Result<Value, MiruError> {
+        let callee = task.callback().clone();
+        let mut last = None;
+        loop {
+            match task.resume(last.take()) {
+                Step::Done(value) => return Ok(value),
+                Step::Call(args) => {
+                    last = Some(self.call_native(callee.clone(), args.into_vec(), line, column)?);
+                }
+            }
+        }
     }
 
     /// Carry a value to the innermost task and keep going until either a frame
