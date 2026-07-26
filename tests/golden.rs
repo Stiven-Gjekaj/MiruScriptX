@@ -847,6 +847,40 @@ fn higher_order_builtins_iterate_a_snapshot_of_their_input() {
 }
 
 #[test]
+fn a_higher_order_builtin_can_be_another_one_s_callback() {
+    // `reduce` applies its function to two arguments, which is exactly what
+    // `map` and `filter` take, so one higher-order builtin can be handed to
+    // another and the inner one's result becomes the accumulator. Strange code,
+    // but it works, and nothing pinned it.
+    //
+    // `map` and `filter` pass one argument, which never matches the two or
+    // three the host builtins need, so `reduce` is the only one that can host
+    // another. Anything else is an arity error, and the last case pins that too.
+    //
+    // This matters for more than curiosity: it is the one shape where a
+    // higher-order builtin's result belongs to another higher-order builtin
+    // rather than to the expression that called it.
+    check_all(&[
+        // Both elements are `abs`, so this is map([1, -2], abs) twice over.
+        ("reduce([abs, abs], map, [1, 0 - 2])", "ok [1, 2]"),
+        // The same shape with `filter`, whose result is shorter than its input.
+        (
+            "fn keep(x) {\n  return x > 1\n}\nreduce([keep], filter, [1, 2, 3])",
+            "ok [2, 3]",
+        ),
+        // One level, so the inner result is the final answer rather than an
+        // accumulator that gets used again.
+        ("reduce([abs], map, [0 - 5])", "ok [5]"),
+        // `map` hands its callback a single argument, so a host builtin in that
+        // position never has the arity it needs.
+        (
+            "map([[1], [2]], map)",
+            "err map expects 2 argument(s) but got 1 @ 1:1",
+        ),
+    ]);
+}
+
+#[test]
 fn a_program_evaluates_to_its_last_expression() {
     check_all(&[("1\n2\n3", "ok 3"), ("1 + 1\n2 + 2", "ok 4")]);
 }
