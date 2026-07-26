@@ -698,6 +698,154 @@ fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Resul
     }
 }
 
+/// The arguments a suspended higher-order builtin wants applied, held inline
+/// rather than in a `Vec`.
+///
+/// This is built once per element, so a `Vec` here would put back the heap
+/// allocation the trampoline exists to remove: one was measured at 10.8 ns
+/// against a per-element budget of 74 ns. The three higher-order builtins pass
+/// at most two arguments; a builtin wanting three would add a variant.
+pub enum Args {
+    One(Value),
+    Two(Value, Value),
+}
+
+/// What a suspended higher-order builtin wants next.
+///
+/// The values are owned rather than borrowed so that advancing a task does not
+/// hold a borrow of the engine. The task lives on the engine's own task stack,
+/// and the engine has to touch its value stack to carry the step out, so a
+/// [`Step`] that borrowed from the task would make those two borrows overlap.
+pub enum Step {
+    /// Apply `callee` to `args`, then resume this task with the result.
+    Call { callee: Value, args: Args },
+    /// The builtin is finished; this is its value.
+    Done(Value),
+}
+
+/// A higher-order builtin part way through its work.
+///
+/// `map`, `filter`, and `reduce` are state machines rather than loops. A loop
+/// would have to call back into the engine per element, which costs a nested
+/// bytecode loop and a real Rust call each time; instead each step says what to
+/// call and the single dispatch loop does the calling.
+///
+/// Every variant walks `items` by index and moves each element out with
+/// [`std::mem::replace`] rather than cloning it. That is not a flourish: it
+/// keeps the clone count per element the same as the loops these replaced, and
+/// `reduce` in particular would otherwise clone its accumulator on every step.
+pub enum HostTask {
+    Map {
+        func: Value,
+        items: Vec<Value>,
+        next: usize,
+        out: Vec<Value>,
+    },
+    Filter {
+        func: Value,
+        items: Vec<Value>,
+        next: usize,
+        out: Vec<Value>,
+        /// The element the outstanding call is deciding on, kept so a truthy
+        /// answer can move it into `out` rather than clone it again.
+        pending: Option<Value>,
+    },
+    Reduce {
+        func: Value,
+        items: Vec<Value>,
+        next: usize,
+        acc: Value,
+    },
+}
+
+impl HostTask {
+    /// Advance the builtin one step. `last` is the value the previously
+    /// requested call returned, or `None` on the first step.
+    pub fn resume(&mut self, last: Option<Value>) -> Step {
+        match self {
+            HostTask::Map {
+                func,
+                items,
+                next,
+                out,
+            } => {
+                if let Some(value) = last {
+                    out.push(value);
+                }
+                match take_next(items, next) {
+                    None => Step::Done(array(std::mem::take(out))),
+                    Some(item) => Step::Call {
+                        callee: func.clone(),
+                        args: Args::One(item),
+                    },
+                }
+            }
+            HostTask::Filter {
+                func,
+                items,
+                next,
+                out,
+                pending,
+            } => {
+                // `pending` holds the element the answer is about. Keeping it
+                // means a kept element is moved into the result rather than
+                // cloned a second time.
+                if let Some(value) = last {
+                    let item = pending.take().expect("an element under decision");
+                    if value.is_truthy() {
+                        out.push(item);
+                    }
+                }
+                match take_next(items, next) {
+                    None => Step::Done(array(std::mem::take(out))),
+                    Some(item) => {
+                        *pending = Some(item.clone());
+                        Step::Call {
+                            callee: func.clone(),
+                            args: Args::One(item),
+                        }
+                    }
+                }
+            }
+            HostTask::Reduce {
+                func,
+                items,
+                next,
+                acc,
+            } => {
+                if let Some(value) = last {
+                    *acc = value;
+                }
+                match take_next(items, next) {
+                    None => Step::Done(std::mem::replace(acc, Value::Nil)),
+                    Some(item) => {
+                        // Move the accumulator out rather than cloning it. The
+                        // call's result puts one back on the next resume.
+                        let carried = std::mem::replace(acc, Value::Nil);
+                        Step::Call {
+                            callee: func.clone(),
+                            args: Args::Two(carried, item),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Move the element at `next` out of `items` and advance the cursor, or `None`
+/// once the walk is done. The vacated slot is left holding `nil`, which nothing
+/// reads: the cursor only ever moves forward.
+fn take_next(items: &mut [Value], next: &mut usize) -> Option<Value> {
+    let slot = items.get_mut(*next)?;
+    *next += 1;
+    Some(std::mem::replace(slot, Value::Nil))
+}
+
+fn array(items: Vec<Value>) -> Value {
+    Value::Array(Rc::new(RefCell::new(items)))
+}
+
 /// `map(array, f)` returns a new array holding `f(x)` for each element `x`, in
 /// order. The function is applied through the virtual machine, so it may be a
 /// user-defined function, a closure, or another builtin.
@@ -775,6 +923,128 @@ fn reduce(vm: &mut Vm, args: Vec<Value>) -> Result<Value, MiruError> {
         acc = vm.call_value(func.clone(), vec![acc, item])?;
     }
     Ok(acc)
+}
+
+#[cfg(test)]
+mod task_tests {
+    //! The higher-order builtins as state machines, driven by hand.
+    //!
+    //! No virtual machine here. A task only ever says what it wants called and
+    //! is told what came back, so it can be stepped directly, and a fault in
+    //! the sequencing shows up as a wrong step rather than as a wrong program
+    //! output three layers away.
+
+    use super::{Args, HostTask, Step};
+    use crate::value::Value;
+
+    /// The element a step asks for, as a readable string, or a description of
+    /// why it was not the single-argument call the caller expected.
+    fn asked_for(step: &Step) -> String {
+        match step {
+            Step::Call {
+                args: Args::One(v), ..
+            } => v.repr(),
+            Step::Call {
+                args: Args::Two(a, b),
+                ..
+            } => format!("two: {} {}", a.repr(), b.repr()),
+            Step::Done(v) => format!("done: {}", v.repr()),
+        }
+    }
+
+    fn ints(values: &[i64]) -> Vec<Value> {
+        values.iter().map(|n| Value::Int(*n)).collect()
+    }
+
+    /// A callback stands in for the function the engine would apply. The task
+    /// never calls it, so any value does.
+    fn callback() -> Value {
+        Value::Nil
+    }
+
+    #[test]
+    fn a_map_task_asks_for_each_element_then_yields_the_results() {
+        let mut task = HostTask::Map {
+            func: callback(),
+            items: ints(&[1, 2]),
+            next: 0,
+            out: Vec::new(),
+        };
+        assert_eq!(asked_for(&task.resume(None)), "1");
+        assert_eq!(asked_for(&task.resume(Some(Value::Int(10)))), "2");
+        assert_eq!(
+            asked_for(&task.resume(Some(Value::Int(20)))),
+            "done: [10, 20]"
+        );
+    }
+
+    #[test]
+    fn a_map_task_over_nothing_is_done_at_once() {
+        let mut task = HostTask::Map {
+            func: callback(),
+            items: Vec::new(),
+            next: 0,
+            out: Vec::new(),
+        };
+        assert_eq!(asked_for(&task.resume(None)), "done: []");
+    }
+
+    #[test]
+    fn a_filter_task_keeps_only_what_the_answer_was_truthy_for() {
+        let mut task = HostTask::Filter {
+            func: callback(),
+            items: ints(&[1, 2, 3]),
+            next: 0,
+            out: Vec::new(),
+            pending: None,
+        };
+        assert_eq!(asked_for(&task.resume(None)), "1");
+        assert_eq!(asked_for(&task.resume(Some(Value::Bool(false)))), "2");
+        assert_eq!(asked_for(&task.resume(Some(Value::Bool(true)))), "3");
+        // nil is falsy, like false, so the third element is dropped.
+        assert_eq!(asked_for(&task.resume(Some(Value::Nil))), "done: [2]");
+    }
+
+    #[test]
+    fn a_filter_task_yields_the_element_and_not_the_answer() {
+        // The distinction that a loop makes for free and a state machine has to
+        // be deliberate about: what goes into the result is the element, not
+        // whatever the predicate returned about it.
+        let mut task = HostTask::Filter {
+            func: callback(),
+            items: ints(&[7]),
+            next: 0,
+            out: Vec::new(),
+            pending: None,
+        };
+        assert_eq!(asked_for(&task.resume(None)), "7");
+        assert_eq!(asked_for(&task.resume(Some(Value::Int(999)))), "done: [7]");
+    }
+
+    #[test]
+    fn a_reduce_task_carries_the_accumulator_through() {
+        let mut task = HostTask::Reduce {
+            func: callback(),
+            items: ints(&[1, 2]),
+            next: 0,
+            acc: Value::Int(0),
+        };
+        // Each call gets the accumulator first and the element second.
+        assert_eq!(asked_for(&task.resume(None)), "two: 0 1");
+        assert_eq!(asked_for(&task.resume(Some(Value::Int(1)))), "two: 1 2");
+        assert_eq!(asked_for(&task.resume(Some(Value::Int(3)))), "done: 3");
+    }
+
+    #[test]
+    fn a_reduce_task_over_nothing_yields_its_initial_value() {
+        let mut task = HostTask::Reduce {
+            func: callback(),
+            items: Vec::new(),
+            next: 0,
+            acc: Value::Int(42),
+        };
+        assert_eq!(asked_for(&task.resume(None)), "done: 42");
+    }
 }
 
 #[cfg(test)]

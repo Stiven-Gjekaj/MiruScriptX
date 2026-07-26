@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-257_passing-427819?style=for-the-badge" alt="257 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-263_passing-427819?style=for-the-badge" alt="263 tests passing"/>
 </p>
 
 <p align="center">
