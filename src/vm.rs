@@ -236,9 +236,7 @@ impl Vm {
     fn run_frames(&mut self) -> Result<Value, MiruError> {
         let mut result = self.run_frames_inner();
         if let Err(error) = &mut result {
-            if error.trace.is_empty() {
-                error.trace = self.capture_trace();
-            }
+            error.trace = self.capture_trace();
         }
         result
     }

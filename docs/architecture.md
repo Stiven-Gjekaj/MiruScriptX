@@ -140,14 +140,16 @@ instruction and checks the byte it lands on really is a `Call`, returning `None`
 rather than a wrong line when it is not.
 
 **The frames are gone by the time the error reaches the caller.**
-`Vm::interpret` clears them and `Vm::call_from_host` truncates them, both before
-their error propagates. So the trace is captured inside `run_frames`, which
-wraps the dispatch loop and attaches the path on the way out, while the frames
-are still standing. It only does so when the error has no trace yet, and that
-guard is what makes a callback passed to `map` come out right: such a call runs
-on its own nested `run_frames`, which records the full path first, and the outer
-one leaves it alone rather than replacing it with the shallower view it can
-still see.
+`Vm::interpret` clears them before the error propagates. So the trace is
+captured inside `run_frames`, which wraps the dispatch loop and attaches the
+path on the way out, while the frames are still standing.
+
+A callback passed to `map` needs no special handling here, which was not true
+before v0.7. It used to run on its own nested `run_frames`, so the trace had to
+be recorded by the innermost one and left alone by the outer ones. There is one
+loop and one frame stack now, and a suspended builtin occupies no frame, so the
+frame beneath a callback is still the one that executed the call to `map` and
+the whole path is visible where the error is raised.
 
 Each entry pairs a frame's name with its *caller's* call site, since a frame
 knows where it calls onward, so the line a function was reached by lives one
