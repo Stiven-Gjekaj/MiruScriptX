@@ -10,8 +10,6 @@ use std::rc::Rc;
 
 use crate::globals::Globals;
 use crate::value::{Builtin, BuiltinFn, HostBuiltin, HostFn, Input, Output, Value};
-use crate::vm::Vm;
-use crate::MiruError;
 
 /// Register every builtin into a program's globals.
 pub fn register(globals: &mut Globals) {
@@ -710,6 +708,44 @@ pub enum Args {
     Two(Value, Value),
 }
 
+impl Args {
+    /// How many arguments there are, for the callee's arity check. Named
+    /// `count` rather than `len` because a `len` invites an `is_empty` beside
+    /// it, and these are never empty.
+    pub fn count(&self) -> usize {
+        match self {
+            Args::One(_) => 1,
+            Args::Two(_, _) => 2,
+        }
+    }
+
+    /// Push the arguments in order, leaving the stack as a bytecode call would.
+    pub fn push_onto(self, stack: &mut Vec<Value>) {
+        match self {
+            Args::One(a) => stack.push(a),
+            Args::Two(a, b) => {
+                stack.push(a);
+                stack.push(b);
+            }
+        }
+    }
+
+    /// Collect into a `Vec` for an ordinary native builtin, whose signature
+    /// takes one.
+    ///
+    /// This is the last per-element heap allocation left in the engine, and it
+    /// only happens when a *builtin* is the callback, as in `map(xs, abs)`.
+    /// Removing it means changing [`BuiltinFn`] for all thirty-seven builtins,
+    /// several of which move values out of the vector they are handed, which is
+    /// a larger change than it looks and is left for later.
+    pub fn into_vec(self) -> Vec<Value> {
+        match self {
+            Args::One(a) => vec![a],
+            Args::Two(a, b) => vec![a, b],
+        }
+    }
+}
+
 /// What a suspended higher-order builtin wants next.
 ///
 /// The values are owned rather than borrowed so that advancing a task does not
@@ -846,83 +882,86 @@ fn array(items: Vec<Value>) -> Value {
     Value::Array(Rc::new(RefCell::new(items)))
 }
 
-/// `map(array, f)` returns a new array holding `f(x)` for each element `x`, in
-/// order. The function is applied through the virtual machine, so it may be a
-/// user-defined function, a closure, or another builtin.
-fn map(vm: &mut Vm, args: Vec<Value>) -> Result<Value, MiruError> {
+/// Check the two-argument shape `map` and `filter` share: an array to walk and a
+/// function to apply to each of its elements.
+///
+/// The array is copied here rather than borrowed for the length of the walk.
+/// That matches `for x in xs`, which copies through `OpCode::IterSnapshot`, so a
+/// callback that pushes to the array being walked does not extend the walk. It
+/// also means the task owns its elements and can move them out one at a time
+/// instead of cloning them.
+fn array_and_function(name: &str, args: Vec<Value>) -> Result<(Vec<Value>, Value), String> {
     if args.len() != 2 {
-        return Err(vm.call_error(format!("map expects 2 argument(s) but got {}", args.len())));
+        return Err(format!(
+            "{name} expects 2 argument(s) but got {}",
+            args.len()
+        ));
     }
-    let items = match &args[0] {
+    let mut args = args.into_iter();
+    let items = match args.next().expect("two arguments") {
         Value::Array(items) => items.borrow().clone(),
         other => {
-            return Err(vm.call_error(format!(
-                "map expects an array but got a {}",
+            return Err(format!(
+                "{name} expects an array but got a {}",
                 other.type_name()
-            )))
+            ))
         }
     };
-    let func = args[1].clone();
-    let mut result = Vec::with_capacity(items.len());
-    for item in items {
-        result.push(vm.call_value(func.clone(), vec![item])?);
-    }
-    Ok(Value::Array(Rc::new(RefCell::new(result))))
+    Ok((items, args.next().expect("two arguments")))
+}
+
+/// `map(array, f)` returns a new array holding `f(x)` for each element `x`, in
+/// order. The function is applied by the engine, so it may be a user-defined
+/// function, a closure, or another builtin.
+fn map(args: Vec<Value>) -> Result<HostTask, String> {
+    let (items, func) = array_and_function("map", args)?;
+    Ok(HostTask::Map {
+        out: Vec::with_capacity(items.len()),
+        func,
+        items,
+        next: 0,
+    })
 }
 
 /// `filter(array, f)` returns a new array of the elements for which `f(x)` is
 /// truthy, keeping their original order.
-fn filter(vm: &mut Vm, args: Vec<Value>) -> Result<Value, MiruError> {
-    if args.len() != 2 {
-        return Err(vm.call_error(format!(
-            "filter expects 2 argument(s) but got {}",
-            args.len()
-        )));
-    }
-    let items = match &args[0] {
-        Value::Array(items) => items.borrow().clone(),
-        other => {
-            return Err(vm.call_error(format!(
-                "filter expects an array but got a {}",
-                other.type_name()
-            )))
-        }
-    };
-    let func = args[1].clone();
-    let mut result = Vec::new();
-    for item in items {
-        if vm.call_value(func.clone(), vec![item.clone()])?.is_truthy() {
-            result.push(item);
-        }
-    }
-    Ok(Value::Array(Rc::new(RefCell::new(result))))
+fn filter(args: Vec<Value>) -> Result<HostTask, String> {
+    let (items, func) = array_and_function("filter", args)?;
+    Ok(HostTask::Filter {
+        func,
+        items,
+        next: 0,
+        out: Vec::new(),
+        pending: None,
+    })
 }
 
 /// `reduce(array, f, init)` folds the array from the left: starting with the
 /// accumulator `init`, it computes `f(acc, x)` for each element in order and
 /// returns the final accumulator.
-fn reduce(vm: &mut Vm, args: Vec<Value>) -> Result<Value, MiruError> {
+fn reduce(args: Vec<Value>) -> Result<HostTask, String> {
     if args.len() != 3 {
-        return Err(vm.call_error(format!(
+        return Err(format!(
             "reduce expects 3 argument(s) but got {}",
             args.len()
-        )));
+        ));
     }
-    let items = match &args[0] {
+    let mut args = args.into_iter();
+    let items = match args.next().expect("three arguments") {
         Value::Array(items) => items.borrow().clone(),
         other => {
-            return Err(vm.call_error(format!(
+            return Err(format!(
                 "reduce expects an array but got a {}",
                 other.type_name()
-            )))
+            ))
         }
     };
-    let func = args[1].clone();
-    let mut acc = args[2].clone();
-    for item in items {
-        acc = vm.call_value(func.clone(), vec![acc, item])?;
-    }
-    Ok(acc)
+    Ok(HostTask::Reduce {
+        func: args.next().expect("three arguments"),
+        items,
+        next: 0,
+        acc: args.next().expect("three arguments"),
+    })
 }
 
 #[cfg(test)]

@@ -235,11 +235,13 @@ fn runaway_recursion_is_an_error_rather_than_a_hang() {
             "fn a(n) { return b(n) }\nfn b(n) { return a(n) }\na(1)",
             "err call depth limit of 10000 exceeded @ 1:18",
         ),
-        // Recursing back through a builtin costs machine stack per level, so a
-        // much lower cap catches it first.
+        // Recursing back through a builtin is now ordinary recursion: map calls
+        // its callback by pushing a frame, not by entering a nested bytecode
+        // loop, so there is one cap rather than two and this reaches the same
+        // one direct recursion does.
         (
             "fn r(n) { return map([1], fn(x) { return r(n + 1) })[0] }\nr(1)",
-            "err call depth limit of 64 exceeded through a builtin @ 1:18",
+            "err call depth limit of 10000 exceeded @ 1:18",
         ),
     ]);
 }
@@ -252,10 +254,12 @@ fn recursion_well_within_the_limit_still_works() {
             "fn count(n) {\n  if n == 0 { return 0 }\n  return 1 + count(n - 1)\n}\ncount(1000)",
             "ok 1000",
         ),
-        // Nested higher-order calls, comfortably under the builtin cap.
+        // Nested higher-order calls. Two hundred deep failed outright until the
+        // builtin bridge went, because each level cost a nested bytecode loop
+        // and the cap on those was sixty four. It is unremarkable now.
         (
-            "fn depth(n) {\n  if n == 0 { return 0 }\n  return map([1], fn(x) { return 1 + depth(n - 1) })[0]\n}\ndepth(20)",
-            "ok 20",
+            "fn depth(n) {\n  if n == 0 { return 0 }\n  return map([1], fn(x) { return 1 + depth(n - 1) })[0]\n}\ndepth(200)",
+            "ok 200",
         ),
     ]);
 }

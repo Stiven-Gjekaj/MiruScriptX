@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use crate::chunk::Chunk;
-use crate::MiruError;
 
 /// A sink that side-effecting builtins such as `print` write to. The virtual
 /// machine implements this, so the very same builtins can target real stdout
@@ -68,12 +67,18 @@ pub struct Builtin {
     pub func: BuiltinFn,
 }
 
-/// The signature of a higher-order builtin: one handed the virtual machine so it
-/// can apply a function argument, for example to each element of an array.
-pub type HostFn = fn(&mut crate::vm::Vm, Vec<Value>) -> Result<Value, MiruError>;
+/// The signature of a higher-order builtin: it checks its arguments and returns
+/// the task that carries the work out, which the engine then drives.
+///
+/// It is not handed the engine, because it no longer calls back into it. A task
+/// says what it wants applied and is resumed with the answer, so the applying
+/// happens on the one dispatch loop rather than on a nested one. Errors are
+/// plain strings, as for every other builtin, and the virtual machine attaches
+/// the position of the call.
+pub type HostFn = fn(Vec<Value>) -> Result<crate::builtins::HostTask, String>;
 
-/// A native builtin that receives the running engine, used by the higher-order
-/// builtins `map`, `filter`, and `reduce`.
+/// A native builtin that runs as a task, used by the higher-order builtins
+/// `map`, `filter`, and `reduce`.
 #[derive(Clone)]
 pub struct HostBuiltin {
     pub name: &'static str,

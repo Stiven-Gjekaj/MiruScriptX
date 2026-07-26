@@ -16,6 +16,7 @@ use std::io::Write;
 use std::rc::Rc;
 
 use crate::ast::{BinaryOp, UnaryOp};
+use crate::builtins::{Args, HostTask, Step};
 use crate::chunk::{Chunk, OpCode};
 use crate::globals::Globals;
 use crate::value::{Closure, CompiledFunction, EmptyInput, Input, Output, Upvalue, Value};
@@ -29,22 +30,6 @@ use crate::MiruError;
 /// ordinary runtime error with a line, a column, and a caret. It is far beyond
 /// what real code nests, so only genuinely unbounded recursion reaches it.
 const MAX_CALL_DEPTH: usize = 10_000;
-
-/// How deep calls made *from a builtin* may nest.
-///
-/// A user function called by a builtin (as `map` calls the function it is given)
-/// runs on a nested bytecode loop, which is a real Rust call, so each level
-/// costs machine stack that [`MAX_CALL_DEPTH`] does not account for. Recursion
-/// that goes back through a builtin every time would exhaust that stack long
-/// before ten thousand frames accumulate, so it needs its own, much lower cap.
-///
-/// The number is chosen for the *smallest* stack this may run on, not the
-/// roomiest. A level costs roughly eleven kilobytes in a debug build, and a Rust
-/// test thread gets two megabytes, where nesting fails somewhere past 180. Sixty
-/// four leaves close to threefold margin there and far more in a release binary
-/// on the main thread. Legitimate code does not nest higher-order builtins
-/// anywhere near this deep.
-const MAX_HOST_CALL_DEPTH: usize = 64;
 
 /// A single active function call: which closure is running, where its
 /// instruction pointer sits, and where its window of stack slots begins.
@@ -92,6 +77,46 @@ enum CallOutcome {
     /// A native builtin ran to completion and left its result on the stack.
     /// The loop carries on with the current frame.
     Value,
+    /// A higher-order builtin suspended as a task. The loop must drive it.
+    Task,
+}
+
+/// Where a task's finished value belongs.
+enum TaskSink {
+    /// On the value stack, where the call expression's result goes. This is the
+    /// ordinary case: bytecode called `map`.
+    Stack,
+    /// To the task beneath this one, which asked for this call. Reached when a
+    /// higher-order builtin is another one's callback, as in
+    /// `reduce([abs, abs], map, ..)`, where `reduce` passes two arguments and
+    /// two is exactly `map`'s arity.
+    Parent,
+}
+
+/// A higher-order builtin suspended part way through, waiting for a call it
+/// asked for to come back.
+struct PendingTask {
+    task: HostTask,
+    /// The frame depth at which a returning frame belongs to this task. A task
+    /// is only ever created while a frame is running, so this is at least one,
+    /// which is what lets a `resume_depth` of zero mean "no task pending".
+    resume_at: usize,
+    sink: TaskSink,
+    /// Where the call that started this task was written, so an error it raises
+    /// points at the `map(..)` rather than at whatever ran last.
+    line: usize,
+    column: usize,
+}
+
+/// What starting a call on a task's behalf did.
+enum TaskCall {
+    /// A frame was pushed and is running it.
+    Pushed,
+    /// An ordinary native builtin ran in place; here is its result.
+    Value(Value),
+    /// The callee was itself a higher-order builtin, so a nested task was
+    /// pushed and wants driving.
+    Nested,
 }
 
 /// A stack-based bytecode interpreter.
@@ -109,9 +134,8 @@ pub struct Vm {
     /// an error where the call to it happened.
     line: usize,
     column: usize,
-    /// How many nested bytecode loops are running, one per call made from inside
-    /// a builtin. Each costs machine stack, so it is capped separately.
-    host_depth: usize,
+    /// Higher-order builtins suspended waiting for a call, innermost last.
+    tasks: Vec<PendingTask>,
 }
 
 impl Default for Vm {
@@ -145,7 +169,7 @@ impl Vm {
             input: Box::new(EmptyInput),
             line: 0,
             column: 0,
-            host_depth: 0,
+            tasks: Vec::new(),
         }
     }
 
@@ -191,12 +215,12 @@ impl Vm {
             ip: 0,
             slot_base: 0,
         });
-        let result = self.run_frames(0);
+        let result = self.run_frames();
         if result.is_err() {
             self.frames.clear();
             self.stack.clear();
             self.open_upvalues.clear();
-            self.host_depth = 0;
+            self.tasks.clear();
         }
         debug_assert!(self.frames.is_empty(), "frames left after a program");
         debug_assert!(self.stack.is_empty(), "stack values left after a program");
@@ -208,16 +232,9 @@ impl Vm {
     ///
     /// This has to happen here rather than where the caller finally receives the
     /// error, because by then the frames are gone: [`Vm::interpret`] clears them
-    /// and [`Vm::call_from_host`] truncates them, both before their error
-    /// propagates. Here they are still intact.
-    ///
-    /// The `is_empty` guard is what makes a call made from inside a builtin come
-    /// out right. Such a call runs on its own nested `run_frames`, which
-    /// captures the full path while its frames are alive; this outer one then
-    /// sees an error that already has a trace and leaves it alone rather than
-    /// replacing it with the shallower view it can still see.
-    fn run_frames(&mut self, base_depth: usize) -> Result<Value, MiruError> {
-        let mut result = self.run_frames_inner(base_depth);
+    /// before the error propagates. Here they are still intact.
+    fn run_frames(&mut self) -> Result<Value, MiruError> {
+        let mut result = self.run_frames_inner();
         if let Err(error) = &mut result {
             if error.trace.is_empty() {
                 error.trace = self.capture_trace();
@@ -250,7 +267,16 @@ impl Vm {
     }
 
     /// The bytecode loop itself. See [`Vm::run_frames`], which wraps it.
-    fn run_frames_inner(&mut self, base_depth: usize) -> Result<Value, MiruError> {
+    fn run_frames_inner(&mut self) -> Result<Value, MiruError> {
+        // The depth a returning frame has to reach for something to be waiting
+        // for it. Zero means nothing is: the script itself is returning. A task
+        // is always created while a frame runs, so its depth is at least one and
+        // the two cases cannot be confused.
+        //
+        // A local rather than a field, so the comparison every `Return` makes
+        // stays in a register. It outlives `continue 'frames`, so it is declared
+        // out here.
+        let mut resume_depth = 0usize;
         // Two loops, one per frame and one per instruction. The outer loop keeps
         // the current frame's closure, instruction pointer, stack base, and chunk
         // in locals; the inner one runs until a call or return changes frames and
@@ -522,6 +548,11 @@ impl Vm {
                         match self.call_at_stack(argcount, chunk, op_ip)? {
                             CallOutcome::Frame => continue 'frames,
                             CallOutcome::Value => continue,
+                            CallOutcome::Task => {
+                                self.drive_tasks(None)?;
+                                resume_depth = self.resume_depth();
+                                continue 'frames;
+                            }
                         }
                     }
                     OpCode::Pop => {
@@ -533,11 +564,16 @@ impl Vm {
                         // Close any upvalues that captured this frame's locals before
                         // they leave the stack.
                         self.close_upvalues_from(frame.slot_base);
-                        if self.frames.len() == base_depth {
-                            // Drop the callee and its arguments; the result goes back
-                            // to whoever started this loop.
+                        if self.frames.len() == resume_depth {
+                            // Drop the callee and its arguments. What happens to
+                            // the result depends on whether anything is waiting.
                             self.stack.truncate(frame.slot_base.saturating_sub(1));
-                            return Ok(result);
+                            if resume_depth == 0 {
+                                return Ok(result);
+                            }
+                            self.drive_tasks(Some(result))?;
+                            resume_depth = self.resume_depth();
+                            continue 'frames;
                         }
                         // Drop the callee and its arguments and locals, then leave the
                         // return value where the call expression's result belongs.
@@ -590,15 +626,34 @@ impl Vm {
                 });
                 Ok(CallOutcome::Frame)
             }
-            // Builtins run to completion here, so no frame is pushed: the callee
-            // and its arguments are replaced by the single result value.
-            Value::Builtin(_) | Value::HostBuiltin(_) => {
+            // An ordinary builtin runs to completion here, so no frame is
+            // pushed: the callee and its arguments are replaced by the result.
+            Value::Builtin(_) => {
                 let args = self.stack.split_off(callee_slot + 1);
                 self.stack.pop();
                 let (line, column) = chunk.position(op_ip);
                 let result = self.call_native(callee, args, line, column)?;
                 self.stack.push(result);
                 Ok(CallOutcome::Value)
+            }
+            // A higher-order builtin does not run here at all. It checks its
+            // arguments and becomes a task, which the dispatch loop drives by
+            // making the calls it asks for. The callee and its arguments come
+            // off the stack the same way, so the slot the result belongs in is
+            // the top of the stack for as long as the task lasts.
+            Value::HostBuiltin(builtin) => {
+                let args = self.stack.split_off(callee_slot + 1);
+                self.stack.pop();
+                let (line, column) = chunk.position(op_ip);
+                let task = (builtin.func)(args).map_err(|m| runtime_error(chunk, op_ip, m))?;
+                self.tasks.push(PendingTask {
+                    task,
+                    resume_at: self.frames.len(),
+                    sink: TaskSink::Stack,
+                    line,
+                    column,
+                });
+                Ok(CallOutcome::Task)
             }
             other => Err(runtime_error(
                 chunk,
@@ -629,7 +684,10 @@ impl Vm {
                 self.input = input;
                 result.map_err(|message| MiruError::with_column(line, column, message))
             }
-            Value::HostBuiltin(builtin) => (builtin.func)(self, args),
+            // A higher-order builtin never arrives here. `call_at_stack` turns
+            // one into a task and `begin_task_call` handles one used as a
+            // callback, both before this point.
+            Value::HostBuiltin(_) => unreachable!("a higher-order builtin runs as a task"),
             other => Err(MiruError::with_column(
                 line,
                 column,
@@ -641,10 +699,10 @@ impl Vm {
         result
     }
 
-    /// Apply a function value to arguments from outside the bytecode loop. This
-    /// is what a higher-order builtin such as `map` calls.
-    pub fn call_value(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError> {
-        self.call_from_host(callee, args)
+    /// The frame depth at which something is waiting for a returning frame, or
+    /// zero when nothing is.
+    fn resume_depth(&self) -> usize {
+        self.tasks.last().map_or(0, |pending| pending.resume_at)
     }
 
     /// Build an error at the position of the call being executed, for a builtin
@@ -653,58 +711,105 @@ impl Vm {
         MiruError::with_column(self.line, self.column, message)
     }
 
-    /// Apply a function value from outside the bytecode loop, as a higher-order
-    /// builtin does. A user function runs on a nested loop that stops when its
-    /// frame returns, so the result comes back here rather than to the
-    /// interrupted frame.
-    fn call_from_host(&mut self, callee: Value, args: Vec<Value>) -> Result<Value, MiruError> {
+    /// Carry a value to the innermost task and keep going until either a frame
+    /// has been pushed to work on its behalf or its finished value has landed
+    /// on the stack. Either way the caller resumes the dispatch loop.
+    ///
+    /// This is the whole trampoline. A higher-order builtin used to loop and
+    /// call back into a nested copy of the bytecode loop, one real Rust call per
+    /// element; now it says what it wants applied and this hands the answer
+    /// back, all on the one loop.
+    fn drive_tasks(&mut self, mut last: Option<Value>) -> Result<(), MiruError> {
+        loop {
+            let step = self
+                .tasks
+                .last_mut()
+                .expect("a pending task")
+                .task
+                .resume(last.take());
+            match step {
+                Step::Call { callee, args } => match self.begin_task_call(callee, args)? {
+                    TaskCall::Pushed => return Ok(()),
+                    TaskCall::Value(value) => last = Some(value),
+                    // A nested task starts with nothing to be told, so `last`
+                    // stays empty and the next turn of the loop resumes it.
+                    TaskCall::Nested => {}
+                },
+                Step::Done(value) => {
+                    let finished = self.tasks.pop().expect("a pending task");
+                    match finished.sink {
+                        TaskSink::Stack => {
+                            self.stack.push(value);
+                            return Ok(());
+                        }
+                        TaskSink::Parent => last = Some(value),
+                    }
+                }
+            }
+        }
+    }
+
+    /// Apply a callee on the innermost task's behalf.
+    ///
+    /// Errors report at the position of the call that started the task, not
+    /// wherever the program happens to be, because a failure in `map`'s callback
+    /// is about the `map(..)` the reader wrote.
+    fn begin_task_call(&mut self, callee: Value, args: Args) -> Result<TaskCall, MiruError> {
+        let pending = self.tasks.last().expect("a pending task");
+        let (line, column) = (pending.line, pending.column);
         match callee {
             Value::Closure(closure) => {
                 let arity = closure.function.arity;
-                if args.len() != arity {
+                if args.count() != arity {
                     let name = closure.function.name.as_deref().unwrap_or("<anonymous>");
-                    return Err(self.call_error(format!(
-                        "function {name} expects {arity} argument(s) but received {}",
-                        args.len()
-                    )));
+                    return Err(MiruError::with_column(
+                        line,
+                        column,
+                        format!(
+                            "function {name} expects {arity} argument(s) but received {}",
+                            args.count()
+                        ),
+                    ));
                 }
                 if self.frames.len() >= MAX_CALL_DEPTH {
-                    return Err(
-                        self.call_error(format!("call depth limit of {MAX_CALL_DEPTH} exceeded"))
-                    );
-                }
-                if self.host_depth >= MAX_HOST_CALL_DEPTH {
-                    return Err(self.call_error(format!(
-                        "call depth limit of {MAX_HOST_CALL_DEPTH} exceeded through a builtin"
-                    )));
+                    return Err(MiruError::with_column(
+                        line,
+                        column,
+                        format!("call depth limit of {MAX_CALL_DEPTH} exceeded"),
+                    ));
                 }
                 // Mirror the bytecode layout: the callee sits beneath its args.
-                let callee_slot = self.stack.len();
                 self.stack.push(Value::Closure(Rc::clone(&closure)));
                 let slot_base = self.stack.len();
-                for arg in args {
-                    self.stack.push(arg);
-                }
-                let depth = self.frames.len();
+                args.push_onto(&mut self.stack);
                 self.frames.push(CallFrame {
                     closure,
                     ip: 0,
                     slot_base,
                 });
-                self.host_depth += 1;
-                let result = self.run_frames(depth);
-                self.host_depth -= 1;
-                if result.is_err() {
-                    // Unwind the partial call so the stack stays consistent.
-                    self.frames.truncate(depth);
-                    self.stack.truncate(callee_slot);
-                }
-                result
+                Ok(TaskCall::Pushed)
             }
-            other => {
-                let (line, column) = (self.line, self.column);
-                self.call_native(other, args, line, column)
+            // A higher-order builtin as a callback becomes a task of its own,
+            // whose value belongs to the task that asked for it rather than to
+            // the stack.
+            Value::HostBuiltin(builtin) => {
+                let task = (builtin.func)(args.into_vec())
+                    .map_err(|m| MiruError::with_column(line, column, m))?;
+                self.tasks.push(PendingTask {
+                    task,
+                    resume_at: self.frames.len(),
+                    sink: TaskSink::Parent,
+                    line,
+                    column,
+                });
+                Ok(TaskCall::Nested)
             }
+            other => Ok(TaskCall::Value(self.call_native(
+                other,
+                args.into_vec(),
+                line,
+                column,
+            )?)),
         }
     }
 
