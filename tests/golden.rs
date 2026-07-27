@@ -885,6 +885,30 @@ fn a_higher_order_builtin_can_be_another_one_s_callback() {
 }
 
 #[test]
+fn a_newline_stays_insignificant_inside_parentheses_and_brackets() {
+    // The lexer drops newline tokens while it is inside `(` or `[`, which is
+    // what lets an expression span lines. These are the shapes that rely on it,
+    // pinned before v0.8 changes how braces interact with that rule, so the
+    // change has to prove it broke none of them.
+    check_all(&[
+        // A wrapped expression.
+        ("(1 +\n2)", "ok 3"),
+        // An argument list split over lines.
+        ("max(1,\n2)", "ok 2"),
+        // An array literal split over lines, with a trailing comma.
+        ("len([1,\n2,\n3,\n])", "ok 3"),
+        // A map literal as a call argument. This one is the interesting case:
+        // braces do not suppress newlines, because blocks need them, so the map
+        // parser skips newlines between entries itself.
+        ("len({\"a\": 1,\n\"b\": 2})", "ok 2"),
+        // The same, nested one deeper, so a brace sits between two groups.
+        ("len({\"a\": [1,\n2]})", "ok 1"),
+        // A block does need its newlines, and gets them at the top level today.
+        ("fn f() {\n  let a = 1\n  return a\n}\nf()", "ok 1"),
+    ]);
+}
+
+#[test]
 fn a_program_evaluates_to_its_last_expression() {
     check_all(&[("1\n2\n3", "ok 3"), ("1 + 1\n2 + 2", "ok 4")]);
 }
