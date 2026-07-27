@@ -365,6 +365,37 @@ impl Parser {
                         column,
                     );
                 }
+                TokenKind::Dot => {
+                    self.advance();
+                    // The access carries the *field's* position rather than the
+                    // target's, following what Call and Index do: an expression
+                    // reports at the part most likely to be at fault, which for
+                    // `config.tiemout` is the name. The target's position rides
+                    // along in the opcode's operand byte.
+                    let field = self.peek().clone();
+                    let name = match &field.kind {
+                        TokenKind::Ident(name) => name.clone(),
+                        other => {
+                            return Err(MiruError::with_column(
+                                field.line,
+                                field.column,
+                                format!(
+                                    "expected a field name after '.' but found {}",
+                                    other.describe()
+                                ),
+                            ))
+                        }
+                    };
+                    self.advance();
+                    expr = Expr::new(
+                        ExprKind::Field {
+                            target: Box::new(expr),
+                            name,
+                        },
+                        field.line,
+                        field.column,
+                    );
+                }
                 TokenKind::LBracket => {
                     self.advance();
                     let index = self.expression()?;

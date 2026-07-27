@@ -606,6 +606,18 @@ impl<'g> Compiler<'g> {
                 self.chunk.write_op(OpCode::Map, line, column);
                 self.write_u16(count, line, column);
             }
+            ExprKind::Field { target, name } => {
+                self.expression(target)?;
+                // The name is an ordinary constant rather than an operand, so a
+                // file with many distinct field names gets ConstantLong instead
+                // of a cap at 256.
+                self.constant(Value::Str(Rc::new(name.clone())), line, column)?;
+                // The opcode carries the field's position and its operand byte
+                // the target's, so a missing field points at the name and
+                // "cannot read a field" points at the thing that has none.
+                self.chunk.write_op(OpCode::GetField, line, column);
+                self.chunk.write(0, target.line, target.column);
+            }
             ExprKind::Index { target, index } => {
                 self.expression(target)?;
                 self.expression(index)?;

@@ -313,7 +313,11 @@ fn precedence(expr: &Expr) -> u8 {
             BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => 6,
         },
         ExprKind::Unary { .. } => 7,
-        ExprKind::Call { .. } | ExprKind::Index { .. } => 8,
+        // Field binds like the other postfix forms. The arm below ends in a
+        // wildcard, so a variant missing here silently takes 9 and the printer
+        // then drops parentheses it needed. Nothing fails; the output is just
+        // wrong.
+        ExprKind::Call { .. } | ExprKind::Index { .. } | ExprKind::Field { .. } => 8,
         _ => 9,
     }
 }
@@ -352,6 +356,9 @@ fn fmt_expr(expr: &Expr) -> String {
                     .collect();
                 format!("{{{}}}", parts.join(", "))
             }
+        }
+        ExprKind::Field { target, name } => {
+            format!("{}.{name}", fmt_operand(target, 8))
         }
         ExprKind::Index { target, index } => {
             format!("{}[{}]", fmt_operand(target, 8), fmt_expr(index))
@@ -469,6 +476,19 @@ mod tests {
         assert_eq!(fmt("-(a + b)"), "-(a + b)\n");
         assert_eq!(fmt("!(a && b)"), "!(a && b)\n");
         assert_eq!(fmt("(a + b)[0]"), "(a + b)[0]\n");
+    }
+
+    #[test]
+    fn field_access_keeps_only_the_parentheses_it_needs() {
+        // A field binds like the other postfix forms, so a chain needs no
+        // parentheses and a lower-precedence target still does.
+        assert_eq!(fmt("(a.b).c"), "a.b.c\n");
+        assert_eq!(fmt("a.b()"), "a.b()\n");
+        assert_eq!(fmt("a[0].b"), "a[0].b\n");
+        assert_eq!(fmt("a.b[0]"), "a.b[0]\n");
+        assert_eq!(fmt("(a + b).c"), "(a + b).c\n");
+        assert_eq!(fmt("(-a).b"), "(-a).b\n");
+        assert_eq!(fmt("-a.b"), "-a.b\n");
     }
 
     #[test]

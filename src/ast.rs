@@ -90,6 +90,13 @@ pub enum ExprKind {
         target: Box<Expr>,
         index: Box<Expr>,
     },
+    /// `target.name`. Distinct from [`ExprKind::Index`] with a string index
+    /// because a field that is not there is an error, where a missing map key
+    /// reads as `nil`.
+    Field {
+        target: Box<Expr>,
+        name: String,
+    },
     Unary {
         op: UnaryOp,
         operand: Box<Expr>,

@@ -935,6 +935,46 @@ fn a_multi_line_function_body_parses_inside_a_call_or_an_array() {
 }
 
 #[test]
+fn a_field_reads_a_map_entry_and_insists_it_exists() {
+    check_all(&[
+        ("let m = {\"a\": 1, \"b\": 2}\nm.b", "ok 2"),
+        // Chained, and through a call's result.
+        ("let m = {\"a\": {\"b\": 7}}\nm.a.b", "ok 7"),
+        ("fn f() {\n  return {\"x\": 1}\n}\nf().x", "ok 1"),
+        // The difference from indexing, in one program: a missing key reads as
+        // nil, a missing field does not get that far.
+        ("let m = {\"a\": 1}\nm[\"nope\"]", "ok nil"),
+        ("let m = {\"a\": 1}\nm.nope", "err no field 'nope' @ 2:3"),
+        // The target is blamed when it has no fields at all, so the two errors
+        // point at different halves of the same expression.
+        (
+            "let n = 5\nn.field",
+            "err cannot read a field of a int @ 2:1",
+        ),
+        (
+            "let m = {}\nm.1",
+            "err expected a field name after '.' but found integer '1' @ 2:3",
+        ),
+    ]);
+}
+
+#[test]
+fn a_missing_field_underlines_the_name() {
+    // The v0.7 underline earns its keep here: the field is the part at fault
+    // and it is the part marked, without the reader counting columns.
+    check_rendered(&[
+        (
+            "let cfg = {\"timeout\": 30}\ncfg.tiemout",
+            "error (line 2, column 5): no field 'tiemout'\n    cfg.tiemout\n        ^^^^^^^",
+        ),
+        (
+            "let n = 5\nn.field",
+            "error (line 2, column 1): cannot read a field of a int\n    n.field\n    ^",
+        ),
+    ]);
+}
+
+#[test]
 fn a_program_evaluates_to_its_last_expression() {
     check_all(&[("1\n2\n3", "ok 3"), ("1 + 1\n2 + 2", "ok 4")]);
 }
