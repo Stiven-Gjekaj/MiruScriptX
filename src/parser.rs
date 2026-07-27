@@ -486,8 +486,10 @@ impl Parser {
     }
 
     fn parse_map(&mut self, line: usize, column: usize) -> Result<Expr, MiruError> {
-        // The lexer does not suppress newlines inside braces (blocks need
-        // them), so a map literal skips newlines between its entries itself.
+        // A brace restores newline significance, because blocks need it, so a
+        // map literal skips newlines between its entries itself. That was true
+        // before v0.8 made braces restore it inside a group too, which is why
+        // that change did not disturb map literals.
         let mut entries = Vec::new();
         self.skip_newlines();
         if !self.check(&TokenKind::RBrace) {

@@ -34,6 +34,9 @@ pub struct Lexer {
     line: usize,
     line_start: usize,
     group_depth: usize,
+    /// The `group_depth` each open brace suspended, restored by its match. A
+    /// stack rather than a counter because braces and groups interleave.
+    group_stack: Vec<usize>,
     /// When set, the lexer records comments and blank-line positions for the
     /// formatter instead of discarding them.
     collect_trivia: bool,
@@ -58,6 +61,7 @@ impl Lexer {
             line: 1,
             line_start: 0,
             group_depth: 0,
+            group_stack: Vec::new(),
             collect_trivia: false,
             comments: Vec::new(),
             blank_before: HashSet::new(),
@@ -248,8 +252,22 @@ impl Lexer {
                 self.group_depth = self.group_depth.saturating_sub(1);
                 TokenKind::RParen
             }
-            '{' => TokenKind::LBrace,
-            '}' => TokenKind::RBrace,
+            // A brace restores newline significance, whatever is open outside
+            // it. Without this a function body written inside a call argument
+            // loses the separators its statements need, so a multi-line
+            // callback handed straight to `map` did not parse.
+            //
+            // Map literals are unaffected: braces never suppressed newlines, so
+            // `Parser::parse_map` already skips them between entries itself.
+            '{' => {
+                self.group_stack.push(self.group_depth);
+                self.group_depth = 0;
+                TokenKind::LBrace
+            }
+            '}' => {
+                self.group_depth = self.group_stack.pop().unwrap_or(0);
+                TokenKind::RBrace
+            }
             '[' => {
                 self.group_depth += 1;
                 TokenKind::LBracket

@@ -909,6 +909,32 @@ fn a_newline_stays_insignificant_inside_parentheses_and_brackets() {
 }
 
 #[test]
+fn a_multi_line_function_body_parses_inside_a_call_or_an_array() {
+    // Newline suppression inside a group used to reach into a block nested
+    // within it, so a function body of more than one statement lost the
+    // separators its statements need. A multi-line callback handed straight to
+    // `map` is the obvious thing to write and did not parse.
+    //
+    // A brace now restores newline significance whatever is open outside it.
+    check_all(&[
+        (
+            "map([1, 2], fn(x) {\n  let d = x * 2\n  return d\n})",
+            "ok [2, 4]",
+        ),
+        // Control flow inside the callback, which needs the separators most.
+        (
+            "filter([1, 2, 3], fn(x) {\n  if x == 2 {\n    return false\n  }\n  return true\n})",
+            "ok [1, 3]",
+        ),
+        // Inside a bracket group rather than a call.
+        ("[fn() {\n  let a = 1\n  return a\n}][0]()", "ok 1"),
+        // A brace inside a brace inside a group: a map literal holding a
+        // multi-line function, as a call argument.
+        ("len({\"f\": fn() {\n  let a = 1\n  return a\n}})", "ok 1"),
+    ]);
+}
+
+#[test]
 fn a_program_evaluates_to_its_last_expression() {
     check_all(&[("1\n2\n3", "ok 3"), ("1 + 1\n2 + 2", "ok 4")]);
 }
