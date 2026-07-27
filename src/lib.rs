@@ -252,6 +252,12 @@ pub struct MiruError {
     pub column: usize,
     pub message: String,
     pub trace: Vec<TraceEntry>,
+    /// The file this error is about, when it is not the one being rendered.
+    ///
+    /// An error raised inside an imported module has a line and column in *that*
+    /// file, and whoever renders it holds the importing file's source. Naming
+    /// the file is what stops a caret being drawn on an unrelated line.
+    pub file: Option<String>,
 }
 
 impl MiruError {
@@ -271,6 +277,7 @@ impl MiruError {
             column,
             message: message.into(),
             trace: Vec::new(),
+            file: None,
         }
     }
 
@@ -317,6 +324,10 @@ impl MiruError {
             .line
             .checked_sub(1)
             .filter(|_| self.column > 0)
+            // An error from another file has a position in that file, and this
+            // is not that file's text. Drawing a line from it would point at
+            // something unrelated with total confidence.
+            .filter(|_| self.file.is_none())
             .and_then(|index| source.lines().nth(index))
         {
             // Build the indent from the source itself so that tabs before the
@@ -361,11 +372,15 @@ impl MiruError {
 
 impl fmt::Display for MiruError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (self.line, self.column) {
-            (0, _) => write!(f, "error: {}", self.message),
-            (line, 0) => write!(f, "error (line {line}): {}", self.message),
-            (line, column) => write!(f, "error (line {line}, column {column}): {}", self.message),
-        }
+        let where_ = match (&self.file, self.line, self.column) {
+            (None, 0, _) => String::new(),
+            (None, line, 0) => format!(" (line {line})"),
+            (None, line, column) => format!(" (line {line}, column {column})"),
+            (Some(file), 0, _) => format!(" ({file})"),
+            (Some(file), line, 0) => format!(" ({file}, line {line})"),
+            (Some(file), line, column) => format!(" ({file}, line {line}, column {column})"),
+        };
+        write!(f, "error{where_}: {}", self.message)
     }
 }
 
@@ -499,6 +514,30 @@ mod tests {
             err.render("\"\u{4e2d}\u{4e2d}\u{4e2d}\" + 1"),
             "error (line 1, column 1): boom\n    \"\u{4e2d}\u{4e2d}\u{4e2d}\" + 1\n    ^^^^^"
         );
+    }
+
+    #[test]
+    fn an_error_from_another_file_names_it_and_draws_no_caret() {
+        // The position belongs to the named file, and `render` is holding the
+        // importing file's text. Drawing a line from it would point at
+        // something unrelated with total confidence, so it does not.
+        let mut err = MiruError::with_column(3, 5, "undefined variable 'x'");
+        err.file = Some("./math.miru".to_string());
+        assert_eq!(
+            err.render("let a = 1\nlet b = 2\nlet c = 3\n"),
+            "error (./math.miru, line 3, column 5): undefined variable 'x'"
+        );
+    }
+
+    #[test]
+    fn a_file_is_named_whatever_position_is_known() {
+        let mut err = MiruError::new(7, "boom");
+        err.file = Some("./m.miru".to_string());
+        assert_eq!(err.to_string(), "error (./m.miru, line 7): boom");
+
+        let mut bare = MiruError::with_column(0, 0, "boom");
+        bare.file = Some("./m.miru".to_string());
+        assert_eq!(bare.to_string(), "error (./m.miru): boom");
     }
 
     #[test]
