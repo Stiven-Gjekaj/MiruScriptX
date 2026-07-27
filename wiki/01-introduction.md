@@ -26,7 +26,8 @@ followed by a newline.
 
 These pages are meant to be read in order, like short lessons. By the end you
 will know the whole language: values, variables, operators, control flow,
-functions and closures, arrays, and every builtin.
+functions and closures, arrays, every builtin, and how to split a program
+across more than one file.
 
 If you prefer a single page you can search, see the
 [language reference](../docs/language-reference.md).

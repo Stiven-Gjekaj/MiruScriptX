@@ -52,7 +52,8 @@ followed by a newline.
 
 These pages are meant to be read in order, like short lessons. By the end you
 will know the whole language: values, variables, operators, control flow,
-functions and closures, arrays, and every builtin.
+functions and closures, arrays, every builtin, and how to split a program
+across more than one file.
 
 If you prefer a single page you can search, see the
 [language reference](../docs/language-reference.md).
@@ -1151,7 +1152,7 @@ status, so scripts and continuous integration can tell success from failure.
 
 # Next steps
 
-You now know all of MiruScriptX v0.6. Here is where to go from here.
+You now know all of MiruScriptX v0.8. Here is where to go from here.
 
 ## Try it without installing anything
 
@@ -1159,7 +1160,9 @@ The [playground](https://stiven-gjekaj.github.io/MiruScriptX/) runs MiruScriptX
 in your browser. It is the same lexer, compiler, and virtual machine as the
 `miru` command, built to WebAssembly, so anything that works there works on your
 machine and the other way round. It has the example programs ready to load, a
-Format button, and a tab showing the bytecode your program compiles to.
+Format button, and a tab showing the bytecode your program compiles to. The one
+thing it cannot do is `import`, because there is no file system in a browser to
+resolve a path against.
 
 ## Practice
 
@@ -1170,8 +1173,9 @@ Try writing a few small programs:
 - Compute the greatest common divisor of two numbers with a `while` loop.
 
 The programs in the [examples](../examples) folder are a good starting point.
-Run them with `miru run examples/greet.miru`, and try
-`miru run examples/greeter.miru` for one that reads your input.
+Run them with `miru run examples/greet.miru`, try
+`miru run examples/greeter.miru` for one that reads your input, and
+`miru run examples/shop.miru` for a pair of files that work together.
 
 ## Look things up
 
@@ -1191,7 +1195,7 @@ miru disasm hello.miru
 
 ## What is coming
 
-The [roadmap](../docs/milestones.md) lists what is planned next, from making the
-bytecode virtual machine the only engine to a browser playground.
+The [roadmap](../docs/milestones.md) lists what has shipped, milestone by
+milestone, and what is planned next.
 
 
