@@ -224,31 +224,62 @@ handed.
 
 ## v0.8: modules
 
-A program is one file today, and every name lives in one flat table alongside
-about forty builtins. This is the largest milestone of the four.
+Shipped. A program can be more than one file. `import "./prices.miru" as prices`
+runs that file and binds everything it defines under `prices`, and the names in
+each file are that file's own.
 
-- An `import` form that binds a module under a name, so a module's functions are
-  reached through it rather than dumped into the importing scope. Explicit
-  beats convenient here: a reader should be able to tell where a name came from
-  without checking every import at the top of the file.
+- **The lexer opened first.** A brace now restores newline significance inside a
+  group, so a multi-line function handed straight to `map` parses. That was the
+  defect logged in v0.7, worked around by binding the callback to a variable,
+  and it had to go before a milestone that adds syntax could be trusted. The
+  `Dot` token came with it, with the float boundary pinned: `2.5` is a number
+  and `1.foo` is not one.
 
-- **The architectural work is namespacing `Globals`.** It is one flat, shared
-  table (`src/globals.rs`), which is exactly what lets a REPL session resolve a
-  name defined by an earlier input. Modules need separate slot spaces without
-  losing that, and the compiler resolves every global to a slot at compile time,
-  so this reaches into the hottest naming path in the engine.
+- **`GetField` exists beside `Index` for one reason**, and it is not speed. A
+  module is an ordinary map, so `math["add"]` already worked. `math.nope` is an
+  error naming the field, where `math["nope"]` is `nil`, because a missing key
+  reading as `nil` is what maps have always meant and changing it would break
+  every program that tests a lookup. The dot is for where a typo should stop the
+  program; the brackets are for where a missing key is an answer.
 
-- Resolution relative to the importing file, with a cycle check that reports the
-  chain rather than recursing until the stack gives out.
+  The risk flagged as the milestone's largest, a wildcard arm in the formatter's
+  `precedence`, turned out to be inert: ten cases printed identically with the
+  arm present and absent.
 
-- The playground has no filesystem. Either imports resolve against a bundled
-  virtual set of files, or the page states plainly that it runs single files.
-  Decide honestly rather than letting the browser silently behave differently
-  from the terminal.
+- **Namespacing `Globals` cost the VM nothing, and the diff proves it.** Each
+  module gets its own name-to-slot map over one flat slot space, so `GetGlobal`
+  still takes a slot number and indexes a vector. The commit has no diff in
+  `src/vm.rs` at all; the benchmark agreed at -1.3% on a min of four, which is
+  inside this host's noise either way.
 
-- A prelude becomes possible. It is no longer where the higher-order builtins
-  might end up: v0.7 measured that design at 1.63x slower than the native one
-  and rejected it, so they stay in Rust.
+- **`import` compiles to nothing.** There is no opcode and the compiler never
+  touches the file system: imports resolve in a pre-pass before the importing
+  file compiles, so by the time `math.add` runs, `math` is a global holding a
+  map. The parser rejects an import outside the top level of a file, because it
+  is the only stage that can tell. The loader caches by canonical path, so a
+  diamond runs the shared file once and `./m.miru` and `./sub/../m.miru` are one
+  file. A cycle reports its chain rather than recursing until the stack gives
+  out, following `MAX_CALL_DEPTH`'s precedent of turning an unbounded failure
+  into an ordinary error.
+
+- **An error names the file it is in.** `MiruError` gained an optional file,
+  which the loader sets on the way out of a module, innermost first, so an error
+  three files deep names the one at fault rather than the one at the top of the
+  chain. When a file is set nothing is underlined, because the source in hand
+  belongs to a different file and a caret on the wrong line is worse than none.
+
+- **The playground says what it cannot do.** Of the two honest options the
+  roadmap offered, a bundled virtual file system or a plain statement, it took
+  the statement: the page says it runs one file, and `import` there reports that
+  the program was not loaded from a file. A browser has no file system, and
+  pretending otherwise would have made the playground behave differently from
+  the terminal it claims to match.
+
+What v0.9 inherits: a module cannot keep anything to itself. Every top-level
+name is exported, which is deliberately the permissive rule, because an `export`
+keyword can narrow it later without invalidating a program written today and the
+reverse would not be true. The per-element allocation v0.7 handed on is still
+there as well; nothing in v0.8 went near `BuiltinFn`.
 
 ## v0.9: failure as a value
 
