@@ -278,6 +278,10 @@ impl Lexer {
             }
             ',' => TokenKind::Comma,
             ':' => TokenKind::Colon,
+            // A '.' only reaches here when it is not part of a number:
+            // `read_number` takes one that is followed by a digit, so `1.5` is
+            // a single float while `1.foo` is an int, a dot, and a name.
+            '.' => TokenKind::Dot,
             ';' => TokenKind::Newline,
             '=' => {
                 if self.match_char('=') {
@@ -591,6 +595,52 @@ mod tests {
                 TokenKind::Int(1),
                 TokenKind::Int(42),
                 TokenKind::Float(2.5),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_dot_is_a_token_unless_a_number_is_taking_it() {
+        // `read_number` consumes a '.' only when a digit follows it, so the two
+        // uses do not collide. These pin that boundary from both sides, since
+        // it is the one place adding this token could have changed an existing
+        // program's meaning.
+        assert_eq!(kinds("2.5"), vec![TokenKind::Float(2.5), TokenKind::Eof]);
+        assert_eq!(
+            kinds("a.b"),
+            vec![
+                TokenKind::Ident("a".to_string()),
+                TokenKind::Dot,
+                TokenKind::Ident("b".to_string()),
+                TokenKind::Eof,
+            ]
+        );
+        // A dot after a number, not followed by a digit, is a dot. Whether the
+        // parser accepts this is its business; the lexer just does not merge it
+        // into the number.
+        assert_eq!(
+            kinds("1.foo"),
+            vec![
+                TokenKind::Int(1),
+                TokenKind::Dot,
+                TokenKind::Ident("foo".to_string()),
+                TokenKind::Eof,
+            ]
+        );
+        // And a trailing dot with nothing after it at all.
+        assert_eq!(
+            kinds("1."),
+            vec![TokenKind::Int(1), TokenKind::Dot, TokenKind::Eof]
+        );
+        // A digit after the dot belongs to whatever follows, not to the number
+        // before it, because `read_number` already finished.
+        assert_eq!(
+            kinds("a.1"),
+            vec![
+                TokenKind::Ident("a".to_string()),
+                TokenKind::Dot,
+                TokenKind::Int(1),
                 TokenKind::Eof,
             ]
         );
