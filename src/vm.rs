@@ -12,13 +12,15 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::builtins::{Args, HostTask, Step};
 use crate::chunk::{Chunk, OpCode};
-use crate::globals::Globals;
+use crate::globals::{Globals, ModuleId, ROOT_MODULE};
 use crate::value::{Closure, CompiledFunction, EmptyInput, Input, Output, Upvalue, Value};
 use crate::MiruError;
 
@@ -119,6 +121,19 @@ enum TaskCall {
     Nested,
 }
 
+/// What `import` has loaded, and what it is part way through loading.
+#[derive(Default)]
+struct Loader {
+    /// Canonical path to the module's exported map, so a file imported from two
+    /// places runs once. Without this a module with a side effect runs twice and
+    /// nobody can explain why.
+    cache: HashMap<PathBuf, Value>,
+    /// The chain currently being loaded, innermost last, as canonical paths
+    /// paired with the spec each was reached by. Turns a cycle into an ordinary
+    /// error naming the chain rather than a stack overflow.
+    loading: Vec<(PathBuf, String)>,
+}
+
 /// A stack-based bytecode interpreter.
 pub struct Vm {
     stack: Vec<Value>,
@@ -136,6 +151,7 @@ pub struct Vm {
     column: usize,
     /// Higher-order builtins suspended waiting for a call, innermost last.
     tasks: Vec<PendingTask>,
+    loader: Loader,
 }
 
 impl Default for Vm {
@@ -170,6 +186,7 @@ impl Vm {
             line: 0,
             column: 0,
             tasks: Vec::new(),
+            loader: Loader::default(),
         }
     }
 
@@ -191,8 +208,138 @@ impl Vm {
     /// a session compiles one input at a time, and the second input must resolve
     /// names the first defined.
     pub fn run(&mut self, program: &[crate::ast::Stmt]) -> Result<Value, MiruError> {
+        self.run_from(program, None)
+    }
+
+    /// Run a program that came from `path`, which is what an `import` resolves
+    /// against.
+    ///
+    /// Imports are settled here, before the program compiles, so an alias
+    /// already holds its module by the time a `GetField` on it runs. `None`
+    /// means the program came from a string rather than a file, and an import
+    /// then has nothing to resolve against.
+    pub fn run_from(
+        &mut self,
+        program: &[crate::ast::Stmt],
+        path: Option<&Path>,
+    ) -> Result<Value, MiruError> {
+        self.resolve_imports(program, path, ROOT_MODULE)?;
         let script = crate::compiler::Compiler::compile(program, &mut self.globals)?;
         self.interpret(script)
+    }
+
+    /// Bind every top-level import in `program`.
+    ///
+    /// The error for a program with no file lives here rather than in the
+    /// compiler, because this is where a path would have been. The compiler
+    /// knows nothing about files.
+    fn resolve_imports(
+        &mut self,
+        program: &[crate::ast::Stmt],
+        path: Option<&Path>,
+        module: ModuleId,
+    ) -> Result<(), MiruError> {
+        for stmt in program {
+            let crate::ast::StmtKind::Import {
+                spec,
+                alias,
+                column,
+            } = &stmt.kind
+            else {
+                continue;
+            };
+            let Some(base) = path else {
+                return Err(MiruError::with_column(
+                    stmt.line,
+                    *column,
+                    "cannot import: this program was not loaded from a file",
+                ));
+            };
+            let value = self.load_module(spec, base, stmt.line, *column)?;
+            let slot = self.globals.slot_for(module, alias).ok_or_else(|| {
+                MiruError::with_column(
+                    stmt.line,
+                    *column,
+                    "too many global variables in one program",
+                )
+            })?;
+            self.globals.define(slot, value);
+        }
+        Ok(())
+    }
+
+    /// Load the module `spec` names, relative to the file at `base`, and return
+    /// its exports as a map.
+    fn load_module(
+        &mut self,
+        spec: &str,
+        base: &Path,
+        line: usize,
+        column: usize,
+    ) -> Result<Value, MiruError> {
+        let at = |message: String| MiruError::with_column(line, column, message);
+        let joined = base.parent().unwrap_or_else(|| Path::new(".")).join(spec);
+        // Report a missing file as missing. Canonicalising one that does not
+        // exist fails too, but with a message about the wrong thing.
+        if !joined.is_file() {
+            return Err(at(format!("cannot import '{spec}': no such file")));
+        }
+        let canonical = joined
+            .canonicalize()
+            .map_err(|err| at(format!("cannot import '{spec}': {err}")))?;
+
+        // Two spellings of one path share an entry, which is what canonicalising
+        // is for.
+        if let Some(cached) = self.loader.cache.get(&canonical) {
+            return Ok(cached.clone());
+        }
+        if let Some(start) = self
+            .loader
+            .loading
+            .iter()
+            .position(|(path, _)| path == &canonical)
+        {
+            let mut chain: Vec<&str> = self.loader.loading[start..]
+                .iter()
+                .map(|(_, spec)| spec.as_str())
+                .collect();
+            chain.push(spec);
+            return Err(at(format!("import cycle: {}", chain.join(" -> "))));
+        }
+
+        let source = std::fs::read_to_string(&canonical)
+            .map_err(|err| at(format!("cannot import '{spec}': {err}")))?;
+        let program = crate::parse_program(&source).map_err(|err| in_file(err, spec))?;
+
+        self.loader
+            .loading
+            .push((canonical.clone(), spec.to_string()));
+        let module = self.globals.new_module();
+        let outcome = self.run_module(&program, &canonical, module);
+        self.loader.loading.pop();
+        outcome.map_err(|err| in_file(err, spec))?;
+
+        let exports = Value::Map(Rc::new(RefCell::new(self.globals.exports(module))));
+        self.loader.cache.insert(canonical, exports.clone());
+        Ok(exports)
+    }
+
+    /// Resolve a module's own imports, compile it, and run it.
+    ///
+    /// Split out so the caller can pop its loading entry whether this succeeded
+    /// or failed. Nothing here re-enters `interpret`: a module's imports are
+    /// settled before it compiles, and it runs to completion before control
+    /// returns, so no two runs overlap.
+    fn run_module(
+        &mut self,
+        program: &[crate::ast::Stmt],
+        canonical: &Path,
+        module: ModuleId,
+    ) -> Result<(), MiruError> {
+        self.resolve_imports(program, Some(canonical), module)?;
+        let script = crate::compiler::Compiler::compile_module(program, &mut self.globals, module)?;
+        self.interpret(script)?;
+        Ok(())
     }
 
     /// Execute an already compiled program. The whole program is itself a
@@ -1123,6 +1270,17 @@ fn index_set(
 }
 
 /// Build a runtime error at the source position of the byte at `offset`.
+/// Tag an error with the module it came from, unless a deeper one already did.
+///
+/// The innermost file wins, so an error three imports down names the file it is
+/// actually in rather than the one at the top of the chain.
+fn in_file(mut error: MiruError, spec: &str) -> MiruError {
+    if error.file.is_none() {
+        error.file = Some(spec.to_string());
+    }
+    error
+}
+
 fn runtime_error(chunk: &Chunk, offset: usize, message: impl Into<String>) -> MiruError {
     let (line, column) = chunk.position(offset);
     MiruError::with_column(line, column, message)

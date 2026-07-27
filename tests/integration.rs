@@ -21,6 +21,122 @@ fn run_example(name: &str) -> String {
     String::from_utf8(output.stdout).expect("output should be valid utf-8")
 }
 
+/// Write a set of `(name, source)` files into a fresh directory and run the
+/// first through the binary, returning `(stdout, stderr)`.
+///
+/// Imports resolve against real paths, so these need real files. A directory
+/// per test keeps them from colliding when the suite runs in parallel.
+fn run_module_set(dir: &str, files: &[(&str, &str)]) -> (String, String) {
+    let root = std::env::temp_dir().join(format!("miru_modules_{dir}"));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("sub")).expect("create temp dir");
+    for (name, source) in files {
+        std::fs::write(root.join(name), source).expect("write module");
+    }
+    let output = miru()
+        .arg("run")
+        .arg(root.join(files[0].0))
+        .output()
+        .expect("failed to launch the miru binary");
+    let _ = std::fs::remove_dir_all(&root);
+    (
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn an_import_binds_a_module_and_each_file_keeps_its_own_names() {
+    // `total` is defined in both files. Before v0.8 that was impossible to
+    // write, because every name shared one table.
+    let (out, err) = run_module_set(
+        "basic",
+        &[
+            (
+                "main.miru",
+                "import \"./math.miru\" as math\nlet total = 1\nprint(math.add(2, 3))\nprint(math.total)\nprint(total)\n",
+            ),
+            (
+                "math.miru",
+                "let total = 100\nfn add(a, b) {\n  return a + b\n}\n",
+            ),
+        ],
+    );
+    assert_eq!(err, "", "stderr was: {err}");
+    assert_eq!(out, "5\n100\n1\n");
+}
+
+#[test]
+fn a_module_imported_twice_runs_once() {
+    // Reached through two different files, and by two spellings of one path, so
+    // this checks the cache and the canonicalising together. A module with a
+    // side effect running twice is the failure nobody can explain later.
+    let (out, err) = run_module_set(
+        "diamond",
+        &[
+            (
+                "diamond.miru",
+                "import \"./a.miru\" as a\nimport \"./b.miru\" as b\nprint(a.via + b.via)\n",
+            ),
+            ("a.miru", "import \"./shared.miru\" as s\nlet via = s.n\n"),
+            (
+                "b.miru",
+                "import \"./sub/../shared.miru\" as s\nlet via = s.n\n",
+            ),
+            ("shared.miru", "print(\"shared ran\")\nlet n = 7\n"),
+        ],
+    );
+    assert_eq!(err, "", "stderr was: {err}");
+    assert_eq!(out, "shared ran\n14\n");
+}
+
+#[test]
+fn an_import_cycle_reports_its_chain() {
+    let (_, err) = run_module_set(
+        "cycle",
+        &[
+            ("x.miru", "import \"./y.miru\" as y\nlet a = 1\n"),
+            ("y.miru", "import \"./x.miru\" as x\nlet b = 2\n"),
+        ],
+    );
+    assert!(
+        err.contains("import cycle: ./y.miru -> ./x.miru -> ./y.miru"),
+        "stderr was: {err}"
+    );
+}
+
+#[test]
+fn a_module_error_names_the_module_and_not_the_importing_file() {
+    // Three deep, so the file named has to be the one the error is actually in
+    // rather than the one at the top of the chain. And no caret: the position
+    // belongs to c3.miru, and what the binary holds is a3.miru's text.
+    let (_, err) = run_module_set(
+        "nested",
+        &[
+            ("a3.miru", "import \"./b3.miru\" as b\n"),
+            ("b3.miru", "import \"./c3.miru\" as c\n"),
+            ("c3.miru", "let z = nope\n"),
+        ],
+    );
+    assert!(
+        err.contains("error (./c3.miru, line 1, column 9): undefined variable 'nope'"),
+        "stderr was: {err}"
+    );
+    assert!(
+        !err.contains('^'),
+        "drew a caret on the wrong source: {err}"
+    );
+}
+
+#[test]
+fn a_missing_module_says_so_rather_than_failing_to_canonicalise() {
+    let (_, err) = run_module_set("missing", &[("m.miru", "import \"./nope.miru\" as n\n")]);
+    assert!(
+        err.contains("cannot import './nope.miru': no such file"),
+        "stderr was: {err}"
+    );
+}
+
 #[test]
 fn greet_example_output() {
     assert_eq!(run_example("greet.miru"), "Hello, Aiko!\nHello, Ken!\n");

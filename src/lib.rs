@@ -73,10 +73,25 @@ pub fn format_source(source: &str) -> Result<String, MiruError> {
 /// Lex, parse, compile, and run a source string, sending `print` output to
 /// `out` and reading `input()` from standard input.
 pub fn run_source(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
+    run_source_from(source, None, out)
+}
+
+/// Like [`run_source`], but for a program that came from `path`, which is what
+/// an `import` inside it resolves against.
+///
+/// The path-free spelling above delegates here with `None`. Keeping one
+/// implementation and a one-line wrapper, rather than two entry points, is why
+/// the forty-odd existing callers did not have to change: a wrapper that is
+/// literally `f(source, None, out)` cannot drift from what it wraps.
+pub fn run_source_from(
+    source: &str,
+    path: Option<&std::path::Path>,
+    out: Box<dyn Write>,
+) -> Result<(), MiruError> {
     let program = parse_program(source)?;
     let mut vm = vm::Vm::with_output(out);
     vm.set_input(Box::new(StdinInput));
-    vm.run(&program)?;
+    vm.run_from(&program, path)?;
     vm.flush();
     Ok(())
 }

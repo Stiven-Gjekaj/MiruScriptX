@@ -221,6 +221,17 @@ impl Parser {
         self.skip_newlines();
         while !self.check(&TokenKind::RBrace) && !self.is_at_end() {
             let stmt = self.statement()?;
+            // Only `block` can tell that a statement is nested, and an import is
+            // a file-level thing: one is resolved before the file compiles, so
+            // an import inside a branch or a loop could not mean what it looks
+            // like it means.
+            if let StmtKind::Import { column, .. } = stmt.kind {
+                return Err(MiruError::with_column(
+                    stmt.line,
+                    column,
+                    "import must appear at the top level of a file",
+                ));
+            }
             if !Parser::ends_with_block(&stmt.kind) {
                 self.consume_terminator()?;
             }

@@ -148,17 +148,12 @@ impl<'g> Compiler<'g> {
     /// Compile a statement for its side effects, leaving the stack unchanged.
     fn statement(&mut self, stmt: &Stmt) -> Result<(), MiruError> {
         match &stmt.kind {
-            StmtKind::Import { column, .. } => {
-                // Resolving a path needs to know which file the import was
-                // written in, and a program compiled from a string has no file.
-                // That is the playground's situation and `eval_source`'s, so
-                // this is the real answer rather than a placeholder.
-                return Err(MiruError::with_column(
-                    stmt.line,
-                    *column,
-                    "cannot import: this program was not loaded from a file",
-                ));
-            }
+            // Imports are resolved before compilation, by whoever holds the
+            // file path, so by the time the compiler sees one the alias already
+            // has its value and there is nothing left to emit. The compiler
+            // knows nothing about files, which is why the error for a program
+            // that has none is raised where the path would have been.
+            StmtKind::Import { .. } => {}
             StmtKind::Expr(expr) => {
                 self.expression(expr)?;
                 self.chunk.write_op(OpCode::Pop, stmt.line, 1);

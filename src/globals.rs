@@ -25,7 +25,7 @@
 //! imported module must be able to call `print` without being able to see the
 //! importing file's variables, and those are two different questions.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::value::Value;
 
@@ -134,6 +134,23 @@ impl Globals {
     /// list of builtin names that could fall out of step with the real one.
     pub fn contains(&self, name: &str) -> bool {
         self.builtins.contains_key(name) || self.modules[ROOT_MODULE].contains_key(name)
+    }
+
+    /// A module's top-level names and their values.
+    ///
+    /// Everything the module defined is visible to whoever imports it. A name
+    /// that has a slot but no value was mentioned and never defined, so it is
+    /// left out rather than exported as `nil`: a typo inside a module should
+    /// not become a field on it.
+    pub fn exports(&self, module: ModuleId) -> BTreeMap<String, Value> {
+        self.modules[module]
+            .iter()
+            .filter_map(|(name, slot)| {
+                self.values[*slot as usize]
+                    .clone()
+                    .map(|value| (name.clone(), value))
+            })
+            .collect()
     }
 
     /// The name a slot was created for, for error messages.
