@@ -240,6 +240,11 @@ fn render_comment(text: &str) -> String {
 /// which is what makes anonymous function bodies printable inside expressions.
 fn stmt_inline(stmt: &Stmt) -> String {
     match &stmt.kind {
+        StmtKind::Import {
+            spec,
+            alias,
+            column: _,
+        } => format!("import {} as {alias}", fmt_string(spec)),
         StmtKind::Let { name, value } => format!("let {name} = {}", fmt_expr(value)),
         StmtKind::Assign { target, value } => {
             format!("{} = {}", fmt_expr(target), fmt_expr(value))
@@ -489,6 +494,14 @@ mod tests {
         assert_eq!(fmt("(a + b).c"), "(a + b).c\n");
         assert_eq!(fmt("(-a).b"), "(-a).b\n");
         assert_eq!(fmt("-a.b"), "-a.b\n");
+    }
+
+    #[test]
+    fn an_import_keeps_its_quotes_and_one_space_either_side() {
+        assert_eq!(
+            fmt("import  \"./a.miru\"  as   a"),
+            "import \"./a.miru\" as a\n"
+        );
     }
 
     #[test]

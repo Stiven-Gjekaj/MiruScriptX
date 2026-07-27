@@ -975,6 +975,44 @@ fn a_missing_field_underlines_the_name() {
 }
 
 #[test]
+fn import_parses_and_says_why_it_cannot_resolve_without_a_file() {
+    // Resolving a path needs to know which file the import was written in, and
+    // a program compiled from a string has none. That is the playground's
+    // situation and eval_source's, so this message is the real answer rather
+    // than a placeholder for one.
+    check_all(&[
+        (
+            "import \"./math.miru\" as math",
+            "err cannot import: this program was not loaded from a file @ 1:8",
+        ),
+        // The path is a quoted string rather than a bare word, so it can hold
+        // any filename.
+        (
+            "import math",
+            "err expected a quoted path after 'import' but found identifier 'math' @ 1:8",
+        ),
+        // The alias is required rather than inferred from the path: a reader
+        // should be able to tell where a name came from without working out
+        // what a filename would have been shortened to.
+        (
+            "import \"./a.miru\"",
+            "err expected 'as' after an import path but found end of input @ 1:18",
+        ),
+        // The same import with a newline after it reports "end of line"
+        // instead, because that is the token it actually met. Pinned because
+        // the difference is easy to mistake for a wording inconsistency.
+        (
+            "import \"./a.miru\"\n",
+            "err expected 'as' after an import path but found end of line @ 1:18",
+        ),
+        (
+            "import \"./a.miru\" as 5",
+            "err expected a name after 'as' but found integer '5' @ 1:22",
+        ),
+    ]);
+}
+
+#[test]
 fn a_program_evaluates_to_its_last_expression() {
     check_all(&[("1\n2\n3", "ok 3"), ("1 + 1\n2 + 2", "ok 4")]);
 }

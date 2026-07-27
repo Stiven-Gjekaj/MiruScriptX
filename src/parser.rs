@@ -45,6 +45,7 @@ impl Parser {
     fn statement(&mut self) -> Result<Stmt, MiruError> {
         let line = self.peek().line;
         match self.peek_kind() {
+            TokenKind::Import => self.import_statement(line),
             TokenKind::Let => self.let_statement(line),
             TokenKind::Return => self.return_statement(line),
             TokenKind::If => self.if_statement(line),
@@ -57,6 +58,52 @@ impl Parser {
             }
             _ => self.expr_or_assign_statement(line),
         }
+    }
+
+    /// `import "./math.miru" as math`.
+    ///
+    /// The path is a string literal rather than a bare word so it can hold any
+    /// filename, and the alias is required rather than inferred from it: a
+    /// reader should be able to tell where a name came from without working out
+    /// what a path would have been shortened to.
+    fn import_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
+        self.advance();
+        let literal = self.peek().clone();
+        let spec = match &literal.kind {
+            TokenKind::Str(spec) => spec.clone(),
+            other => {
+                return Err(MiruError::with_column(
+                    literal.line,
+                    literal.column,
+                    format!(
+                        "expected a quoted path after 'import' but found {}",
+                        other.describe()
+                    ),
+                ))
+            }
+        };
+        self.advance();
+        self.expect(TokenKind::As, "after an import path")?;
+        let name = self.peek().clone();
+        let alias = match &name.kind {
+            TokenKind::Ident(alias) => alias.clone(),
+            other => {
+                return Err(MiruError::with_column(
+                    name.line,
+                    name.column,
+                    format!("expected a name after 'as' but found {}", other.describe()),
+                ))
+            }
+        };
+        self.advance();
+        Ok(Stmt::new(
+            StmtKind::Import {
+                spec,
+                alias,
+                column: literal.column,
+            },
+            line,
+        ))
     }
 
     fn let_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {

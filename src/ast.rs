@@ -18,6 +18,16 @@ impl Stmt {
 /// The different kinds of statements in the language.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StmtKind {
+    /// `import "./math.miru" as math`. Binds the imported file's globals as a
+    /// map under `alias`, reached with field access.
+    Import {
+        /// The path as written, resolved relative to the importing file.
+        spec: String,
+        alias: String,
+        /// Where the path literal sits, so a resolution failure points at it
+        /// rather than at the start of the line.
+        column: usize,
+    },
     /// `let name = value`
     Let { name: String, value: Expr },
     /// `target = value`, where `target` is an identifier or an index expression.
