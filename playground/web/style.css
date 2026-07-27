@@ -240,6 +240,17 @@ footer span {
   margin: 0 0.4rem;
 }
 
+/* The one thing the playground cannot do, said before you try it. */
+.scope {
+  margin: 0 0 0.6rem;
+  max-width: 46rem;
+}
+
+.scope code {
+  font-family: var(--mono);
+  font-size: 0.95em;
+}
+
 /*
  * Token colours. The spans these apply to come from the language's own lexer,
  * so what looks like a keyword here is what the language treats as one.
