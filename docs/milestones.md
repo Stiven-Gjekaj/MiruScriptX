@@ -332,38 +332,8 @@ Defects found and reproduced but not yet scheduled into a milestone. Recorded
 here rather than left in a conversation, so the next person to hit one finds it
 already described instead of rediscovering it.
 
-- **A function body of more than one statement does not parse inside `(` or
-  `[`.** A newline is insignificant inside a group, which is what lets an array
-  literal or a wrapped expression span several lines. That suppression currently
-  reaches into a `{ }` block nested within the group, so the block loses the
-  statement separators it needs:
-
-  ```
-  print(map([1, 2], fn(x) {
-    let doubled = x * 2
-    return doubled
-  }))
-  ```
-
-  ```
-  error (line 3, column 3): expected end of statement but found 'return'
-        return doubled
-        ^^^^^^
-  ```
-
-  A single-statement body is fine, which is why every inline callback in
-  `examples/transform.miru` happens to be one, and why this went unnoticed until
-  v0.7 wanted a two-statement one for a test. Binding the function to a name
-  first is the workaround, and it is not discoverable from the error.
-
-  It matters because a multi-line callback handed straight to `map` is the
-  obvious thing to write, and higher-order builtins are a headline feature.
-
-  The fix looks contained. `Lexer` tracks `group_depth` (`src/lexer.rs`) and
-  skips newlines whenever it is above zero; it should stop skipping once a `{`
-  opens inside a group and resume at the matching `}`. The part to think through
-  before writing it is whether anything else relies on a brace inside a group
-  keeping the group's rules, since a map literal is also braces.
+- Nothing outstanding. The multi-line callback defect logged in v0.7 was fixed
+  in v0.8, which had the lexer open anyway.
 
 ## How versions are cut
 
