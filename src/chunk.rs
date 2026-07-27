@@ -86,6 +86,21 @@ pub enum OpCode {
     /// store the value at that index or key. Carries the same position-only
     /// operand byte as [`OpCode::Index`].
     SetIndex,
+    /// Read a field: pop the field name and the target, and push the value
+    /// stored under that name. Carries the same position-only operand byte as
+    /// [`OpCode::Index`], so "cannot read a field" points at the target while a
+    /// missing field points at the access.
+    ///
+    /// The same shape as [`OpCode::Index`] with one difference that is the whole
+    /// reason it exists: a field that is not there is an error, where a map key
+    /// that is not there reads as `nil`. Indexing is a lookup that may miss;
+    /// field access asserts the field is present. A module is reached this way,
+    /// so a mistyped member fails where it is written.
+    ///
+    /// Taking the name off the stack rather than in an operand means it is an
+    /// ordinary constant, so it inherits `ConstantLong` and is not capped at the
+    /// 256 a one-byte operand would allow.
+    GetField,
     /// Pop the iterable, check it is an array, and push a snapshot to iterate. A
     /// runtime error otherwise.
     IterSnapshot,
@@ -160,7 +175,7 @@ pub enum OpCode {
 /// Every opcode in declaration order, so a byte decodes by indexing rather than
 /// by comparison. The order must match the enum, which `opcodes_match_their_byte`
 /// checks.
-const OPCODES: [OpCode; 44] = [
+const OPCODES: [OpCode; 45] = [
     OpCode::Constant,
     OpCode::Nil,
     OpCode::True,
@@ -192,6 +207,7 @@ const OPCODES: [OpCode; 44] = [
     OpCode::Map,
     OpCode::Index,
     OpCode::SetIndex,
+    OpCode::GetField,
     OpCode::IterSnapshot,
     OpCode::ForNext,
     OpCode::Closure,
@@ -264,6 +280,7 @@ impl OpCode {
             OpCode::Array => "ARRAY",
             OpCode::Map => "MAP",
             OpCode::Index => "INDEX",
+            OpCode::GetField => "GET_FIELD",
             OpCode::SetIndex => "SET_INDEX",
             OpCode::IterSnapshot => "ITER_SNAPSHOT",
             OpCode::ForNext => "FOR_NEXT",
@@ -494,7 +511,7 @@ impl Chunk {
                 let _ = writeln!(out, "{:<14}slot {}", op.name(), (high << 8) | low);
                 offset + 3
             }
-            Some(op @ (OpCode::Index | OpCode::SetIndex)) => {
+            Some(op @ (OpCode::Index | OpCode::SetIndex | OpCode::GetField)) => {
                 // The operand byte carries only a source position, so there is
                 // no value to show for it.
                 let _ = writeln!(out, "{}", op.name());
@@ -645,6 +662,34 @@ mod tests {
         assert_eq!(chunk.position(0), (3, 5));
         assert_eq!(chunk.position(2), (3, 7));
         assert_eq!(chunk.position(99), (0, 0));
+    }
+
+    #[test]
+    fn get_field_is_disassembled_with_its_operand_byte() {
+        // The disassembler's fallback prints an unrecognised opcode as though it
+        // had no operands, so a new instruction that does have one gets its
+        // operand byte read back as the next opcode. Nothing else in the suite
+        // catches that: the VM's match is exhaustive and the OPCODES table has
+        // its own test, but the disassembler has neither.
+        let mut chunk = Chunk::new();
+        let name = chunk.add_constant(Value::Str(std::rc::Rc::new("b".to_string()))) as u8;
+        chunk.write_op(OpCode::Constant, 1, 1);
+        chunk.write(name, 1, 1);
+        chunk.write_op(OpCode::GetField, 1, 2);
+        chunk.write(0, 1, 1);
+        chunk.write_op(OpCode::Return, 1, 1);
+        // RETURN at 0004 is the assertion that matters. GET_FIELD starts at
+        // 0002 and its operand fills 0003, so landing at 0004 says the operand
+        // was consumed. Had it been treated as a zero-operand instruction, the
+        // byte at 0003 would have been decoded as one instead, and a zero there
+        // is CONSTANT.
+        assert_eq!(
+            chunk.disassemble("test"),
+            "== test ==\n\
+             \x20  1  0000 CONSTANT      0 (\"b\")\n\
+             \x20  |  0002 GET_FIELD\n\
+             \x20  |  0004 RETURN\n"
+        );
     }
 
     #[test]

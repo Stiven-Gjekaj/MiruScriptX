@@ -445,6 +445,17 @@ impl Vm {
                         let element = index_get(target, &index, chunk, op_ip, target_ip)?;
                         self.stack.push(element);
                     }
+                    OpCode::GetField => {
+                        // Same shape as Index: the operand byte holds no value,
+                        // only the target expression's position, so "cannot read
+                        // a field" lands under the target.
+                        let target_ip = ip;
+                        ip += 1;
+                        let name = self.pop();
+                        let target = self.pop();
+                        let value = field_get(target, &name, chunk, op_ip, target_ip)?;
+                        self.stack.push(value);
+                    }
                     OpCode::SetIndex => {
                         let target_ip = ip;
                         ip += 1;
@@ -1005,6 +1016,47 @@ fn binary_op(op: OpCode) -> BinaryOp {
     }
 }
 
+/// Read `target.name` for a map, or fail.
+///
+/// The difference from [`index_get`] is the whole reason this exists: a field
+/// that is not there is an error, where a map key that is not there reads as
+/// `nil`. Indexing is a lookup that may miss; field access asserts the field is
+/// present, so a mistyped module member fails where it is written rather than
+/// turning into a `nil` that surfaces somewhere else.
+fn field_get(
+    target: Value,
+    name: &Value,
+    chunk: &Chunk,
+    access_ip: usize,
+    target_ip: usize,
+) -> Result<Value, MiruError> {
+    // The compiler always emits a string constant here, so this only guards a
+    // hand-built chunk. It is an error rather than a panic because the VM is
+    // driven directly by tests and by the disassembler's readers.
+    let key = match name {
+        Value::Str(key) => key,
+        other => {
+            return Err(runtime_error(
+                chunk,
+                access_ip,
+                format!("a field name must be a string, not a {}", other.type_name()),
+            ))
+        }
+    };
+    match target {
+        Value::Map(entries) => entries
+            .borrow()
+            .get(key.as_str())
+            .cloned()
+            .ok_or_else(|| runtime_error(chunk, access_ip, format!("no field '{key}'"))),
+        other => Err(runtime_error(
+            chunk,
+            target_ip,
+            format!("cannot read a field of a {}", other.type_name()),
+        )),
+    }
+}
+
 /// Read `target[index]` for an array or map, or fail for anything else.
 ///
 /// A bad index or key is the index expression's fault and is reported at
@@ -1092,6 +1144,58 @@ mod tests {
             chunk,
         });
         Vm::new().interpret(script)
+    }
+
+    /// A map value, for the field tests.
+    fn map_of(pairs: &[(&str, Value)]) -> Value {
+        let mut entries = BTreeMap::new();
+        for (key, value) in pairs {
+            entries.insert((*key).to_string(), value.clone());
+        }
+        Value::Map(Rc::new(RefCell::new(entries)))
+    }
+
+    /// Emit `target.name`, with the position-only operand byte the opcode
+    /// carries.
+    fn get_field(chunk: &mut Chunk, name: &str) {
+        constant(chunk, Value::Str(Rc::new(name.to_string())));
+        chunk.write_op(OpCode::GetField, 1, 1);
+        chunk.write(0, 1, 1);
+    }
+
+    #[test]
+    fn a_field_reads_the_value_stored_under_that_name() {
+        let value = run(|chunk| {
+            constant(chunk, map_of(&[("a", Value::Int(1)), ("b", Value::Int(2))]));
+            get_field(chunk, "b");
+        })
+        .expect("runs");
+        assert_eq!(value.repr(), "2");
+    }
+
+    #[test]
+    fn a_field_that_is_not_there_is_an_error_where_an_index_would_be_nil() {
+        // This one difference is the whole reason the opcode exists beside
+        // Index. `m["nope"]` is a lookup that may miss and reads as nil;
+        // `m.nope` asserts the field is there.
+        let error = run(|chunk| {
+            constant(chunk, map_of(&[("a", Value::Int(1))]));
+            get_field(chunk, "nope");
+        })
+        .err()
+        .expect("an error");
+        assert_eq!(error.message, "no field 'nope'");
+    }
+
+    #[test]
+    fn a_field_of_a_non_map_names_the_type() {
+        let error = run(|chunk| {
+            constant(chunk, Value::Int(5));
+            get_field(chunk, "a");
+        })
+        .err()
+        .expect("an error");
+        assert_eq!(error.message, "cannot read a field of a int");
     }
 
     fn constant(chunk: &mut Chunk, value: Value) {
