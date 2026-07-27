@@ -1,0 +1,17 @@
+// prices.miru
+// A module. Every name defined at the top level of a file is reachable
+// through whatever the importing file binds it to, so `tax_percent` here is
+// `prices.tax_percent` over in shop.miru.
+//
+// Imported by examples/shop.miru. Running this file on its own is valid and
+// prints nothing, because a module is just a program that defines things.
+
+let tax_percent = 8
+
+fn subtotal(cart) {
+  return reduce(cart, fn(acc, item) { return acc + item["price"] * item["qty"] }, 0)
+}
+
+fn with_tax(amount) {
+  return amount + amount * tax_percent / 100
+}

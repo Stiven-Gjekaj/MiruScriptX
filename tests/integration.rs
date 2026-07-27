@@ -168,6 +168,43 @@ fn transform_example_output() {
 }
 
 #[test]
+fn shop_example_output() {
+    let expected = "notebook x 2\npen x 5\nsubtotal: 1300\ntax: 8 percent\ntotal: 1404\n";
+    assert_eq!(run_example("shop.miru"), expected);
+}
+
+#[test]
+fn the_prices_module_run_on_its_own_is_an_ordinary_program() {
+    // A module is not a special kind of file. It defines things and prints
+    // nothing, and running it directly has to work like any other program.
+    assert_eq!(run_example("prices.miru"), "");
+}
+
+#[test]
+fn a_module_resolves_against_the_importing_file_not_the_working_directory() {
+    // The same example, launched from a directory with no examples/ in it.
+    // `import "./prices.miru"` has to mean the file beside shop.miru rather
+    // than one beside the shell.
+    let program = std::fs::canonicalize("examples/shop.miru").expect("the example is there");
+    let output = miru()
+        .arg("run")
+        .arg(program)
+        .current_dir(std::env::temp_dir())
+        .output()
+        .expect("failed to launch the miru binary");
+    assert!(
+        output.status.success(),
+        "running from elsewhere failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("total: 1404"),
+        "stdout was: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
 fn greeter_example_reads_stdin() {
     use std::io::Write;
 

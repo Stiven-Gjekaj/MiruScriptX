@@ -100,8 +100,10 @@ pub fn version() -> String {
 /// that has drifted from the one in the repository. These are the same files
 /// `tests/integration.rs` runs through the real binary.
 ///
-/// `greeter.miru` is deliberately absent: it calls `input()`, and the
-/// playground has nowhere to read a line from.
+/// Two examples are deliberately absent. `greeter.miru` calls `input()`, and
+/// the playground has nowhere to read a line from. `shop.miru` imports
+/// `prices.miru`, and there is no file system here to resolve that against, so
+/// it would only ever show the refusal.
 const EXAMPLES: &[(&str, &str)] = &[
     ("greet", include_str!("../../examples/greet.miru")),
     ("fib", include_str!("../../examples/fib.miru")),

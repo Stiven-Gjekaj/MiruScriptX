@@ -1,0 +1,22 @@
+// shop.miru
+// Two files working together: this one and the prices module beside it.
+// The path is relative to this file, so it resolves the same wherever you
+// run it from.
+// Run with: miru run examples/shop.miru
+
+import "./prices.miru" as prices
+
+let notebook = {"name": "notebook", "price": 350, "qty": 2}
+let pen = {"name": "pen", "price": 120, "qty": 5}
+let cart = [notebook, pen]
+
+for item in cart {
+  print(item["name"], "x", item["qty"])
+}
+
+// `subtotal` is a function in the module and a number here. Names belong to
+// the file that defines them, so the two never collide.
+let subtotal = prices.subtotal(cart)
+print("subtotal:", subtotal)
+print("tax:", prices.tax_percent, "percent")
+print("total:", prices.with_tax(subtotal))
