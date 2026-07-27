@@ -568,6 +568,20 @@ mod tests {
     }
 
     #[test]
+    fn a_dot_gets_a_span_like_any_other_token() {
+        // Spans are recorded around `read_token`, so a new token kind gets one
+        // without any work. That is worth an assertion rather than an
+        // assumption: `Spans::tokens` has to stay index-parallel with the token
+        // vector, and both the playground's highlighting and the underline an
+        // error draws are wrong the moment it is not.
+        let source = "a.b.c";
+        let (tokens, spans) = Lexer::tokenize_with_spans(source).expect("lexes");
+        assert_eq!(tokens.len(), spans.tokens.len());
+        let text: Vec<String> = spans.tokens.iter().map(|s| slice(source, *s)).collect();
+        assert_eq!(text, vec!["a", ".", "b", ".", "c", ""]);
+    }
+
+    #[test]
     fn collecting_spans_does_not_change_the_tokens() {
         // The ordinary path must be unaffected, which is the point of making
         // this opt in.
