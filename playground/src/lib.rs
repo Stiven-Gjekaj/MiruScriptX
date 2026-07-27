@@ -217,11 +217,22 @@ pub fn highlight(source: &str) -> Vec<Highlight> {
         return Vec::new();
     };
 
+    // A name after a dot is a field, not a variable, so it must not be coloured
+    // as a builtin however it is spelled. `c.len` names a field of `c`; `len(c)`
+    // calls the builtin. `class_of` sees one token at a time and cannot tell
+    // them apart, so the dot is tracked here.
+    let mut after_dot = false;
+
     let mut out: Vec<Highlight> = tokens
         .iter()
         .zip(spans.tokens.iter())
         .filter(|(_, (_, len))| *len > 0)
         .filter_map(|(token, (start, len))| {
+            let is_field = after_dot;
+            after_dot = token.kind == TokenKind::Dot;
+            if is_field {
+                return None;
+            }
             class_of(&token.kind).map(|class| Highlight {
                 start: *start,
                 len: *len,
@@ -360,6 +371,32 @@ mod tests {
                 .any(|(_, text)| text == "n" || text == "+"),
             "{classified:?}"
         );
+    }
+
+    #[test]
+    fn a_field_named_like_a_builtin_is_not_coloured_as_one() {
+        // `class_of` sees one token at a time, so a field spelled like a builtin
+        // would be coloured as one. Field access made that reachable: `c.len` is
+        // a field of `c` and `len(c)` is the builtin, and only the dot tells
+        // them apart.
+        let spans = highlight("let c = {}\nc.len\nlen(c)");
+        let builtins: Vec<usize> = spans
+            .iter()
+            .filter(|h| h.class == "builtin")
+            .map(|h| h.start)
+            .collect();
+        // One "builtin", and it is the call on the third line rather than the
+        // field on the second.
+        assert_eq!(builtins.len(), 1);
+        assert_eq!(
+            "let c = {}\nc.len\nlen(c)"
+                .chars()
+                .skip(builtins[0])
+                .take(3)
+                .collect::<String>(),
+            "len"
+        );
+        assert!(builtins[0] > "let c = {}\nc.len".chars().count());
     }
 
     #[test]
