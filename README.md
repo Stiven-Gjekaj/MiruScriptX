@@ -14,7 +14,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 
 <p align="center">
   <a href="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml"><img src="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <img src="https://img.shields.io/badge/version-0.7-blue?style=flat-square" alt="Version 0.7"/>
+  <img src="https://img.shields.io/badge/version-0.8-blue?style=flat-square" alt="Version 0.8"/>
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"/>
 </p>
 
@@ -34,8 +34,9 @@ _Compiled to bytecode, run on a stack virtual machine_
 
 **MiruScriptX** is a minimalist, dynamically typed scripting language with a
 clean, modern syntax, written from scratch in Rust. Write functions, closures,
-loops, arrays, and maps in familiar syntax, then run them from a file or an
-interactive REPL. Programs use the `.miru` extension.
+loops, arrays, and maps in familiar syntax, split a program across files when it
+outgrows one, then run it from a file or an interactive REPL. Programs use the
+`.miru` extension.
 
 Programs are compiled to bytecode and run on a stack virtual machine. A tree
 walker came first and was replaced in v0.5, once a corpus of golden tests had
@@ -68,6 +69,7 @@ for name in people {
 - Functions, closures, and recursion
 - `if` / `else if` / `else`, `while`, `for ... in`
 - `break` and `continue`
+- Modules: `import` a file and reach its names through a dot
 - Reading input with `input`
 - Arithmetic, comparison, and short-circuit logic
 
@@ -171,17 +173,17 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 
 | Stage | Files | Lines | Responsibility |
 | ----- | ----- | ----- | -------------- |
-| **Lexer** | token.rs, lexer.rs | 880 | Source text to tokens, with line, column, and span tracking |
-| **Parser** | ast.rs, parser.rs | 1031 | Recursive descent plus a Pratt expression parser |
-| **Runtime model** | value.rs, ops.rs, builtins.rs | 1607 | Values, operator and indexing rules, the builtin library |
-| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 2710 | Compiles the AST to bytecode and runs it on a stack VM |
-| **Formatter** | formatter.rs | 617 | Reprints a program in canonical form (`miru fmt`) |
+| **Lexer** | token.rs, lexer.rs | 970 | Source text to tokens, with line, column, and span tracking |
+| **Parser** | ast.rs, parser.rs | 1139 | Recursive descent plus a Pratt expression parser |
+| **Runtime model** | value.rs, ops.rs, builtins.rs | 1921 | Values, operator and indexing rules, the builtin library |
+| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 3338 | Compiles the AST to bytecode, runs it on a stack VM, and loads modules |
+| **Formatter** | formatter.rs | 650 | Reprints a program in canonical form (`miru fmt`) |
 | **CLI and REPL** | main.rs, repl.rs | 331 | File runner, `fmt` and `disasm` commands, and the REPL |
-| **Library** | lib.rs | 490 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **15 files** | **7666** | Written from scratch in Rust |
+| **Library** | lib.rs | 647 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
+| **Total** | **15 files** | **8996** | Written from scratch in Rust |
 
-The playground is a separate crate: 379 lines of Rust binding the language to
-WebAssembly, and 551 of hand-written HTML, CSS, and JavaScript. It is counted
+The playground is a separate crate: 436 lines of Rust binding the language to
+WebAssembly, and 567 of hand-written HTML, CSS, and JavaScript. It is counted
 apart because it is not the language, and neither its code nor its dependencies
 are involved in running a `.miru` file.
 
