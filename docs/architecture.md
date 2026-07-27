@@ -72,9 +72,9 @@ a token and the second because `Eof` covers no text at all.
 | `src/value.rs`       | `Value`, functions and closures, the `Output` and `Caller` traits |
 | `src/ops.rs`         | Arithmetic, comparison, and indexing rules, in one place    |
 | `src/chunk.rs`       | Bytecode chunks: opcodes, constants, positions, disassembler |
-| `src/globals.rs`     | The global table the compiler and VM share, addressed by slot |
+| `src/globals.rs`     | The global table the compiler and VM share, addressed by slot, with a name space per module |
 | `src/compiler.rs`    | Compiles the AST into bytecode                             |
-| `src/vm.rs`          | The stack-based virtual machine that runs bytecode         |
+| `src/vm.rs`          | The stack-based virtual machine that runs bytecode, and the module loader |
 | `src/formatter.rs`   | Reprints a program in canonical form (`miru fmt`)          |
 | `src/builtins.rs`    | The native builtins: printing, plus string, array, math, map, and input helpers |
 | `src/lib.rs`         | Ties the modules together (`parse_program`, `run_source`, `disassemble_source`, `format_source`) |
@@ -91,6 +91,14 @@ syntax clean and semicolon-free. To let expressions span multiple lines, the
 lexer suppresses newline tokens while it is inside parentheses or brackets
 (tracked by `group_depth` in `src/lexer.rs`). Braces do not suppress newlines,
 because a block's statements need those separators.
+
+A brace does more than not suppress: it *restores* significance. `{` pushes the
+current group depth and resets it to zero, `}` pops it back. Without that, a
+multi-line function body written inside a call, which is what a callback handed
+straight to `map` is, had its statement separators swallowed by the parenthesis
+it sat inside, and the whole body parsed as one run-on statement. That was a
+real defect from v0.6 to v0.7, worked around by binding the callback to a
+variable first, and fixed in v0.8.
 
 ### A Pratt parser for expressions
 
@@ -118,6 +126,86 @@ REPL session define `x` in one input and read it in the next.
 
 The table separates "a name has a slot" from "that slot holds a value": slots
 are `Option<Value>`, and reading an empty one is the "undefined variable" error.
+
+### A name belongs to its file
+
+Through v0.7 a program was one file, and every name it defined shared one table
+with the builtins. Two files could not be written without colliding, and there
+was no way to say where a name came from.
+
+`Globals` now holds a name-to-slot map per module over *one flat slot space*.
+Module 0 is the root, the file you ran; each imported file gets the next id.
+A look-up checks the builtins first, so `print` means the same thing in every
+file, then the asking module's own map, and a name found in neither is given a
+fresh slot recorded in that module's map alone.
+
+The slot space stayed flat on purpose. `GetGlobal` takes a slot number and
+indexes a `Vec<Option<Value>>`, and that is the instruction a loop full of
+global reads executes. Making it a (module, name) pair would have charged every
+program for the feature, including the ones that never import anything. The
+commit that introduced namespacing has no diff in `src/vm.rs` at all, which is
+the proof rather than the claim: the VM cannot have got slower, because it did
+not change.
+
+### The dot and the brackets differ on a name that is not there
+
+A module's exports are an ordinary `Value::Map`, so `math["add"]` works and
+`keys(math)` lists what a file defines. `GetField` exists beside `Index` for
+what happens when the name is *missing*: `math.nope` is an error naming the
+field, where `math["nope"]` is `nil`, because that is what indexing a map with
+an absent key has always meant and changing it would break every program that
+tests a lookup against `nil`.
+
+So the two are not spellings of one thing. Reach for the dot where a typo should
+stop the program, which is most of the time when you are reaching into a module,
+and for the brackets where a missing key is an answer.
+
+The field name is emitted as an ordinary constant rather than an opcode operand,
+so a file with hundreds of distinct field names gets `ConstantLong` instead of a
+cap at 256. `GetField`'s own operand byte holds no value at all, only the target
+expression's position, the same trick `Index` uses: "no field 'nope'" underlines
+the name, and "cannot read a field of a int" underlines the thing that has none.
+
+### An import resolves before the file that names it compiles
+
+`import` compiles to nothing. There is no opcode for it, and the compiler never
+touches the file system.
+
+`Vm::run` already owned both compiling and running, so imports are resolved in a
+pre-pass: every `import` in the parsed program is loaded, run to completion, and
+bound to its alias, all before the importing file is compiled. By the time
+`math.add` executes, `math` is an ordinary global holding an ordinary map.
+
+That is what keeps each error in the layer that can actually tell:
+
+- **The parser** rejects an `import` anywhere but the top level of a file. It is
+  the only stage that knows whether it is inside a block.
+- **The compiler** emits nothing and knows nothing about paths. The "not loaded
+  from a file" error started there and moved to the loader, where the path is;
+  the golden pinning it did not move, which is what proves it is the same error
+  and not a new one.
+- **The loader**, on `Vm`, has the path, the globals, and the ability to run a
+  program, which is exactly what loading a module needs.
+
+The loader keeps two things. A cache from *canonical* path to the exported map,
+so a file reached twice runs once and `./m.miru` and `./sub/../m.miru` are
+recognised as one file. And a stack of the canonical paths currently loading, so
+a cycle is reported as the chain of files that formed it rather than recursing
+until the process dies. `MAX_CALL_DEPTH` is the precedent: turn an unbounded
+failure into an ordinary error with a position.
+
+A missing file is reported *before* canonicalising, because `canonicalize` fails
+on a path that does not exist and its error would be about the wrong thing.
+
+Recursion here never re-enters the dispatch loop. A module's own imports resolve
+before it compiles, and it runs to completion before control returns, so no two
+`interpret` calls overlap and the assertion that frames and stack are empty
+afterwards keeps holding.
+
+Everything a module defines at its top level is exported, and there is no
+`export` keyword. A module cannot keep a helper to itself, which is a real cost.
+It is one an `export` keyword could pay later without invalidating anything
+written against today's rule, which is why the rule is the permissive one.
 
 ### An error carries the path it came through
 
@@ -155,6 +243,19 @@ Each entry pairs a frame's name with its *caller's* call site, since a frame
 knows where it calls onward, so the line a function was reached by lives one
 frame out. Long traces are shortened when rendered, never when captured: ten
 thousand frames of runaway recursion would otherwise bury the error in itself.
+
+An error from an imported file names that file:
+
+```
+error (./prices.miru, line 4, column 12): undefined variable 'rate'
+```
+
+`MiruError` carries an optional `file`, which the loader sets as an error passes
+out of a module. The innermost file wins, so an error three files deep names the
+one it is actually in rather than the one at the top of the chain. When a file
+is set, `render` prints no source line and draws no caret: the source it was
+handed belongs to a different file, and underlining the wrong line is worse than
+underlining nothing.
 
 ### Wide operands come in `Long` variants, not by widening everything
 
