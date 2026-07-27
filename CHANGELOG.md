@@ -8,6 +8,70 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 0.8 (2026-07-27)
+
+### Added
+
+- Modules. `import "./prices.miru" as prices` runs that file and binds
+  everything it defines under `prices`:
+
+  ```
+  import "./prices.miru" as prices
+
+  print(prices.with_tax(1300))   // 1404
+  ```
+
+  The path is relative to the file that names it, not to the working directory.
+  Every name defined at the top level of a module is reachable through the
+  alias; there is no `export` keyword, and so no way for a module to keep a
+  helper to itself.
+
+  A file runs the first time it is imported and not again. The cache is keyed by
+  canonical path, so `./m.miru` and `./sub/../m.miru` are one file, and a
+  diamond of imports runs the shared file once. An import cycle is reported as
+  the chain of files that formed it rather than recursing until the stack gives
+  out. An import is only valid at the top level of a file.
+
+  `import` compiles to no bytecode. Imports are resolved before the file that
+  names them compiles, so a module's exports are an ordinary map in an ordinary
+  global by the time anything reads them.
+
+- Field access with `.`, and a `GetField` opcode behind it. `m.a` reads a map's
+  entry the way `m["a"]` does, and differs on a name that is not there: `m.nope`
+  is an error, where `m["nope"]` is `nil`. Assignment through a field
+  (`m.a = 1`) is not part of this release; `m["a"] = 1` does that job.
+
+- An error raised inside an imported file names that file:
+
+  ```
+  error (./prices.miru, line 4, column 12): undefined variable 'rate'
+  ```
+
+  `MiruError` carries an optional file, set as the error leaves the module it
+  came from, innermost first. Nothing is underlined in that case, because the
+  source in hand belongs to a different file.
+
+- `examples/shop.miru` and `examples/prices.miru`, a pair of files that work
+  together, and a wiki lesson on modules.
+
+### Changed
+
+- Each file has its own names. `Globals` keeps a name-to-slot map per module
+  over one flat slot space, so two files can both define `total` without
+  colliding, while `GetGlobal` still takes a slot number and indexes a vector.
+  The builtins are visible from every module.
+
+- The playground page says that it runs one file. There is no file system in a
+  browser, so `import` there reports that the program was not loaded from a
+  file.
+
+### Fixed
+
+- A function body of more than one statement now parses inside `(` or `[`, so a
+  multi-line callback can be written directly as an argument to `map` instead of
+  being bound to a name first. A brace restores newline significance rather than
+  merely not suppressing it, which is what the lexer was missing.
+
 ## 0.7 (2026-07-26)
 
 ### Added
