@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
-use crate::globals::Globals;
+use crate::globals::{Globals, ModuleId, ROOT_MODULE};
 use crate::value::{CompiledFunction, Value};
 use crate::MiruError;
 
@@ -63,6 +63,8 @@ pub struct Compiler<'g> {
     /// The shared global table, so a name gets the same slot across the
     /// separately compiled inputs of a session.
     globals: &'g mut Globals,
+    /// Which module's names this compilation resolves against.
+    module: ModuleId,
     chunk: Chunk,
     /// 0 at the top level (where variables are globals), higher inside blocks.
     scope_depth: usize,
@@ -77,9 +79,10 @@ pub struct Compiler<'g> {
 }
 
 impl<'g> Compiler<'g> {
-    fn new(globals: &'g mut Globals) -> Compiler<'g> {
+    fn new(globals: &'g mut Globals, module: ModuleId) -> Compiler<'g> {
         Compiler {
             globals,
+            module,
             chunk: Chunk::new(),
             scope_depth: 0,
             locals: Vec::new(),
@@ -92,11 +95,28 @@ impl<'g> Compiler<'g> {
     /// Compile a whole program into a script function whose chunk ends in a
     /// `Return`. The value the VM returns is that of the program's final
     /// expression, which is what the REPL echoes.
+    ///
+    /// Compiles into the root module. A module of its own is what an imported
+    /// file gets, through [`Compiler::compile_module`].
     pub fn compile(
         program: &[Stmt],
         globals: &'g mut Globals,
     ) -> Result<Rc<CompiledFunction>, MiruError> {
-        let mut compiler = Compiler::new(globals);
+        Compiler::compile_module(program, globals, ROOT_MODULE)
+    }
+
+    /// Compile a program whose global names resolve against `module`.
+    ///
+    /// Two modules can define the same name without colliding, because a slot
+    /// is handed out per module rather than per name. Slots stay globally
+    /// unique, so nothing about running the result changes: `GetGlobal` is the
+    /// same indexed read either way.
+    pub fn compile_module(
+        program: &[Stmt],
+        globals: &'g mut Globals,
+        module: ModuleId,
+    ) -> Result<Rc<CompiledFunction>, MiruError> {
+        let mut compiler = Compiler::new(globals, module);
         compiler.program(program)?;
         let (line, column) = program.last().map(|stmt| (stmt.line, 1)).unwrap_or((0, 0));
         compiler.chunk.write_op(OpCode::Return, line, column);
@@ -800,7 +820,7 @@ impl<'g> Compiler<'g> {
         line: usize,
         column: usize,
     ) -> Result<(), MiruError> {
-        let slot = self.globals.slot_for(name).ok_or_else(|| {
+        let slot = self.globals.slot_for(self.module, name).ok_or_else(|| {
             MiruError::with_column(line, column, "too many global variables in one program")
         })?;
         self.chunk.write_op(op, line, column);

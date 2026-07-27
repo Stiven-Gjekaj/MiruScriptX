@@ -52,14 +52,18 @@ pub fn register(globals: &mut Globals) {
 }
 
 fn define(globals: &mut Globals, name: &'static str, func: BuiltinFn) {
-    let slot = globals.slot_for(name).expect("room for the builtins");
+    let slot = globals
+        .slot_for_builtin(name)
+        .expect("room for the builtins");
     globals.define(slot, Value::Builtin(Builtin { name, func }));
 }
 
 /// Register a higher-order builtin, one that receives the running engine so it
 /// can apply a function argument.
 fn define_host(globals: &mut Globals, name: &'static str, func: HostFn) {
-    let slot = globals.slot_for(name).expect("room for the builtins");
+    let slot = globals
+        .slot_for_builtin(name)
+        .expect("room for the builtins");
     globals.define(slot, Value::HostBuiltin(HostBuiltin { name, func }));
 }
 
