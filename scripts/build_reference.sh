@@ -8,6 +8,21 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/docs/language-reference.md"
 
+# A lesson's heading, and the anchor that heading lands on.
+title_of() { head -n 1 "$1" | sed 's/^#\{1,6\} *//'; }
+anchor_of() {
+  title_of "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-'
+}
+
+# A link from one lesson to another is right in wiki/, where each lesson is its
+# own file, and dead here, where they are all one page. Rewrite each into the
+# anchor of the section it now points into.
+relink=""
+for file in "$root"/wiki/*.md; do
+  name="$(basename "$file" | sed 's/\./\\./g')"
+  relink="${relink}s|]($name)|](#$(anchor_of "$file"))|g;"
+done
+
 {
   echo "# MiruScriptX Language Reference"
   echo
@@ -19,15 +34,14 @@ out="$root/docs/language-reference.md"
   echo "## Contents"
   echo
   for file in "$root"/wiki/*.md; do
-    title="$(head -n 1 "$file" | sed 's/^#\{1,6\} *//')"
-    anchor="$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')"
-    echo "- [$title](#$anchor)"
+    echo "- [$(title_of "$file")](#$(anchor_of "$file"))"
   done
   echo
   for file in "$root"/wiki/*.md; do
     # Copy each lesson, dropping its trailing Previous/Next navigation footer
     # (everything from the first horizontal rule onward).
-    awk 'BEGIN { in_footer = 0 } /^---$/ { in_footer = 1 } in_footer == 0 { print }' "$file"
+    awk 'BEGIN { in_footer = 0 } /^---$/ { in_footer = 1 } in_footer == 0 { print }' "$file" |
+      sed "$relink"
     echo
   done
 } > "$out"

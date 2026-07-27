@@ -286,7 +286,7 @@ let ratio = 2.5
 ```
 
 When you mix them in arithmetic, the result is a float. See
-[Operators](06-operators.md) for the details.
+[Operators](#operators) for the details.
 
 ## Booleans
 
@@ -316,7 +316,7 @@ mix of types:
 let things = [1, "two", true, [3, 4]]
 ```
 
-Arrays get their own page: [Arrays](09-arrays.md).
+Arrays get their own page: [Arrays](#arrays).
 
 
 # Operators
