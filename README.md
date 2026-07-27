@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-286_passing-427819?style=for-the-badge" alt="286 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-289_passing-427819?style=for-the-badge" alt="289 tests passing"/>
 </p>
 
 <p align="center">
@@ -140,6 +140,7 @@ Runnable programs live in [examples/](examples):
 | [fizzbuzz.miru](examples/fizzbuzz.miru) | Control flow and the modulo operator |
 | [contacts.miru](examples/contacts.miru) | Maps, lookups, and iteration |
 | [transform.miru](examples/transform.miru) | Higher-order functions: map, filter, reduce |
+| [shop.miru](examples/shop.miru) + [prices.miru](examples/prices.miru) | Two files: `import`, and names that belong to a file |
 
 Run one with `miru run examples/contacts.miru`.
 
