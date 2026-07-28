@@ -168,6 +168,14 @@ fn transform_example_output() {
 }
 
 #[test]
+fn recover_example_output() {
+    // The row that fails is the second of four, and the two after it still run.
+    // A program that stopped at the first failure would print one line.
+    let expected = "average: 6\nskipping a row: division by zero\naverage: 15\naverage: 7\nrows handled: 3 of 4\n";
+    assert_eq!(run_example("recover.miru"), expected);
+}
+
+#[test]
 fn shop_example_output() {
     let expected = "notebook x 2\npen x 5\nsubtotal: 1300\ntax: 8 percent\ntotal: 1404\n";
     assert_eq!(run_example("shop.miru"), expected);

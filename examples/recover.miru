@@ -1,0 +1,27 @@
+// recover.miru
+// Handling a failure instead of being stopped by one.
+// Run with: miru run examples/recover.miru
+//
+// Without `try`, the first bad row here would end the program. With it, each
+// failure becomes a value the program decides what to do about.
+
+fn average(row) {
+  let total = reduce(row, fn(acc, n) { return acc + n }, 0)
+  // Fails when the row is empty, which is the case worth surviving.
+  return total / len(row)
+}
+
+let rows = [[4, 8, 6], [], [10, 20], [7]]
+
+let good = 0
+for row in rows {
+  let result = try average(row)
+  if is_error(result) {
+    print("skipping a row:", result.message)
+  } else {
+    print("average:", result)
+    good = good + 1
+  }
+}
+
+print("rows handled:", good, "of", len(rows))
