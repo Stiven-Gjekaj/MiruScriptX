@@ -99,6 +99,16 @@ pub enum Value {
     Builtin(Builtin),
     HostBuiltin(HostBuiltin),
     Nil,
+    /// A failure that `try` caught, carried as a value.
+    ///
+    /// This is the error itself rather than a copy of its parts, so re-raising
+    /// one prints exactly what the terminal would have printed had it never
+    /// been caught, position and call trace and all.
+    ///
+    /// Nothing constructs one yet. The variant lands before `try` does so that
+    /// every path which consumes a value has already been taught what to do
+    /// with it.
+    Error(Rc<crate::MiruError>),
 }
 
 impl Value {
@@ -113,6 +123,7 @@ impl Value {
             Value::Map(_) => "map",
             Value::Closure(_) | Value::Builtin(_) | Value::HostBuiltin(_) => "function",
             Value::Nil => "nil",
+            Value::Error(_) => "error",
         }
     }
 
@@ -157,6 +168,10 @@ impl Value {
             },
             Value::Builtin(builtin) => format!("<builtin {}>", builtin.name),
             Value::HostBuiltin(builtin) => format!("<builtin {}>", builtin.name),
+            // Angle brackets rather than the plain message, for the same reason
+            // a function prints as `<fn name>`: what this shows is a thing the
+            // program is holding, not text it produced.
+            Value::Error(error) => format!("<error: {}>", error.message),
         }
     }
 
@@ -231,6 +246,29 @@ fn escape_string(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_error_value_names_its_type_and_shows_the_failure_it_holds() {
+        let value = Value::Error(Rc::new(crate::MiruError::with_column(
+            3,
+            5,
+            "division by zero",
+        )));
+        // `type` is the check a program makes, and no other value answers this.
+        assert_eq!(value.type_name(), "error");
+        // Angle brackets like a function, because this is a thing being held
+        // rather than text the program produced.
+        assert_eq!(value.repr(), "<error: division by zero>");
+        assert_eq!(value.display(), "<error: division by zero>");
+        // The failure is carried whole, not taken apart, so re-raising one can
+        // report the position it originally had.
+        match &value {
+            Value::Error(error) => {
+                assert_eq!((error.line, error.column), (3, 5));
+            }
+            other => panic!("expected an error, found {}", other.type_name()),
+        }
+    }
 
     fn map(pairs: &[(&str, Value)]) -> Value {
         let mut entries = BTreeMap::new();
