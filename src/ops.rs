@@ -17,8 +17,27 @@ enum Num {
     Floats(f64, f64),
 }
 
+/// The message for using a caught failure as if it were an ordinary value.
+///
+/// Reported where the misuse is written rather than where the failure happened,
+/// because the misuse is the mistake: the program already had the failure in
+/// hand and did something else with it. The original position stays on the
+/// value, reachable through its fields, so nothing is lost by pointing here.
+pub fn unhandled(value: &Value) -> Option<String> {
+    match value {
+        Value::Error(error) => Some(format!("unhandled failure: {}", error.message)),
+        _ => None,
+    }
+}
+
 /// Apply a unary operator to a value.
 pub fn unary(op: UnaryOp, value: Value) -> Result<Value, String> {
+    // Checked here rather than in each rule below, which matters most for
+    // `Not`: it answers for every value through `is_truthy` and so would
+    // otherwise quietly report a failure as `false`.
+    if let Some(message) = unhandled(&value) {
+        return Err(message);
+    }
     match op {
         UnaryOp::Negate => match value {
             Value::Int(n) => n
@@ -34,6 +53,16 @@ pub fn unary(op: UnaryOp, value: Value) -> Result<Value, String> {
 
 /// Apply a binary operator to two values.
 pub fn binary(op: BinaryOp, left: Value, right: Value) -> Result<Value, String> {
+    // Once, here, rather than in each rule. `Equal` and `NotEqual` are the ones
+    // that need it: they answer for every pair through `Value::equals`, so
+    // without this a failure would compare `false` against everything and look
+    // like an ordinary value that simply did not match.
+    //
+    // The VM's integer fast path has already declined by the time this runs, so
+    // no arithmetic between two integers reaches it.
+    if let Some(message) = unhandled(&left).or_else(|| unhandled(&right)) {
+        return Err(message);
+    }
     match op {
         BinaryOp::Add => add(left, right),
         BinaryOp::Subtract => match numeric_pair(&left, &right, "subtract")? {
@@ -124,6 +153,9 @@ fn numeric_pair(left: &Value, right: &Value, verb: &str) -> Result<Num, String> 
 /// Validate an array index: it must be a non-negative integer within bounds.
 /// Returns the usize index, or a message naming the problem.
 pub fn array_index(index: &Value, len: usize) -> Result<usize, String> {
+    if let Some(message) = unhandled(index) {
+        return Err(message);
+    }
     let Value::Int(n) = index else {
         return Err(format!(
             "array index must be an int, not a {}",
@@ -146,6 +178,7 @@ pub fn array_index(index: &Value, len: usize) -> Result<usize, String> {
 pub fn map_key(index: &Value) -> Result<String, String> {
     match index {
         Value::Str(s) => Ok(s.to_string()),
+        Value::Error(error) => Err(format!("unhandled failure: {}", error.message)),
         other => Err(format!(
             "map key must be a string, not a {}",
             other.type_name()
@@ -171,6 +204,74 @@ fn ordering(left: Value, right: Value) -> Result<Ordering, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn failure() -> Value {
+        Value::Error(Rc::new(crate::MiruError::with_column(
+            1,
+            9,
+            "division by zero",
+        )))
+    }
+
+    #[test]
+    fn every_operator_refuses_a_caught_failure_as_an_operand() {
+        // The two that need saying out loud, because neither reports a type
+        // error for anything: `!` answers for every value through is_truthy,
+        // and `==` answers for every pair through Value::equals. Left to
+        // themselves they would call a failure `false` and "not equal to
+        // anything", which reads exactly like an ordinary value.
+        assert_eq!(
+            unary(UnaryOp::Not, failure()).err().unwrap(),
+            "unhandled failure: division by zero"
+        );
+        assert_eq!(
+            binary(BinaryOp::Equal, failure(), Value::Int(1))
+                .err()
+                .unwrap(),
+            "unhandled failure: division by zero"
+        );
+
+        // And the ordinary ones, on either side.
+        for op in [
+            BinaryOp::Add,
+            BinaryOp::Subtract,
+            BinaryOp::Multiply,
+            BinaryOp::Divide,
+            BinaryOp::Modulo,
+            BinaryOp::NotEqual,
+            BinaryOp::Less,
+            BinaryOp::Greater,
+            BinaryOp::LessEqual,
+            BinaryOp::GreaterEqual,
+        ] {
+            assert_eq!(
+                binary(op, failure(), Value::Int(1)).err().unwrap(),
+                "unhandled failure: division by zero",
+                "{op:?} accepted a failure on the left"
+            );
+            assert_eq!(
+                binary(op, Value::Int(1), failure()).err().unwrap(),
+                "unhandled failure: division by zero",
+                "{op:?} accepted a failure on the right"
+            );
+        }
+        assert_eq!(
+            unary(UnaryOp::Negate, failure()).err().unwrap(),
+            "unhandled failure: division by zero"
+        );
+    }
+
+    #[test]
+    fn a_caught_failure_is_not_an_index_or_a_key() {
+        assert_eq!(
+            array_index(&failure(), 3).err().unwrap(),
+            "unhandled failure: division by zero"
+        );
+        assert_eq!(
+            map_key(&failure()).err().unwrap(),
+            "unhandled failure: division by zero"
+        );
+    }
 
     #[test]
     fn arithmetic_promotes_and_concatenates() {

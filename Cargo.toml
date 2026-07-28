@@ -5,7 +5,7 @@ members = ["playground"]
 
 [package]
 name = "miruscriptx"
-version = "0.9.1"
+version = "0.9.2"
 edition = "2021"
 description = "MiruScriptX: a small, general-purpose scripting language written in Rust."
 license = "MIT"
