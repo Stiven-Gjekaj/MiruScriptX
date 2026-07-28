@@ -74,7 +74,7 @@ a token and the second because `Eof` covers no text at all.
 | `src/chunk.rs`       | Bytecode chunks: opcodes, constants, positions, disassembler |
 | `src/globals.rs`     | The global table the compiler and VM share, addressed by slot, with a name space per module |
 | `src/compiler.rs`    | Compiles the AST into bytecode                             |
-| `src/vm.rs`          | The stack-based virtual machine that runs bytecode, and the module loader |
+| `src/vm.rs`          | The stack-based virtual machine that runs bytecode, the module loader, and the `try` handler stack |
 | `src/formatter.rs`   | Reprints a program in canonical form (`miru fmt`)          |
 | `src/builtins.rs`    | The native builtins: printing, plus string, array, math, map, and input helpers |
 | `src/lib.rs`         | Ties the modules together (`parse_program`, `run_source`, `disassemble_source`, `format_source`) |
@@ -166,6 +166,13 @@ cap at 256. `GetField`'s own operand byte holds no value at all, only the target
 expression's position, the same trick `Index` uses: "no field 'nope'" underlines
 the name, and "cannot read a field of a int" underlines the thing that has none.
 
+`SetField`, added in v0.9, mirrors `SetIndex` down to that operand byte, and
+differs from `GetField` on exactly the point above: assigning to a field that is
+not there *creates* it, where reading one that is not there is an error. The
+asymmetry is deliberate rather than an oversight. A name that is not there is
+almost always a misspelling on the way out and almost never one on the way in,
+and `m["a"] = 1` has always created the key, so the two spellings agree.
+
 ### An import resolves before the file that names it compiles
 
 `import` compiles to nothing. There is no opcode for it, and the compiler never
@@ -206,6 +213,79 @@ Everything a module defines at its top level is exported, and there is no
 `export` keyword. A module cannot keep a helper to itself, which is a real cost.
 It is one an `export` keyword could pay later without invalidating anything
 written against today's rule, which is why the rule is the permissive one.
+
+### A failure becomes a value without the error path changing
+
+`try expr` evaluates the expression and, if it fails at any depth, yields the
+failure as a value instead of ending the program. The obvious way to build that
+is a second exit route out of the dispatch loop. This has none.
+
+Every one of the forty-odd raise sites still returns `Err(MiruError)` through the
+same `?` it always did. What changed is what happens to that `Err` on the way
+out: `run_frames` asks whether a handler is installed, and if one is, rewinds the
+VM to the mark that handler recorded, pushes the failure as a value, and
+*re-enters the loop*. No opcode gained a comparison, and a program with no `try`
+in it executes the bytecode it executed before, which `miru disasm` will confirm.
+
+Re-entry works because `run_frames_inner` already derives everything from `self`
+at its `'frames` loop: the frame, its `ip`, its `slot_base`, and the chunk
+pointer are all re-read there. One initialization had to move with it. The loop
+used to start `resume_depth` at zero on the grounds that no task is ever pending
+when it is entered, which is true exactly until the loop can be re-entered part
+way through a program. It reads `self.resume_depth()` now, and that landed as its
+own commit with an assertion proving the two were the same number beforehand.
+
+**A handler records four things, and three of them are not obvious.** A failure
+can be raised many frames below the `try` that catches it, so everything that
+grew in between has to come back: the frame stack, the value stack, the pending
+higher-order builtins, and the upvalues still pointing at stack slots about to
+disappear. Upvalues close first, because closing one reads the slot it points at
+and the next step throws those slots away. Missing any one of the four leaves a
+VM that keeps running with corrupt state rather than failing, which is why the
+`debug_assert!` in `interpret` that frames and stack are empty after a program is
+worth more than it looks.
+
+**Both ways out converge.** `BeginTry` records the mark and a landing; `EndTry`
+discards it and leaves the expression's value. A failure lands at the same
+instruction with the failure pushed instead. Since both leave exactly one value
+where the expression's result belongs, the success path needs no jump over the
+failure path.
+
+`Value::Error` holds `Rc<MiruError>`: the caught value *is* the error, not a copy
+of its parts. That is what lets a caught failure still answer `.trace` with the
+path it came through, which is captured before anything is unwound.
+
+### Using a failure is fatal, and that is the whole design
+
+Errors as values fail in practice when an unchecked one flows onward as data and
+surfaces somewhere unrelated. So a failure is not an ordinary value here. It may
+be assigned, passed to `type` or `is_error`, and have its fields read. Every
+other operation stops the program, naming the original failure at the position of
+the misuse.
+
+Two of those refusals were silent rather than merely missing. `!` answers for
+every value through `is_truthy`, and `==` answers for every pair through
+`Value::equals`, so without an explicit guard a failure came back as `false` and
+as unequal to everything, which reads exactly like an ordinary value that did not
+match. The same hole sat in `if` and `while`. `Value::condition` closes it with
+one match rather than a truthiness test plus a check, so a conditional reads the
+discriminant once as it always did.
+
+**The Rust compiler did not find any of these.** Adding `Value::Error` compiled
+clean on the first attempt, because sixty wildcard match arms across the files
+that match on `Value` absorbed it. `ops.rs` already answered "cannot negate a
+error" through one of them: true, generic, and about the type rather than the
+failure being held. A missing arm here does not fail to compile, it behaves
+almost right, which is worse. The audit was driven by a test per consumer path.
+
+The one door left open is reading a field, because a program has to be able to
+find out what it is holding, and a check that trips the guard it is checking for
+is no check at all. It opens exactly as far as a closed set of five names, so a
+misspelling fails the way `m.nope` does rather than reading `nil`.
+
+**Not everything is catchable.** `MiruError` carries a `fatal` flag that the
+handler search refuses, set only by the two call-depth-limit sites. Runaway
+recursion is a bug rather than a condition to handle.
 
 ### An error carries the path it came through
 
@@ -440,6 +520,12 @@ Write a function in `src/builtins.rs` with the signature
 `fn(&mut dyn Output, &mut dyn Input, Vec<Value>) -> Result<Value, String>`, then
 register it in `register`. Return an `Err(String)` for bad arguments; the VM
 attaches the current line and column automatically.
+
+It will never be handed a caught failure: `call_native` refuses one before
+dispatch, which is what stops `print(r)` turning a failure nobody dealt with into
+a line of output that looks deliberate. A builtin whose whole job is to inspect a
+failure has to say so in `builtins::accepts_failure`, and there should be very
+few of those.
 
 ### Add a higher-order builtin
 
