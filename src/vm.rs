@@ -517,14 +517,22 @@ impl Vm {
                     OpCode::JumpIfFalse => {
                         let offset = read_u16(chunk, ip);
                         ip += 2;
-                        if !self.peek().is_truthy() {
+                        let taken = self
+                            .peek()
+                            .condition()
+                            .map_err(|m| runtime_error(chunk, op_ip, m))?;
+                        if !taken {
                             ip += offset as usize;
                         }
                     }
                     OpCode::JumpIfTrue => {
                         let offset = read_u16(chunk, ip);
                         ip += 2;
-                        if self.peek().is_truthy() {
+                        let taken = self
+                            .peek()
+                            .condition()
+                            .map_err(|m| runtime_error(chunk, op_ip, m))?;
+                        if taken {
                             ip += offset as usize;
                         }
                     }
@@ -534,7 +542,10 @@ impl Vm {
                     }
                     OpCode::Truthy => {
                         let value = self.pop();
-                        self.stack.push(Value::Bool(value.is_truthy()));
+                        let truth = value
+                            .condition()
+                            .map_err(|m| runtime_error(chunk, op_ip, m))?;
+                        self.stack.push(Value::Bool(truth));
                     }
                     OpCode::GetLocal => {
                         let slot = chunk.code[ip] as usize;
@@ -821,6 +832,11 @@ impl Vm {
                 });
                 Ok(CallOutcome::Task)
             }
+            Value::Error(error) => Err(runtime_error(
+                chunk,
+                op_ip,
+                format!("unhandled failure: {}", error.message),
+            )),
             other => Err(runtime_error(
                 chunk,
                 op_ip,
@@ -838,6 +854,12 @@ impl Vm {
         line: usize,
         column: usize,
     ) -> Result<Value, MiruError> {
+        // No builtin is handed a caught failure. Checking here covers all forty
+        // at once, and it is what stops `print(r)` from turning a failure the
+        // program never dealt with into a line of output that looks deliberate.
+        if let Some(message) = args.iter().find_map(crate::ops::unhandled) {
+            return Err(MiruError::with_column(line, column, message));
+        }
         let (saved_line, saved_column) = (self.line, self.column);
         self.line = line;
         self.column = column;
@@ -1196,6 +1218,11 @@ fn field_get(
             .get(key.as_str())
             .cloned()
             .ok_or_else(|| runtime_error(chunk, access_ip, format!("no field '{key}'"))),
+        Value::Error(error) => Err(runtime_error(
+            chunk,
+            target_ip,
+            format!("unhandled failure: {}", error.message),
+        )),
         other => Err(runtime_error(
             chunk,
             target_ip,
@@ -1229,6 +1256,11 @@ fn index_get(
                 .map_err(|message| runtime_error(chunk, index_ip, message))?;
             Ok(entries.borrow().get(&key).cloned().unwrap_or(Value::Nil))
         }
+        Value::Error(error) => Err(runtime_error(
+            chunk,
+            target_ip,
+            format!("unhandled failure: {}", error.message),
+        )),
         other => Err(runtime_error(
             chunk,
             target_ip,
@@ -1261,6 +1293,11 @@ fn index_set(
             entries.borrow_mut().insert(key, value);
             Ok(())
         }
+        Value::Error(error) => Err(runtime_error(
+            chunk,
+            target_ip,
+            format!("unhandled failure: {}", error.message),
+        )),
         other => Err(runtime_error(
             chunk,
             target_ip,
@@ -1311,6 +1348,97 @@ mod tests {
             entries.insert((*key).to_string(), value.clone());
         }
         Value::Map(Rc::new(RefCell::new(entries)))
+    }
+
+    /// A caught failure, which no program can produce yet. Putting one in the
+    /// constant pool is how these tests reach the paths that must refuse it.
+    fn failure() -> Value {
+        Value::Error(Rc::new(MiruError::with_column(1, 9, "division by zero")))
+    }
+
+    /// The message every refusal gives, which names the failure being held
+    /// rather than the type it happens to be.
+    const REFUSED: &str = "unhandled failure: division by zero";
+
+    #[test]
+    fn a_conditional_refuses_a_caught_failure_rather_than_reading_it_as_false() {
+        // The dangerous one. `if` and `while` ask a value whether it is truthy,
+        // and every value answers, so a failure would take the else branch and
+        // look like an ordinary falsy value.
+        for op in [OpCode::JumpIfFalse, OpCode::JumpIfTrue, OpCode::Truthy] {
+            let error = run(|chunk| {
+                constant(chunk, failure());
+                chunk.write_op(op, 4, 6);
+                if op != OpCode::Truthy {
+                    chunk.write(0, 4, 6);
+                    chunk.write(0, 4, 6);
+                }
+            })
+            .err()
+            .expect("a conditional must refuse a failure");
+            assert_eq!(error.message, REFUSED, "{op:?} accepted a failure");
+            // Reported where the misuse is written, not where the failure was.
+            assert_eq!((error.line, error.column), (4, 6), "{op:?}");
+        }
+    }
+
+    #[test]
+    fn a_caught_failure_is_not_a_target_to_index_or_read_a_field_of() {
+        let error = run(|chunk| {
+            constant(chunk, failure());
+            get_field(chunk, "message");
+        })
+        .err()
+        .expect("a field of a failure must be refused");
+        assert_eq!(error.message, REFUSED);
+
+        let error = run(|chunk| {
+            constant(chunk, failure());
+            constant(chunk, Value::Int(0));
+            chunk.write_op(OpCode::Index, 1, 1);
+            chunk.write(0, 1, 1);
+        })
+        .err()
+        .expect("indexing a failure must be refused");
+        assert_eq!(error.message, REFUSED);
+    }
+
+    #[test]
+    fn a_caught_failure_is_not_callable_and_is_not_an_argument() {
+        let error = run(|chunk| {
+            constant(chunk, failure());
+            chunk.write_op(OpCode::Call, 1, 1);
+            chunk.write(0, 1, 1);
+        })
+        .err()
+        .expect("calling a failure must be refused");
+        assert_eq!(error.message, REFUSED);
+
+        // A builtin that accepts anything, which print() and str() do. Without a
+        // guard this would have handed on a failure the program never dealt
+        // with, as though it were a result.
+        fn echo(
+            _out: &mut dyn Output,
+            _input: &mut dyn Input,
+            args: Vec<Value>,
+        ) -> Result<Value, String> {
+            Ok(args.into_iter().next().unwrap_or(Value::Nil))
+        }
+        let error = run(|chunk| {
+            constant(
+                chunk,
+                Value::Builtin(crate::value::Builtin {
+                    name: "echo",
+                    func: echo,
+                }),
+            );
+            constant(chunk, failure());
+            chunk.write_op(OpCode::Call, 1, 1);
+            chunk.write(1, 1, 1);
+        })
+        .err()
+        .expect("a builtin must not be handed a failure");
+        assert_eq!(error.message, REFUSED);
     }
 
     /// Emit `target.name`, with the position-only operand byte the opcode

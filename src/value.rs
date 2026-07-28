@@ -132,6 +132,25 @@ impl Value {
         !matches!(self, Value::Bool(false) | Value::Nil)
     }
 
+    /// Truthiness where a caught failure must not pass silently, for `if`,
+    /// `while`, and the short-circuiting operators.
+    ///
+    /// A failure is deliberately not falsy. Making it falsy would read well
+    /// (`if r { .. }`) right up to the first successful `0`, `false`, `nil`, or
+    /// empty string, which would then be indistinguishable from a failure. So
+    /// the program has to say which it means.
+    ///
+    /// One match rather than [`Value::is_truthy`] plus a separate check, so a
+    /// conditional reads the discriminant once as it always did and pays only
+    /// for the extra arm.
+    pub fn condition(&self) -> Result<bool, String> {
+        match self {
+            Value::Bool(false) | Value::Nil => Ok(false),
+            Value::Error(error) => Err(format!("unhandled failure: {}", error.message)),
+            _ => Ok(true),
+        }
+    }
+
     /// The plain display form used by `print` and `str`: strings appear without
     /// surrounding quotes.
     pub fn display(&self) -> String {
