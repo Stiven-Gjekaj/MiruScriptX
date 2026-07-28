@@ -110,6 +110,7 @@ const EXAMPLES: &[(&str, &str)] = &[
     ("fizzbuzz", include_str!("../../examples/fizzbuzz.miru")),
     ("contacts", include_str!("../../examples/contacts.miru")),
     ("transform", include_str!("../../examples/transform.miru")),
+    ("recover", include_str!("../../examples/recover.miru")),
 ];
 
 /// The names of the bundled examples, in the order they should be offered.
@@ -197,7 +198,10 @@ fn class_of(kind: &TokenKind) -> Option<&'static str> {
         | TokenKind::For
         | TokenKind::In
         | TokenKind::Break
-        | TokenKind::Continue => "keyword",
+        | TokenKind::Continue
+        | TokenKind::Import
+        | TokenKind::As
+        | TokenKind::Try => "keyword",
         TokenKind::True | TokenKind::False | TokenKind::Nil => "literal",
         TokenKind::Ident(name) if is_builtin(name) => "builtin",
         // Identifiers, operators, delimiters, newlines, and end of input are
@@ -373,6 +377,33 @@ mod tests {
                 .any(|(_, text)| text == "n" || text == "+"),
             "{classified:?}"
         );
+    }
+
+    #[test]
+    fn every_keyword_the_language_has_is_coloured_as_one() {
+        // Checked as one list rather than by eye, because a keyword added to
+        // the lexer and forgotten here shows up as ordinary text and nothing
+        // fails. `import` and `as` were exactly that between v0.8 and v0.9.
+        let source = "import \"./m.miru\" as m\nfn f() { let x = try 1 }\n\
+                      if x { while x { for y in x { break } } } else { continue }\n\
+                      return nil";
+        let keywords: Vec<String> = highlight(source)
+            .iter()
+            .filter(|span| span.class == "keyword")
+            .map(|span| {
+                let chars: Vec<char> = source.chars().collect();
+                chars[span.start..span.start + span.len].iter().collect()
+            })
+            .collect();
+        for word in [
+            "import", "as", "fn", "let", "try", "if", "while", "for", "in", "break", "else",
+            "continue", "return",
+        ] {
+            assert!(
+                keywords.iter().any(|found| found == word),
+                "'{word}' was not coloured as a keyword; found {keywords:?}"
+            );
+        }
     }
 
     #[test]
