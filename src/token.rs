@@ -37,6 +37,9 @@ pub enum TokenKind {
     Continue,
     Import,
     As,
+    /// `try expr`: evaluate the expression and, if it fails, produce the
+    /// failure as a value rather than stopping the program.
+    Try,
     True,
     False,
     Nil,
@@ -94,6 +97,7 @@ impl TokenKind {
             TokenKind::Continue => "'continue'".to_string(),
             TokenKind::Import => "'import'".to_string(),
             TokenKind::As => "'as'".to_string(),
+            TokenKind::Try => "'try'".to_string(),
             TokenKind::True => "'true'".to_string(),
             TokenKind::False => "'false'".to_string(),
             TokenKind::Nil => "'nil'".to_string(),

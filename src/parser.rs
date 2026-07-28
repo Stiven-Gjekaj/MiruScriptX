@@ -309,6 +309,22 @@ impl Parser {
     // --- Expressions (Pratt) ---------------------------------------------
 
     fn expression(&mut self) -> Result<Expr, MiruError> {
+        // `try` binds looser than every operator, so `try a / b` covers the
+        // division rather than just `a`. It lives here rather than in `unary`
+        // for exactly that reason: a unary operator binds tighter than
+        // multiplication, and this has to bind looser than all of them.
+        //
+        // It nests, so `try try f()` parses, though the inner one makes the
+        // outer one unreachable.
+        if self.check(&TokenKind::Try) {
+            let token = self.advance().clone();
+            let inner = self.expression()?;
+            return Ok(Expr::new(
+                ExprKind::Try(Box::new(inner)),
+                token.line,
+                token.column,
+            ));
+        }
         self.parse_binary(1)
     }
 

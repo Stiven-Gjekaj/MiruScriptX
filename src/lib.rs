@@ -267,6 +267,14 @@ pub struct MiruError {
     pub column: usize,
     pub message: String,
     pub trace: Vec<TraceEntry>,
+    /// Whether `try` is allowed to turn this into a value.
+    ///
+    /// Almost everything is catchable, because almost everything is a condition
+    /// a program could reasonably handle. The call depth limit is not: it means
+    /// recursion that does not terminate, which is a bug in the program rather
+    /// than a situation to recover from, and letting a `try` swallow it would
+    /// hide the one thing worth knowing.
+    pub fatal: bool,
     /// The file this error is about, when it is not the one being rendered.
     ///
     /// An error raised inside an imported module has a line and column in *that*
@@ -292,8 +300,15 @@ impl MiruError {
             column,
             message: message.into(),
             trace: Vec::new(),
+            fatal: false,
             file: None,
         }
+    }
+
+    /// Mark this error as one `try` may not catch. See [`MiruError::fatal`].
+    pub fn as_fatal(mut self) -> MiruError {
+        self.fatal = true;
+        self
     }
 
     /// How wide to underline at this error's position: the length of the token

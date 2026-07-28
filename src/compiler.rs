@@ -605,6 +605,17 @@ impl<'g> Compiler<'g> {
             }
         }
         match &expr.kind {
+            ExprKind::Try(inner) => {
+                // Both ways out leave exactly one value where this expression's
+                // result belongs: EndTry keeps what the expression produced, and
+                // a failure lands here with the failure already pushed. So they
+                // converge on the next instruction and the success path needs no
+                // jump over anything.
+                let handler = self.emit_jump(OpCode::BeginTry, line, column);
+                self.expression(inner)?;
+                self.chunk.write_op(OpCode::EndTry, line, column);
+                self.patch_jump(handler, line, column)?;
+            }
             ExprKind::Int(n) => self.constant(Value::Int(*n), line, column)?,
             ExprKind::Float(f) => self.constant(Value::Float(*f), line, column)?,
             ExprKind::Str(s) => self.constant(Value::Str(Rc::new(s.clone())), line, column)?,

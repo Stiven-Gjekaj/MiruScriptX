@@ -1150,3 +1150,98 @@ fn runtime_errors_carry_the_call_path_they_came_through() {
         ),
     ]);
 }
+
+#[test]
+fn try_turns_a_failure_into_a_value_and_leaves_a_success_alone() {
+    check_all(&[
+        // The failure becomes the expression's value instead of stopping the
+        // program.
+        ("try 1 / 0", "ok <error: division by zero>"),
+        // Nothing failed, so `try` is invisible.
+        ("try 6 * 7", "ok 42"),
+        // `try` takes the whole expression after it rather than binding like a
+        // unary operator, so this covers the division and not just the 1.
+        ("try 1 / 0 + 5", "ok <error: division by zero>"),
+        // Parentheses narrow it. The division is outside the guard, so nothing
+        // catches it.
+        ("(try 1) / 0", "err division by zero @ 1:9"),
+        // The check a program makes. `type` is the one builtin that may be
+        // handed a failure, because this is how a program learns it has one.
+        ("type(try 1 / 0)", "ok \"error\""),
+        ("type(try 6 * 7)", "ok \"int\""),
+        // Nested: the inner one catches, so the outer one sees an ordinary
+        // value and does nothing.
+        ("try (try 1 / 0)", "ok <error: division by zero>"),
+    ]);
+}
+
+#[test]
+fn a_failure_is_caught_from_any_depth_and_the_program_carries_on() {
+    check_all(&[
+        // Three frames deep. The failure is raised in c, and the try is in the
+        // script frame, so two frames have to be unwound to reach it.
+        (
+            "fn c() { return nope }\nfn b() { return c() }\nfn a() { return b() }\ntype(try a())",
+            "ok \"error\"",
+        ),
+        // And the VM keeps working afterwards, which is what says the unwinding
+        // put the stack back rather than merely not crashing.
+        ("fn c() { return nope }\nlet r = try c()\n1 + 1", "ok 2"),
+        // A callback that fails inside a higher-order builtin. This is the case
+        // that exercises the task stack: `map` is suspended waiting for the
+        // call that fails, and that suspension has to be rewound too.
+        (
+            "type(try map([1, 2, 3], fn(x) { return x / 0 }))",
+            "ok \"error\"",
+        ),
+        // Same program, then map again, so a rewound task stack is proven not
+        // to have left anything behind.
+        (
+            "let r = try map([1], fn(x) { return x / 0 })\nmap([1, 2], fn(x) { return x * 2 })",
+            "ok [2, 4]",
+        ),
+    ]);
+}
+
+#[test]
+fn using_a_caught_failure_stops_the_program_where_it_was_used() {
+    check_all(&[
+        // Named at the operator, not at the division that failed, because the
+        // mistake is here: the program had the failure and did something else
+        // with it. The failure's own message rides along.
+        (
+            "let r = try 1 / 0\nr + 1",
+            "err unhandled failure: division by zero @ 2:3",
+        ),
+        // The silent one. Without a guard this reads as false and the program
+        // takes the else branch as though nothing had gone wrong.
+        (
+            "let r = try 1 / 0\nif r { 1 } else { 2 }",
+            // Under `r` rather than under `if`: the condition is the failure,
+            // and it is what a reader needs to look at.
+            "err unhandled failure: division by zero @ 2:4",
+        ),
+        // Likewise equality, which answers for every pair of values.
+        (
+            "let r = try 1 / 0\nr == nil",
+            "err unhandled failure: division by zero @ 2:3",
+        ),
+        // And a builtin that takes anything.
+        (
+            "let r = try 1 / 0\nprint(r)",
+            "err unhandled failure: division by zero @ 2:1",
+        ),
+    ]);
+}
+
+#[test]
+fn try_does_not_catch_the_call_depth_limit() {
+    // Runaway recursion is a bug in the program rather than a condition to
+    // handle, so this one failure refuses to become a value. A `try` that
+    // swallowed it would hide the only thing worth knowing.
+    let outcome = outcome("fn boom(n) { return boom(n + 1) }\nlet r = try boom(0)\nr");
+    assert!(
+        outcome.starts_with("err call depth limit of 10000 exceeded"),
+        "outcome was: {outcome}"
+    );
+}

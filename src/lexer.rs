@@ -412,6 +412,7 @@ impl Lexer {
             "continue" => TokenKind::Continue,
             "import" => TokenKind::Import,
             "as" => TokenKind::As,
+            "try" => TokenKind::Try,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,

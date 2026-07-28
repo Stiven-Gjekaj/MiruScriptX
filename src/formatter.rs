@@ -317,6 +317,11 @@ fn precedence(expr: &Expr) -> u8 {
             BinaryOp::Add | BinaryOp::Subtract => 5,
             BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => 6,
         },
+        // Looser than every operator, `or` included, because `try` takes the
+        // whole expression after it. Left at the wildcard's 9 the printer would
+        // drop the parentheses in `(try f()) + 1` and reprint it as
+        // `try f() + 1`, which parses back as a different tree.
+        ExprKind::Try(_) => 0,
         ExprKind::Unary { .. } => 7,
         // Field binds like the other postfix forms. The arm below ends in a
         // wildcard, so a variant missing here silently takes 9 and the printer
@@ -368,6 +373,7 @@ fn fmt_expr(expr: &Expr) -> String {
         ExprKind::Index { target, index } => {
             format!("{}[{}]", fmt_operand(target, 8), fmt_expr(index))
         }
+        ExprKind::Try(inner) => format!("try {}", fmt_expr(inner)),
         ExprKind::Unary { op, operand } => {
             let symbol = match op {
                 UnaryOp::Negate => "-",
@@ -462,6 +468,26 @@ mod tests {
     /// Format comment-free source through a full parse.
     fn fmt(source: &str) -> String {
         format_program(&program(source), &Trivia::default())
+    }
+
+    #[test]
+    fn try_reprints_with_the_parentheses_it_needs() {
+        // Plain, and the reason `try` needs a precedence of its own: it takes
+        // the whole expression after it, so it binds looser than every
+        // operator including `or`.
+        assert_eq!(fmt("let r = try 1/0\n"), "let r = try 1 / 0\n");
+
+        // The case the wildcard would have broken. `try` reached as an operand
+        // has to keep its parentheses, or this reprints as `try f() + 1` and
+        // parses back with the addition inside the guard instead of outside
+        // it: a different program that still runs.
+        assert_eq!(fmt("let n = (try f()) + 1\n"), "let n = (try f()) + 1\n");
+        assert_eq!(fmt("let b = (try f()) || 2\n"), "let b = (try f()) || 2\n");
+
+        // And formatting is idempotent, which is what says the parentheses it
+        // adds are ones it also accepts.
+        let once = fmt("let n = (try f()) + 1\n");
+        assert_eq!(fmt(&once), once);
     }
 
     #[test]

@@ -170,12 +170,26 @@ pub enum OpCode {
     GetLocalLong,
     /// The wide form of [`OpCode::SetLocal`]. Two operand bytes, big-endian.
     SetLocalLong,
+    /// Install a failure handler for the expression that follows. Two operand
+    /// bytes: a big-endian distance to the landing, measured the same way a
+    /// `Jump`'s is.
+    ///
+    /// If evaluating that expression fails, at any call depth, the VM unwinds
+    /// to the state recorded here, pushes the failure as a value, and continues
+    /// at the landing. Both paths therefore leave exactly one value where the
+    /// expression's result belongs, and converge on the same instruction, so
+    /// the success path needs no jump over the failure path.
+    BeginTry,
+    /// Discard the handler installed by the matching [`OpCode::BeginTry`],
+    /// leaving the expression's value in place. Reached only when nothing
+    /// failed.
+    EndTry,
 }
 
 /// Every opcode in declaration order, so a byte decodes by indexing rather than
 /// by comparison. The order must match the enum, which `opcodes_match_their_byte`
 /// checks.
-const OPCODES: [OpCode; 45] = [
+const OPCODES: [OpCode; 47] = [
     OpCode::Constant,
     OpCode::Nil,
     OpCode::True,
@@ -221,6 +235,8 @@ const OPCODES: [OpCode; 45] = [
     OpCode::ConstantLong,
     OpCode::GetLocalLong,
     OpCode::SetLocalLong,
+    OpCode::BeginTry,
+    OpCode::EndTry,
 ];
 
 impl OpCode {
@@ -295,6 +311,8 @@ impl OpCode {
             OpCode::ConstantLong => "CONSTANT_LONG",
             OpCode::GetLocalLong => "GET_LOCAL_LONG",
             OpCode::SetLocalLong => "SET_LOCAL_LONG",
+            OpCode::BeginTry => "BEGIN_TRY",
+            OpCode::EndTry => "END_TRY",
         }
     }
 }
@@ -457,7 +475,9 @@ impl Chunk {
                 let _ = writeln!(out, "{:<14}{operator} {index} ({value})", op.name());
                 offset + 3
             }
-            Some(op @ (OpCode::Jump | OpCode::JumpIfFalse | OpCode::JumpIfTrue)) => {
+            Some(
+                op @ (OpCode::Jump | OpCode::JumpIfFalse | OpCode::JumpIfTrue | OpCode::BeginTry),
+            ) => {
                 let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
                 let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
                 let target = offset + 3 + ((high << 8) | low);

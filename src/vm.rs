@@ -121,6 +121,22 @@ enum TaskCall {
     Nested,
 }
 
+/// A `try` waiting to see whether the expression under it fails.
+///
+/// Everything here is a mark to rewind to. A failure can be raised many frames
+/// deeper than the `try` that catches it, so the VM has to be able to put the
+/// four things that grew back the way they were: the frame stack, the value
+/// stack, the pending higher-order builtins, and the upvalues still pointing at
+/// stack slots that are about to go away.
+struct Handler {
+    frames: usize,
+    stack: usize,
+    tasks: usize,
+    /// Where the frame that installed this resumes: the landing, past the
+    /// guarded expression.
+    ip: usize,
+}
+
 /// What `import` has loaded, and what it is part way through loading.
 #[derive(Default)]
 struct Loader {
@@ -151,6 +167,8 @@ pub struct Vm {
     column: usize,
     /// Higher-order builtins suspended waiting for a call, innermost last.
     tasks: Vec<PendingTask>,
+    /// `try` expressions currently being evaluated, innermost last.
+    handlers: Vec<Handler>,
     loader: Loader,
 }
 
@@ -186,6 +204,7 @@ impl Vm {
             line: 0,
             column: 0,
             tasks: Vec::new(),
+            handlers: Vec::new(),
             loader: Loader::default(),
         }
     }
@@ -368,6 +387,7 @@ impl Vm {
             self.stack.clear();
             self.open_upvalues.clear();
             self.tasks.clear();
+            self.handlers.clear();
         }
         debug_assert!(self.frames.is_empty(), "frames left after a program");
         debug_assert!(self.stack.is_empty(), "stack values left after a program");
@@ -385,11 +405,55 @@ impl Vm {
             self.tasks.is_empty(),
             "a task was pending when the loop was entered"
         );
-        let mut result = self.run_frames_inner();
-        if let Err(error) = &mut result {
-            error.trace = self.capture_trace();
+        loop {
+            match self.run_frames_inner() {
+                Ok(value) => return Ok(value),
+                Err(mut error) => {
+                    // Captured before anything is unwound, because the frames
+                    // that hold the path are about to be discarded whether this
+                    // is caught or not.
+                    error.trace = self.capture_trace();
+                    // Everything the loop keeps in locals is re-read from
+                    // `self` when it starts, so going round again picks up the
+                    // rewound state.
+                    self.catch(error)?;
+                }
+            }
         }
-        result
+    }
+
+    /// Hand a failure to the innermost `try`, or give it back when no `try` can
+    /// take it.
+    ///
+    /// `Ok` means the failure became a value on the stack and the dispatch loop
+    /// should carry on from the handler's landing. `Err` hands it back to be
+    /// reported.
+    ///
+    /// A `Result` rather than an `Option` on purpose. With an `Option` whose
+    /// `None` meant "caught", `self.handlers.pop()?` reads as the obvious
+    /// spelling and means exactly the opposite: no handler would report itself
+    /// as a successful catch, and the loop would resume over a stack it never
+    /// rewound.
+    fn catch(&mut self, error: MiruError) -> Result<(), MiruError> {
+        if error.fatal {
+            return Err(error);
+        }
+        let Some(handler) = self.handlers.pop() else {
+            return Err(error);
+        };
+        // Upvalues first: closing one reads the stack slot it points at, and
+        // those slots are what the next line throws away.
+        self.close_upvalues_from(handler.stack);
+        self.frames.truncate(handler.frames);
+        self.stack.truncate(handler.stack);
+        self.tasks.truncate(handler.tasks);
+        // After truncating, the top frame is the one that ran the `try`.
+        self.frames
+            .last_mut()
+            .expect("the frame that began the try")
+            .ip = handler.ip;
+        self.stack.push(Value::Error(Rc::new(error)));
+        Ok(())
     }
 
     /// The call path currently on the frame stack, innermost first.
@@ -549,6 +613,19 @@ impl Vm {
                     OpCode::Loop => {
                         let offset = read_u16(chunk, ip);
                         ip = ip + 2 - offset as usize;
+                    }
+                    OpCode::BeginTry => {
+                        let offset = read_u16(chunk, ip);
+                        ip += 2;
+                        self.handlers.push(Handler {
+                            frames: self.frames.len(),
+                            stack: self.stack.len(),
+                            tasks: self.tasks.len(),
+                            ip: ip + offset as usize,
+                        });
+                    }
+                    OpCode::EndTry => {
+                        self.handlers.pop().expect("a handler to end");
                     }
                     OpCode::Truthy => {
                         let value = self.pop();
@@ -793,7 +870,8 @@ impl Vm {
                         chunk,
                         op_ip,
                         format!("call depth limit of {MAX_CALL_DEPTH} exceeded"),
-                    ));
+                    )
+                    .as_fatal());
                 }
                 let slot_base = self.stack.len() - argcount;
                 self.frames.push(CallFrame {
@@ -864,11 +942,18 @@ impl Vm {
         line: usize,
         column: usize,
     ) -> Result<Value, MiruError> {
-        // No builtin is handed a caught failure. Checking here covers all forty
-        // at once, and it is what stops `print(r)` from turning a failure the
-        // program never dealt with into a line of output that looks deliberate.
-        if let Some(message) = args.iter().find_map(crate::ops::unhandled) {
-            return Err(MiruError::with_column(line, column, message));
+        // No builtin is handed a caught failure, bar the few that exist to
+        // inspect one. Checking here covers all forty at once, and it is what
+        // stops `print(r)` from turning a failure the program never dealt with
+        // into a line of output that looks deliberate.
+        let inspects = match &callee {
+            Value::Builtin(builtin) => crate::builtins::accepts_failure(builtin.name),
+            _ => false,
+        };
+        if !inspects {
+            if let Some(message) = args.iter().find_map(crate::ops::unhandled) {
+                return Err(MiruError::with_column(line, column, message));
+            }
         }
         let (saved_line, saved_column) = (self.line, self.column);
         self.line = line;
@@ -1012,7 +1097,8 @@ impl Vm {
                         line,
                         column,
                         format!("call depth limit of {MAX_CALL_DEPTH} exceeded"),
-                    ));
+                    )
+                    .as_fatal());
                 }
                 // Mirror the bytecode layout: the callee sits beneath its args.
                 self.stack.push(Value::Closure(Rc::clone(&closure)));

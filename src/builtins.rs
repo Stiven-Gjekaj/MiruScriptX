@@ -51,6 +51,17 @@ pub fn register(globals: &mut Globals) {
     define_host(globals, "reduce", reduce);
 }
 
+/// Whether a builtin may be handed a caught failure.
+///
+/// Every other builtin refuses one, because passing a failure on as though it
+/// were a result is the mistake this milestone exists to prevent. Asking what
+/// type a value is has to be the exception: it is how a program finds out that
+/// it is holding a failure in the first place, and a check that cannot be made
+/// without tripping the guard is no check at all.
+pub fn accepts_failure(name: &str) -> bool {
+    matches!(name, "type")
+}
+
 fn define(globals: &mut Globals, name: &'static str, func: BuiltinFn) {
     let slot = globals
         .slot_for_builtin(name)
