@@ -709,6 +709,14 @@ impl Vm {
                         let value = self.pop();
                         index_set(target, &index, value, chunk, op_ip, target_ip)?;
                     }
+                    OpCode::SetField => {
+                        let target_ip = ip;
+                        ip += 1;
+                        let name = self.pop();
+                        let target = self.pop();
+                        let value = self.pop();
+                        field_set(target, &name, value, chunk, op_ip, target_ip)?;
+                    }
                     OpCode::IterSnapshot => {
                         let value = self.pop();
                         match value {
@@ -1374,6 +1382,50 @@ fn failure_field(
         }
     };
     Ok(value)
+}
+
+/// Assign `target.name = value` for a map, or fail for anything else.
+///
+/// Where [`field_get`] insists the name is already there, this does not: a
+/// field that does not exist is created, exactly as `target["name"] = value`
+/// creates a key. The asymmetry is deliberate. Reading a name that is not there
+/// is almost always a misspelling, and assigning to one almost never is.
+fn field_set(
+    target: Value,
+    name: &Value,
+    value: Value,
+    chunk: &Chunk,
+    access_ip: usize,
+    target_ip: usize,
+) -> Result<(), MiruError> {
+    // As in `field_get`, the compiler always emits a string constant here, so
+    // this only guards a hand-built chunk.
+    let key = match name {
+        Value::Str(key) => key,
+        other => {
+            return Err(runtime_error(
+                chunk,
+                access_ip,
+                format!("a field name must be a string, not a {}", other.type_name()),
+            ))
+        }
+    };
+    match target {
+        Value::Map(entries) => {
+            entries.borrow_mut().insert(key.to_string(), value);
+            Ok(())
+        }
+        Value::Error(error) => Err(runtime_error(
+            chunk,
+            target_ip,
+            format!("unhandled failure: {}", error.message),
+        )),
+        other => Err(runtime_error(
+            chunk,
+            target_ip,
+            format!("cannot assign a field of a {}", other.type_name()),
+        )),
+    }
 }
 
 /// Read `target[index]` for an array or map, or fail for anything else.

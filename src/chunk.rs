@@ -184,12 +184,21 @@ pub enum OpCode {
     /// leaving the expression's value in place. Reached only when nothing
     /// failed.
     EndTry,
+    /// Assign through a field: pop the field name, the target, and the value,
+    /// and store the value under that name. Carries the same position-only
+    /// operand byte as [`OpCode::SetIndex`].
+    ///
+    /// Unlike [`OpCode::GetField`], a name that is not there is not an error.
+    /// Reading a field asserts it is present, because a misspelling should
+    /// fail; assigning to one that is absent is how a field gets there in the
+    /// first place, which is what `m["a"] = 1` has always done.
+    SetField,
 }
 
 /// Every opcode in declaration order, so a byte decodes by indexing rather than
 /// by comparison. The order must match the enum, which `opcodes_match_their_byte`
 /// checks.
-const OPCODES: [OpCode; 47] = [
+const OPCODES: [OpCode; 48] = [
     OpCode::Constant,
     OpCode::Nil,
     OpCode::True,
@@ -237,6 +246,7 @@ const OPCODES: [OpCode; 47] = [
     OpCode::SetLocalLong,
     OpCode::BeginTry,
     OpCode::EndTry,
+    OpCode::SetField,
 ];
 
 impl OpCode {
@@ -313,6 +323,7 @@ impl OpCode {
             OpCode::SetLocalLong => "SET_LOCAL_LONG",
             OpCode::BeginTry => "BEGIN_TRY",
             OpCode::EndTry => "END_TRY",
+            OpCode::SetField => "SET_FIELD",
         }
     }
 }
@@ -531,7 +542,7 @@ impl Chunk {
                 let _ = writeln!(out, "{:<14}slot {}", op.name(), (high << 8) | low);
                 offset + 3
             }
-            Some(op @ (OpCode::Index | OpCode::SetIndex | OpCode::GetField)) => {
+            Some(op @ (OpCode::Index | OpCode::SetIndex | OpCode::GetField | OpCode::SetField)) => {
                 // The operand byte carries only a source position, so there is
                 // no value to show for it.
                 let _ = writeln!(out, "{}", op.name());

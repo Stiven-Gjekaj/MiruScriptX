@@ -1289,3 +1289,34 @@ fn the_call_path_survives_into_a_caught_failure() {
         ),
     ]);
 }
+
+#[test]
+fn a_field_can_be_assigned_through_and_creates_what_is_not_there() {
+    check_all(&[
+        // The half v0.8 left out: reading a field worked, writing one did not
+        // parse.
+        ("let m = {\"a\": 1}\nm.a = 2\nm.a", "ok 2"),
+        // Assigning to a field that is not there creates it, where *reading*
+        // one that is not there is an error. The asymmetry is the point: a
+        // misspelling on the way in is almost always a mistake, and on the way
+        // out almost never is.
+        ("let m = {}\nm.a = 1\nm", "ok {\"a\": 1}"),
+        // Which is exactly what the bracket form has always done, so the two
+        // spellings agree on the one thing they could have differed on.
+        ("let m = {}\nm.a = 1\nm[\"a\"]", "ok 1"),
+        ("let m = {}\nm[\"a\"] = 1\nm.a", "ok 1"),
+        // Nested, so the target of an assignment can itself be a field read.
+        (
+            "let n = {\"deep\": {\"x\": 1}}\nn.deep.x = 9\nn.deep.x",
+            "ok 9",
+        ),
+        // A target that has no fields is reported at the target, as index
+        // assignment already reports one that cannot be indexed.
+        ("let n = 5\nn.a = 1", "err cannot assign a field of a int @ 2:1"),
+        // And what is still not a target.
+        (
+            "f() = 1",
+            "err invalid assignment target (only variables, elements, and fields can be assigned to) @ 1:1",
+        ),
+    ]);
+}

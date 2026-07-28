@@ -203,6 +203,22 @@ impl<'g> Compiler<'g> {
                             .write_op(OpCode::SetIndex, index.line, index.column);
                         self.chunk.write(0, object.line, object.column);
                     }
+                    ExprKind::Field {
+                        target: object,
+                        name,
+                    } => {
+                        // The same shape as an index assignment, with the name
+                        // as an ordinary constant so it is not capped at 256.
+                        self.expression(object)?;
+                        self.constant(
+                            Value::Str(Rc::new(name.clone())),
+                            target.line,
+                            target.column,
+                        )?;
+                        self.chunk
+                            .write_op(OpCode::SetField, target.line, target.column);
+                        self.chunk.write(0, object.line, object.column);
+                    }
                     _ => {
                         return Err(MiruError::with_column(
                             target.line,

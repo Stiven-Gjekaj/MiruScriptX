@@ -193,12 +193,12 @@ impl Parser {
         if self.check(&TokenKind::Assign) {
             self.advance(); // '='
             match &expr.kind {
-                ExprKind::Identifier(_) | ExprKind::Index { .. } => {}
+                ExprKind::Identifier(_) | ExprKind::Index { .. } | ExprKind::Field { .. } => {}
                 _ => {
                     return Err(MiruError::with_column(
                         expr.line,
                         expr.column,
-                        "invalid assignment target (only variables and array elements can be assigned to)",
+                        "invalid assignment target (only variables, elements, and fields can be assigned to)",
                     ));
                 }
             }
