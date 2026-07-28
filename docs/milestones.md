@@ -363,16 +363,14 @@ Defects found and reproduced but not yet scheduled into a milestone. Recorded
 here rather than left in a conversation, so the next person to hit one finds it
 already described instead of rediscovering it.
 
-- **A field cannot be assigned through.** `m.a` reads, but `m.a = 1` does not
-  parse. `m["a"] = 1` does the same job and works, and modules are read only,
-  so v0.8 added field access without the assignment half rather than half
-  building it. Doing it means a `SetField` opcode and deciding what assigning
-  to a field that does not exist should do, which is a different question from
-  reading one that does not: reading is an error because a typo should fail,
-  where assigning would reasonably create it.
+Nothing currently recorded.
 
-  (The multi-line callback defect logged in v0.7 was fixed in v0.8, which had
-  the lexer open anyway.)
+(The multi-line callback defect logged in v0.7 was fixed in v0.8, which had the
+lexer open anyway. Field assignment, logged in v0.8, was fixed in v0.9: `m.a = 1`
+parses and assigns, and creates the field when it is absent, which is what
+`m["a"] = 1` has always done. Reading a field that is not there stays an error,
+because a misspelling on the way in is almost always a mistake and on the way
+out almost never is.)
 
 ## How versions are cut
 
