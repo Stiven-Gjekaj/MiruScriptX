@@ -167,11 +167,12 @@ request templates, and a branded README with a project logo.
 
 ## The road to 1.0
 
-Four milestones. v0.7 finishes the engine work v0.5 measured but could not
-reach. v0.8 and v0.9 add the two things that separate a script runner from a
-language you could build something in: a way to split a program across files,
-and a way to survive a failure. v1.0 is the promise, the packaging, and the
-specification.
+Four milestones, three of them now behind. v0.7 finished the engine work v0.5
+measured but could not reach. v0.8 and v0.9 added the two things that separate a
+script runner from a language you could build something in: a way to split a
+program across files, and a way to survive a failure. v1.0 is what remains, and
+it is the promise, the packaging, and the specification rather than more
+language.
 
 Two features are deliberately **not** on this road. User-defined types stay out:
 maps already serve as records, and Lua and early JavaScript both reached
@@ -283,26 +284,61 @@ there as well; nothing in v0.8 went near `BuiltinFn`.
 
 ## v0.9: failure as a value
 
-Any runtime error kills the program today. Nothing defensive can be written: not
-a bad index, not a failed conversion, not a missing key that matters.
+Shipped. `try` turns a failure into a value instead of ending the program, and a
+program that reads input can now survive input it did not expect.
 
-- Errors become values rather than exceptions. No unwinding and no non-local
-  jumps, which suits a VM whose control flow is entirely jumps, and which keeps
-  the frame stack and the trace machinery from v0.6 intact. It is more typing at
-  a call site than `try`/`catch`, and that is the trade: which operations can
-  fail stays visible in the source.
+- **Errors became values, and the error path did not change.** All forty-odd
+  raise sites still return `Err(MiruError)` through the same `?`. What changed is
+  what happens on the way out: if a `try` is waiting, the VM rewinds to the mark
+  it recorded, pushes the failure as a value, and re-enters the dispatch loop. No
+  opcode gained a comparison, and a program with no `try` in it runs the bytecode
+  it ran in v0.8.
 
-- The decisions to make, each of which changes what the language feels like:
+- **A handler rewinds four things**, and forgetting one leaves a VM running on
+  corrupt state rather than failing: frames, the value stack, pending
+  higher-order builtins, and the upvalues still pointing at slots about to
+  disappear. Upvalues close first, because closing one reads a slot the next step
+  throws away.
 
-  - Which failures become values and which stay fatal. Not everything should be
-    catchable; a call depth limit is a bug, not a condition to handle.
-  - Whether an error is a new `Value` variant or a map with a known shape.
-  - How a caller checks one without every call site growing three lines.
-  - What happens to an unchecked error: silently ignored is the failure mode
-    that makes this style hated, so it should be hard to drop one by accident.
+- **Using a failure is fatal, and that is the design.** A failure may be
+  assigned, asked its type, checked with `is_error`, and have its fields read.
+  Anything else stops the program, naming the original failure at the line that
+  misused it. The usual complaint about errors as values is that an unchecked one
+  flows on as data and surfaces somewhere unrelated; here it cannot.
 
-- The trace captured in v0.6 should survive into a caught error. Knowing a
-  failure happened is much less useful than knowing where it came from.
+- **The compiler found none of the places that needed changing.** Adding
+  `Value::Error` compiled clean on the first attempt, because sixty wildcard
+  match arms absorbed it. Two refusals were silent rather than generic: `!`
+  answers for every value through `is_truthy` and `==` for every pair through
+  `Value::equals`, so a failure read as `false` and as unequal to everything,
+  which is indistinguishable from an ordinary value that did not match. The same
+  hole sat in `if` and `while`. A test per consumer path found them; the build
+  never would have.
+
+- **A failure remembers where it came from.** `MiruError` rides inside the value
+  whole rather than as a copy of its parts, and the v0.6 trace is captured before
+  anything unwinds, so `(try f()).trace` reads
+  `["in f, called from line 2"]`. Knowing that something failed is much less
+  useful than knowing where from.
+
+- **The call depth limit is not catchable.** Runaway recursion is a bug rather
+  than a condition to handle, and a `try` that swallowed it would hide the only
+  thing worth knowing.
+
+- **Field assignment landed here too**, closing the last entry in Known
+  limitations. `m.a = 1` creates the field when it is absent, which is what
+  `m["a"] = 1` has always done, and the opposite of what reading does.
+
+- **What it cost the hot path is below the harness's resolution.** The one change
+  that could have taxed every program is the conditional guard. Measured against
+  v0.8.23 from a worktree, best of three a side: `fib` -0.1%, `loop_sum` +1.2%,
+  against a within-side spread of 5.4% and 4.7%. Quoting the 1.2% would be
+  reporting noise as a finding.
+
+What v1.0 inherits: nothing in the language. Every feature on the road has
+shipped, and Known limitations is empty for the first time. What is left is the
+stability guarantee, prebuilt binaries, crates.io, the written specification, and
+deciding what to call this thing now that "small" no longer describes it.
 
 ## v1.0: the promise, the package, and the specification
 
@@ -330,7 +366,8 @@ a bad index, not a failed conversion, not a missing key that matters.
   limit a program can hit.
 
 - **Retire the word "small."** It was honest early and is still defensible at
-  v0.6 (7,666 lines of Rust, roughly 1,500 of them comments and blanks), but
+  v0.6 (7,666 lines of Rust, roughly 1,500 of them comments and blanks) and is
+  9,600 by v0.9, but
   modules and error handling will push it past the point where it describes
   anything useful. By 1.0 the interesting claim is not that the language is
   short; it is that it is *finished*, and written from scratch: a bytecode
