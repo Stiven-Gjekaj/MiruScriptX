@@ -43,10 +43,20 @@ print("total: " + str(42))   // total: 42
 ## type(value)
 
 Returns the name of a value's type, one of `int`, `float`, `bool`, `string`,
-`array`, `map`, `function`, or `nil`.
+`array`, `map`, `function`, `nil`, or `error`.
 
 ```
 print(type(3.14))   // float
+```
+
+## is_error(value)
+
+Whether the value is a failure caught by `try`. See
+[Handling failure](16-failure.md).
+
+```
+print(is_error(try 1 / 0))   // true
+print(is_error(42))          // false
 ```
 
 ## range(end) or range(start, end)
