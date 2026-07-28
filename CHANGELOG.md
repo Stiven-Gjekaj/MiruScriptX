@@ -8,6 +8,66 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 0.9 (2026-07-28)
+
+### Added
+
+- `try`, which turns a failure into a value instead of ending the program:
+
+  ```
+  let r = try 10 / 0
+  if is_error(r) {
+    print("could not:", r.message)
+  }
+  ```
+
+  Without `try`, a failure is fatal exactly as before, so nothing already
+  written behaves differently. `try` takes the whole expression after it, so
+  `try a / b` covers the division; parentheses narrow it.
+
+  A caught failure can be caught from any call depth. The frame stack, value
+  stack, pending higher-order builtins, and open upvalues all rewind to where
+  the `try` began.
+
+- A failure is a value of a new type. `type(r)` answers `"error"`, and
+  `is_error(r)` is the idiomatic check. It carries five fields, read with a dot:
+  `message`, `line`, `column`, `file`, and `trace`. A name outside that set is
+  an error rather than `nil`.
+
+- The call trace survives into a caught failure, so `(try f()).trace` reads
+  `["in f, called from line 2"]`. Knowing that something failed is much less
+  useful than knowing where it came from.
+
+- Assignment through a field: `m.a = 1`. A field that is not there is created,
+  which is what `m["a"] = 1` has always done, and the opposite of what reading
+  one does. This closes the only entry in Known limitations, which is now empty.
+
+- `examples/recover.miru`, a program that survives a failure mid-loop, and a
+  wiki lesson on handling failure.
+
+### Changed
+
+- Using a caught failure as an ordinary value stops the program. It may be
+  assigned, asked its type, checked with `is_error`, and have its fields read;
+  arithmetic, comparison, indexing, calling, passing it to any other builtin, or
+  testing it in a condition all report `unhandled failure: <what went wrong>` at
+  the line that misused it.
+
+  A failure is deliberately not falsy. `if r { .. }` cannot mean "if it worked",
+  because a successful `0`, `false`, `nil`, or `""` would be indistinguishable
+  from a failure.
+
+- Exceeding the call depth limit cannot be caught. Runaway recursion is a bug
+  rather than a condition to recover from.
+
+- `MiruError` gained a `fatal` flag, which marks the errors `try` may not catch.
+
+### Fixed
+
+- The playground colours `import`, `as`, and `try` as keywords. The first two
+  have shown as ordinary text since 0.8: the list was maintained by hand, and
+  nothing failed when it fell behind.
+
 ## 0.8 (2026-07-27)
 
 ### Added
