@@ -381,6 +381,10 @@ impl Vm {
     /// error, because by then the frames are gone: [`Vm::interpret`] clears them
     /// before the error propagates. Here they are still intact.
     fn run_frames(&mut self) -> Result<Value, MiruError> {
+        debug_assert!(
+            self.tasks.is_empty(),
+            "a task was pending when the loop was entered"
+        );
         let mut result = self.run_frames_inner();
         if let Err(error) = &mut result {
             error.trace = self.capture_trace();
@@ -421,7 +425,13 @@ impl Vm {
         // A local rather than a field, so the comparison every `Return` makes
         // stays in a register. It outlives `continue 'frames`, so it is declared
         // out here.
-        let mut resume_depth = 0usize;
+        //
+        // Read from the task stack rather than written as zero. Today that is
+        // the same number, because nothing is ever pending when this loop is
+        // entered: `interpret` pushes one frame and calls straight in. It stops
+        // being the same number as soon as the loop can be re-entered part way
+        // through a program, which is what catching a failure will do.
+        let mut resume_depth = self.resume_depth();
         // Two loops, one per frame and one per instruction. The outer loop keeps
         // the current frame's closure, instruction pointer, stack base, and chunk
         // in locals; the inner one runs until a call or return changes frames and
