@@ -1314,17 +1314,66 @@ fn field_get(
             .get(key.as_str())
             .cloned()
             .ok_or_else(|| runtime_error(chunk, access_ip, format!("no field '{key}'"))),
-        Value::Error(error) => Err(runtime_error(
-            chunk,
-            target_ip,
-            format!("unhandled failure: {}", error.message),
-        )),
+        // The one thing a program may do with a failure besides ask its type.
+        // Reading is not using: it is how a program decides what to do, so it
+        // has to be allowed or the guard would forbid the very thing it exists
+        // to make people do.
+        Value::Error(error) => failure_field(&error, key, chunk, access_ip),
         other => Err(runtime_error(
             chunk,
             target_ip,
             format!("cannot read a field of a {}", other.type_name()),
         )),
     }
+}
+
+/// Read one of a failure's fields.
+///
+/// A closed set rather than a map, so a misspelling fails the way `m.nope`
+/// does instead of quietly reading `nil`.
+fn failure_field(
+    error: &MiruError,
+    key: &str,
+    chunk: &Chunk,
+    access_ip: usize,
+) -> Result<Value, MiruError> {
+    let value = match key {
+        "message" => Value::Str(Rc::new(error.message.clone())),
+        "line" => Value::Int(error.line as i64),
+        "column" => Value::Int(error.column as i64),
+        // `nil` rather than an empty string when the failure came from the file
+        // being run, so "no file" is distinguishable from a file named "".
+        "file" => match &error.file {
+            Some(file) => Value::Str(Rc::new(file.clone())),
+            None => Value::Nil,
+        },
+        // The call path the failure came through, innermost first, worded as
+        // the terminal prints it. Knowing a failure happened is much less
+        // useful than knowing where it came from, and a caught failure would
+        // otherwise be the one place that knowledge is thrown away.
+        "trace" => {
+            let entries: Vec<Value> = error
+                .trace
+                .iter()
+                .map(|entry| {
+                    let name = entry.function.as_deref().unwrap_or("<anonymous>");
+                    Value::Str(Rc::new(format!(
+                        "in {name}, called from line {}",
+                        entry.line
+                    )))
+                })
+                .collect();
+            Value::Array(Rc::new(RefCell::new(entries)))
+        }
+        other => {
+            return Err(runtime_error(
+                chunk,
+                access_ip,
+                format!("a failure has no field '{other}'"),
+            ))
+        }
+    };
+    Ok(value)
 }
 
 /// Read `target[index]` for an array or map, or fail for anything else.
@@ -1479,15 +1528,30 @@ mod tests {
     }
 
     #[test]
-    fn a_caught_failure_is_not_a_target_to_index_or_read_a_field_of() {
-        let error = run(|chunk| {
+    fn a_failure_answers_for_its_own_fields_and_nothing_else() {
+        // Reading is not using. A program has to be able to ask what went
+        // wrong, so this is the one door the guard leaves open, and it opens
+        // exactly as far as a closed set of names.
+        let value = run(|chunk| {
             constant(chunk, failure());
             get_field(chunk, "message");
         })
-        .err()
-        .expect("a field of a failure must be refused");
-        assert_eq!(error.message, REFUSED);
+        .expect("a failure answers for its own fields");
+        assert!(value.equals(&Value::Str(Rc::new("division by zero".to_string()))));
 
+        // A misspelling fails rather than reading nil, the same bargain field
+        // access makes on a map.
+        let error = run(|chunk| {
+            constant(chunk, failure());
+            get_field(chunk, "mesage");
+        })
+        .err()
+        .expect("an unknown field must be refused");
+        assert_eq!(error.message, "a failure has no field 'mesage'");
+
+        // Indexing is not reading a field, and stays refused: `r["message"]`
+        // would answer nil for a name that is not there, which is the whole
+        // thing GetField exists to avoid.
         let error = run(|chunk| {
             constant(chunk, failure());
             constant(chunk, Value::Int(0));

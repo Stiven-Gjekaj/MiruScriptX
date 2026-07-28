@@ -18,6 +18,7 @@ pub fn register(globals: &mut Globals) {
     define(globals, "push", push);
     define(globals, "str", to_str);
     define(globals, "type", type_of);
+    define(globals, "is_error", is_error);
     define(globals, "range", range);
     define(globals, "keys", keys);
     define(globals, "values", values);
@@ -59,7 +60,7 @@ pub fn register(globals: &mut Globals) {
 /// it is holding a failure in the first place, and a check that cannot be made
 /// without tripping the guard is no check at all.
 pub fn accepts_failure(name: &str) -> bool {
-    matches!(name, "type")
+    matches!(name, "type" | "is_error")
 }
 
 fn define(globals: &mut Globals, name: &'static str, func: BuiltinFn) {
@@ -144,6 +145,21 @@ fn type_of(
 ) -> Result<Value, String> {
     check_arity("type", &args, 1)?;
     Ok(Value::Str(Rc::new(args[0].type_name().to_string())))
+}
+
+/// Whether a value is a failure caught by `try`.
+///
+/// `type(v) == "error"` says the same thing and needed no builtin, but it puts
+/// the check that decides whether a program is about to misuse a value behind a
+/// string comparison a typo can silently break. This cannot be misspelled
+/// without failing outright.
+fn is_error(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    check_arity("is_error", &args, 1)?;
+    Ok(Value::Bool(matches!(args[0], Value::Error(_))))
 }
 
 /// `range(end)` or `range(start, end)` returns an array of integers in the

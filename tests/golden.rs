@@ -1245,3 +1245,47 @@ fn try_does_not_catch_the_call_depth_limit() {
         "outcome was: {outcome}"
     );
 }
+
+#[test]
+fn a_caught_failure_can_be_asked_what_went_wrong() {
+    check_all(&[
+        // The check itself. `type(v) == "error"` says the same thing; this
+        // cannot be misspelled without failing outright.
+        ("is_error(try 1 / 0)", "ok true"),
+        ("is_error(42)", "ok false"),
+        // What went wrong, and where. The position is the failure's own, which
+        // is why using one reports at the point of use instead: both are
+        // available, each where it belongs.
+        ("(try 1 / 0).message", "ok \"division by zero\""),
+        ("(try 1 / 0).line", "ok 1"),
+        ("(try 1 / 0).column", "ok 8"),
+        // nil rather than "" when the failure came from the file being run, so
+        // "no file" is distinguishable from a file with an empty name.
+        ("(try 1 / 0).file", "ok nil"),
+        // Nothing was called, so there is no path to report.
+        ("(try 1 / 0).trace", "ok []"),
+        // A misspelling fails rather than reading nil, the same bargain field
+        // access makes everywhere else.
+        (
+            "(try 1 / 0).nope",
+            "err a failure has no field 'nope' @ 1:13",
+        ),
+    ]);
+}
+
+#[test]
+fn the_call_path_survives_into_a_caught_failure() {
+    // The v0.6 trace is captured before anything is unwound, so a failure
+    // carries where it came from even after being caught. Knowing that
+    // something failed is much less useful than knowing where.
+    check_all(&[
+        (
+            "fn f() { return nope }\n(try f()).trace",
+            "ok [\"in f, called from line 2\"]",
+        ),
+        (
+            "fn c() { return nope }\nfn b() { return c() }\nfn a() { return b() }\nlen((try a()).trace)",
+            "ok 3",
+        ),
+    ]);
+}
