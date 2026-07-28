@@ -9,12 +9,12 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-289_passing-427819?style=for-the-badge" alt="289 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-305_passing-427819?style=for-the-badge" alt="305 tests passing"/>
 </p>
 
 <p align="center">
   <a href="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml"><img src="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <img src="https://img.shields.io/badge/version-0.8-blue?style=flat-square" alt="Version 0.8"/>
+  <img src="https://img.shields.io/badge/version-0.9-blue?style=flat-square" alt="Version 0.9"/>
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"/>
 </p>
 
@@ -35,8 +35,9 @@ _Compiled to bytecode, run on a stack virtual machine_
 **MiruScriptX** is a minimalist, dynamically typed scripting language with a
 clean, modern syntax, written from scratch in Rust. Write functions, closures,
 loops, arrays, and maps in familiar syntax, split a program across files when it
-outgrows one, then run it from a file or an interactive REPL. Programs use the
-`.miru` extension.
+outgrows one, handle the failures you expect and let the rest stop the program,
+then run it from a file or an interactive REPL. Programs use the `.miru`
+extension.
 
 Programs are compiled to bytecode and run on a stack virtual machine. A tree
 walker came first and was replaced in v0.5, once a corpus of golden tests had
@@ -70,6 +71,7 @@ for name in people {
 - `if` / `else if` / `else`, `while`, `for ... in`
 - `break` and `continue`
 - Modules: `import` a file and reach its names through a dot
+- `try`, which turns a failure into a value you can check
 - Reading input with `input`
 - Arithmetic, comparison, and short-circuit logic
 
@@ -84,6 +86,7 @@ for name in people {
 - File runner, a source formatter (`miru fmt`), and a REPL with history
 - A disassembler (`miru disasm`) that prints the bytecode for a program
 - Errors with a line, a column, and an underline under the token at fault
+- Failures you can catch as values, carrying the call path they came through
 - Minimal dependencies: rustyline at runtime, criterion for benchmarks
 - A WebAssembly build and an in-browser playground, in a separate crate
 - Unit, golden, session, and end-to-end tests, benchmarks, and CI
@@ -143,6 +146,7 @@ Runnable programs live in [examples/](examples):
 | [contacts.miru](examples/contacts.miru) | Maps, lookups, and iteration |
 | [transform.miru](examples/transform.miru) | Higher-order functions: map, filter, reduce |
 | [shop.miru](examples/shop.miru) + [prices.miru](examples/prices.miru) | Two files: `import`, and names that belong to a file |
+| [recover.miru](examples/recover.miru) | `try`: surviving a failure instead of stopping at it |
 
 Run one with `miru run examples/contacts.miru`.
 
@@ -173,16 +177,16 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 
 | Stage | Files | Lines | Responsibility |
 | ----- | ----- | ----- | -------------- |
-| **Lexer** | token.rs, lexer.rs | 970 | Source text to tokens, with line, column, and span tracking |
-| **Parser** | ast.rs, parser.rs | 1139 | Recursive descent plus a Pratt expression parser |
-| **Runtime model** | value.rs, ops.rs, builtins.rs | 1921 | Values, operator and indexing rules, the builtin library |
-| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 3338 | Compiles the AST to bytecode, runs it on a stack VM, and loads modules |
-| **Formatter** | formatter.rs | 650 | Reprints a program in canonical form (`miru fmt`) |
+| **Lexer** | token.rs, lexer.rs | 975 | Source text to tokens, with line, column, and span tracking |
+| **Parser** | ast.rs, parser.rs | 1162 | Recursive descent plus a Pratt expression parser |
+| **Runtime model** | value.rs, ops.rs, builtins.rs | 2106 | Values, operator and indexing rules, the builtin library |
+| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 3736 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches failures |
+| **Formatter** | formatter.rs | 676 | Reprints a program in canonical form (`miru fmt`) |
 | **CLI and REPL** | main.rs, repl.rs | 331 | File runner, `fmt` and `disasm` commands, and the REPL |
-| **Library** | lib.rs | 647 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **15 files** | **8996** | Written from scratch in Rust |
+| **Library** | lib.rs | 662 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
+| **Total** | **15 files** | **9648** | Written from scratch in Rust |
 
-The playground is a separate crate: 436 lines of Rust binding the language to
+The playground is a separate crate: 467 lines of Rust binding the language to
 WebAssembly, and 567 of hand-written HTML, CSS, and JavaScript. It is counted
 apart because it is not the language, and neither its code nor its dependencies
 are involved in running a `.miru` file.
