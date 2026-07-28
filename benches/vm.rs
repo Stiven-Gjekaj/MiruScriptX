@@ -73,6 +73,38 @@
 //! says. Re-running is legitimate for shaking out interference, but re-running
 //! until a number flatters the change is how benchmarks come to mean nothing.
 //!
+//! # What v0.9 cost the hot path
+//!
+//! Errors as values could have taxed every program that never uses one, and one
+//! change in it genuinely might have: `if` and `while` used to ask a value
+//! whether it was truthy through a match on two variants, and now ask through a
+//! match on three, because a caught failure must not read as `false`.
+//!
+//! Measured against `main` at v0.8.23 with a git worktree, so the two binaries
+//! differ only by this milestone. Three runs each, best of three, on the two
+//! workloads that execute a conditional per iteration:
+//!
+//! ```text
+//!                v0.8.23      v0.9.8     delta
+//! fib            673.94 us   673.18 us   -0.1%
+//! loop_sum       1.2433 ms   1.2580 ms   +1.2%
+//! ```
+//!
+//! Neither is a result. The run-to-run spread within each side was wider than
+//! the difference between them: `loop_sum` scattered 5.4% across the three
+//! baseline runs and `fib` 4.7% across the three v0.9 runs. A 1.2% figure read
+//! off that is noise being reported as a finding.
+//!
+//! So the honest statement is that the guard is below this harness's
+//! resolution, not that it is free. The mechanism agrees: it is one more arm in
+//! a match that was already reading the discriminant, and no bytecode changed,
+//! which the disassembler confirms for any program without `try` in it.
+//!
+//! Everything else in the milestone stays off the hot path by construction. The
+//! raise path was not touched, so the forty-odd error sites cost what they did;
+//! `BeginTry` is emitted only where `try` is written; and the guard on builtin
+//! arguments sits in `call_native`, which already allocates a `Vec`.
+//!
 //! # What the v0.5 optimization work came to
 //!
 //! Both columns were measured on the machine used for development, the first
