@@ -512,3 +512,155 @@ function, the number it needs, and the number it received.
 A closure keeps the variables it uses. While the enclosing function runs, the
 closure and the function share each variable. After the enclosing function
 returns, the closure keeps its own copy.
+
+---
+
+## 6. Errors
+
+### 6.1 What an error stops
+
+An error stops the program. The program writes the error to the standard error
+stream and gives the exit code 1.
+
+### 6.2 The shape of a report
+
+An error report has this shape:
+
+```
+error (line LINE, column COLUMN): MESSAGE
+    THE SOURCE LINE
+    ^^^^
+  in NAME, called from line LINE
+```
+
+- The first line gives the position and the message.
+- The next two lines show the source and mark the part at fault. These two
+  lines are not present when the error is in a different file.
+- Each remaining line gives one call, from the innermost outward.
+
+An error in an imported file names the file:
+
+```
+error (./math.miru, line 2, column 12): division by zero
+```
+
+The program does not show the source in this case. It holds the text of the
+file it started with, not the text of the module.
+
+### 6.3 Catching an error
+
+`try EXPRESSION` gives the value of the expression. If the expression gives an
+error, `try` gives the error as a value, and the program continues.
+
+`try` applies to the whole expression after it. Section 3.4 gives the
+precedence.
+
+### 6.4 What a program can do with an error
+
+A program can do these things with an error value:
+
+- Put it in a variable, an array, or a map.
+- Give it to `type`.
+- Give it to `is_error`.
+- Read one of its five fields.
+
+Every other operation stops the program. The message is `unhandled error:` and
+then the message of the original error. The position is the position of the
+operation that used the error, not the position of the original error.
+
+An error is not true and not false. `if r { }` on an error stops the program.
+This is necessary: a correct result of `0`, `false`, `nil`, or `""` would look
+the same as an error if an error were false.
+
+### 6.5 The fields of an error
+
+| Field | Type | Contents |
+| ----- | ---- | -------- |
+| `message` | `string` | What went wrong |
+| `line` | `int` | The line of the error |
+| `column` | `int` | The column of the error |
+| `file` | `string` or `nil` | The module, or `nil` for the first file |
+| `trace` | `array` | The calls, as strings |
+
+A name that is not one of these five gives the error `an error has no field
+'<name>'`.
+
+```
+fn half(n) { return n / 0 }
+let r = try half(4)
+print(r.message)   // division by zero
+print(r.trace)     // ["in half, called from line 2"]
+```
+
+### 6.6 What `try` cannot catch
+
+`try` cannot catch the call depth limit. Section 9 gives the limit. Recursion
+that does not stop is a defect in the program, not a condition to handle.
+
+---
+
+## 7. Modules
+
+### 7.1 The import statement
+
+```
+import "./math.miru" as math
+```
+
+The path is a string. The name after `as` is necessary.
+
+The program reads the names of the module through the alias:
+
+```
+print(math.add(2, 3))
+```
+
+### 7.2 How the path resolves
+
+The path resolves against the directory of the file that contains the `import`,
+not against the working directory.
+
+A program that is not in a file cannot import. The error is `cannot import:
+this program was not loaded from a file`.
+
+A path that is not a file gives the error `cannot import '<path>': no such
+file`.
+
+### 7.3 Each module runs one time
+
+The language makes the path absolute before it looks in the cache. Two
+different paths to one file are the same module. The module runs one time.
+
+```
+import "./sub/../shared.miru" as a
+import "./shared.miru" as b
+```
+
+Both names give the same module. The module runs one time.
+
+### 7.4 A cycle is an error
+
+A module that imports itself, through any number of steps, gives an error. The
+error names each step:
+
+```
+import cycle: ./y.miru -> ./x.miru -> ./y.miru
+```
+
+### 7.5 What a module gives
+
+A module gives a map. The map holds each name that the module defines at its
+top level. A name that the module uses but does not define is not in the map.
+
+### 7.6 Names in a module
+
+Each module has its own names. Two modules can define one name, and the two
+names are separate.
+
+The builtins are the same in every module. A module that declares the name of a
+builtin changes that name for itself only.
+
+### 7.7 When a module runs
+
+The language resolves and runs every import before it compiles the file that
+contains the import.
