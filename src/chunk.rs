@@ -170,15 +170,15 @@ pub enum OpCode {
     GetLocalLong,
     /// The wide form of [`OpCode::SetLocal`]. Two operand bytes, big-endian.
     SetLocalLong,
-    /// Install a failure handler for the expression that follows. Two operand
+    /// Install an error handler for the expression that follows. Two operand
     /// bytes: a big-endian distance to the landing, measured the same way a
     /// `Jump`'s is.
     ///
     /// If evaluating that expression fails, at any call depth, the VM unwinds
-    /// to the state recorded here, pushes the failure as a value, and continues
+    /// to the state recorded here, pushes the error as a value, and continues
     /// at the landing. Both paths therefore leave exactly one value where the
     /// expression's result belongs, and converge on the same instruction, so
-    /// the success path needs no jump over the failure path.
+    /// the success path needs no jump over the error path.
     BeginTry,
     /// Discard the handler installed by the matching [`OpCode::BeginTry`],
     /// leaving the expression's value in place. Reached only when nothing
@@ -265,7 +265,7 @@ impl OpCode {
     /// The compiler is the only producer of chunks and there is no bytecode
     /// reader, so such a byte is a valid opcode by construction. This panics
     /// rather than reporting an error for the same reason the value stack panics
-    /// on underflow: a failure can only mean a bug in this crate, never anything
+    /// on underflow: an error can only mean a bug in this crate, never anything
     /// a program can do. It runs on every instruction, where the `Option` the
     /// caller then has to answer for costs more than it can ever catch.
     #[inline]

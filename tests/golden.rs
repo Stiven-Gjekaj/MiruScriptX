@@ -1274,7 +1274,7 @@ fn a_caught_failure_can_be_asked_what_went_wrong() {
 }
 
 #[test]
-fn the_call_path_survives_into_a_caught_failure() {
+fn the_call_path_survives_into_a_caught_caught_error() {
     // The v0.6 trace is captured before anything is unwound, so a failure
     // carries where it came from even after being caught. Knowing that
     // something failed is much less useful than knowing where.
@@ -1354,7 +1354,7 @@ fn a_higher_order_builtin_refuses_a_caught_failure_as_a_condition() {
 }
 
 #[test]
-fn iterating_a_caught_error_names_the_original_failure() {
+fn iterating_a_caught_error_names_the_original_caught_error() {
     check_all(&[
         // The last consumer path v0.9 missed. The wildcard answered "cannot
         // iterate over a error", which is true, generic, and about the type

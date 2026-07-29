@@ -47,4 +47,4 @@ The [roadmap](../docs/milestones.md) lists what has shipped, milestone by
 milestone, and what is planned next.
 
 ---
-Previous: [Handling failure](16-failure.md)
+Previous: [Handling errors](16-handling-errors.md)

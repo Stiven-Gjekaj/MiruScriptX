@@ -51,8 +51,8 @@ print(type(3.14))   // float
 
 ## is_error(value)
 
-Whether the value is a failure caught by `try`. See
-[Handling failure](16-failure.md).
+Whether the value is an error caught by `try`. See
+[Handling errors](16-handling-errors.md).
 
 ```
 print(is_error(try 1 / 0))   // true

@@ -52,14 +52,14 @@ pub fn register(globals: &mut Globals) {
     define_host(globals, "reduce", reduce);
 }
 
-/// Whether a builtin may be handed a caught failure.
+/// Whether a builtin may be handed a caught error.
 ///
-/// Every other builtin refuses one, because passing a failure on as though it
+/// Every other builtin refuses one, because passing an error on as though it
 /// were a result is the mistake this milestone exists to prevent. Asking what
 /// type a value is has to be the exception: it is how a program finds out that
-/// it is holding a failure in the first place, and a check that cannot be made
+/// it is holding an error in the first place, and a check that cannot be made
 /// without tripping the guard is no check at all.
-pub fn accepts_failure(name: &str) -> bool {
+pub fn accepts_error(name: &str) -> bool {
     matches!(name, "type" | "is_error")
 }
 
@@ -147,7 +147,7 @@ fn type_of(
     Ok(Value::Str(Rc::new(args[0].type_name().to_string())))
 }
 
-/// Whether a value is a failure caught by `try`.
+/// Whether a value is an error caught by `try`.
 ///
 /// `type(v) == "error"` says the same thing and needed no builtin, but it puts
 /// the check that decides whether a program is about to misuse a value behind a
@@ -1460,3 +1460,36 @@ mod tests {
         assert!(err("reduce([1, 2], fn(acc, x) { return acc })").contains("3 argument(s)"));
     }
 }
+
+#[cfg(test)]
+mod count {
+    use super::*;
+
+    /// The number of builtins, pinned.
+    ///
+    /// Two comments in this codebase carried a hand-counted total, and both
+    /// drifted: one said forty and one said thirty-seven, and neither was
+    /// checked by anything. The specification and the stability guarantee both
+    /// promise behaviour for "every builtin", so the count has to be a fact
+    /// rather than a recollection.
+    #[test]
+    fn the_number_of_builtins_is_thirty_seven() {
+        let mut globals = Globals::new();
+        register(&mut globals);
+        let named: Vec<&str> = BUILTIN_NAMES.to_vec();
+        assert_eq!(named.len(), 37, "the pinned list is the wrong length");
+        for name in &named {
+            assert!(globals.contains(name), "'{name}' is not registered");
+        }
+    }
+}
+
+/// Every builtin, in registration order. Pinned so the count cannot drift and
+/// so the specification has one list to be generated from rather than a second
+/// hand-written one that can disagree.
+pub const BUILTIN_NAMES: [&str; 37] = [
+    "print", "len", "push", "str", "type", "is_error", "range", "keys", "values", "has", "upper",
+    "lower", "trim", "replace", "split", "join", "contains", "find", "pop", "index_of", "slice",
+    "sort", "reverse", "abs", "min", "max", "floor", "ceil", "round", "sqrt", "pow", "int",
+    "float", "input", "map", "filter", "reduce",
+];

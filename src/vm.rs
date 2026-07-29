@@ -123,7 +123,7 @@ enum TaskCall {
 
 /// A `try` waiting to see whether the expression under it fails.
 ///
-/// Everything here is a mark to rewind to. A failure can be raised many frames
+/// Everything here is a mark to rewind to. An error can be raised many frames
 /// deeper than the `try` that catches it, so the VM has to be able to put the
 /// four things that grew back the way they were: the frame stack, the value
 /// stack, the pending higher-order builtins, and the upvalues still pointing at
@@ -422,10 +422,10 @@ impl Vm {
         }
     }
 
-    /// Hand a failure to the innermost `try`, or give it back when no `try` can
+    /// Hand an error to the innermost `try`, or give it back when no `try` can
     /// take it.
     ///
-    /// `Ok` means the failure became a value on the stack and the dispatch loop
+    /// `Ok` means the error became a value on the stack and the dispatch loop
     /// should carry on from the handler's landing. `Err` hands it back to be
     /// reported.
     ///
@@ -494,7 +494,7 @@ impl Vm {
         // the same number, because nothing is ever pending when this loop is
         // entered: `interpret` pushes one frame and calls straight in. It stops
         // being the same number as soon as the loop can be re-entered part way
-        // through a program, which is what catching a failure will do.
+        // through a program, which is what catching an error will do.
         let mut resume_depth = self.resume_depth();
         // Two loops, one per frame and one per instruction. The outer loop keeps
         // the current frame's closure, instruction pointer, stack base, and chunk
@@ -726,7 +726,7 @@ impl Vm {
                                     .push(Value::Array(Rc::new(RefCell::new(snapshot))));
                             }
                             // Iterating a caught error is a use of it, so it
-                            // names the original failure like every other use.
+                            // names the original error like every other use.
                             // Without this arm the wildcard below answered
                             // "cannot iterate over a error": true, generic, and
                             // about the type rather than what actually went
@@ -963,12 +963,12 @@ impl Vm {
         line: usize,
         column: usize,
     ) -> Result<Value, MiruError> {
-        // No builtin is handed a caught failure, bar the few that exist to
-        // inspect one. Checking here covers all forty at once, and it is what
-        // stops `print(r)` from turning a failure the program never dealt with
-        // into a line of output that looks deliberate.
+        // No builtin is handed a caught error, bar the few that exist to
+        // inspect one. Checking here covers all thirty-seven at once, and it is
+        // what stops `print(r)` from turning an error the program never dealt
+        // with into a line of output that looks deliberate.
         let inspects = match &callee {
-            Value::Builtin(builtin) => crate::builtins::accepts_failure(builtin.name),
+            Value::Builtin(builtin) => crate::builtins::accepts_error(builtin.name),
             _ => false,
         };
         if !inspects {
@@ -1099,7 +1099,7 @@ impl Vm {
     /// Apply a callee on the innermost task's behalf.
     ///
     /// Errors report at the position of the call that started the task, not
-    /// wherever the program happens to be, because a failure in `map`'s callback
+    /// wherever the program happens to be, because an error in `map`'s callback
     /// is about the `map(..)` the reader wrote.
     fn begin_task_call(&mut self, callee: Value, args: Args) -> Result<TaskCall, MiruError> {
         let pending = self.tasks.last().expect("a pending task");
@@ -1340,11 +1340,11 @@ fn field_get(
             .get(key.as_str())
             .cloned()
             .ok_or_else(|| runtime_error(chunk, access_ip, format!("no field '{key}'"))),
-        // The one thing a program may do with a failure besides ask its type.
+        // The one thing a program may do with an error besides ask its type.
         // Reading is not using: it is how a program decides what to do, so it
         // has to be allowed or the guard would forbid the very thing it exists
         // to make people do.
-        Value::Error(error) => failure_field(&error, key, chunk, access_ip),
+        Value::Error(error) => error_field(&error, key, chunk, access_ip),
         other => Err(runtime_error(
             chunk,
             target_ip,
@@ -1353,11 +1353,11 @@ fn field_get(
     }
 }
 
-/// Read one of a failure's fields.
+/// Read one of an error's fields.
 ///
 /// A closed set rather than a map, so a misspelling fails the way `m.nope`
 /// does instead of quietly reading `nil`.
-fn failure_field(
+fn error_field(
     error: &MiruError,
     key: &str,
     chunk: &Chunk,
@@ -1367,15 +1367,15 @@ fn failure_field(
         "message" => Value::Str(Rc::new(error.message.clone())),
         "line" => Value::Int(error.line as i64),
         "column" => Value::Int(error.column as i64),
-        // `nil` rather than an empty string when the failure came from the file
+        // `nil` rather than an empty string when the error came from the file
         // being run, so "no file" is distinguishable from a file named "".
         "file" => match &error.file {
             Some(file) => Value::Str(Rc::new(file.clone())),
             None => Value::Nil,
         },
-        // The call path the failure came through, innermost first, worded as
-        // the terminal prints it. Knowing a failure happened is much less
-        // useful than knowing where it came from, and a caught failure would
+        // The call path the error came through, innermost first, worded as
+        // the terminal prints it. Knowing an error happened is much less
+        // useful than knowing where it came from, and a caught error would
         // otherwise be the one place that knowledge is thrown away.
         "trace" => {
             let entries: Vec<Value> = error
@@ -1565,24 +1565,24 @@ mod tests {
         Value::Map(Rc::new(RefCell::new(entries)))
     }
 
-    /// A caught failure, which no program can produce yet. Putting one in the
+    /// A caught error, which no program can produce yet. Putting one in the
     /// constant pool is how these tests reach the paths that must refuse it.
-    fn failure() -> Value {
+    fn caught_error() -> Value {
         Value::Error(Rc::new(MiruError::with_column(1, 9, "division by zero")))
     }
 
-    /// The message every refusal gives, which names the failure being held
+    /// The message every refusal gives, which names the error being held
     /// rather than the type it happens to be.
     const REFUSED: &str = "unhandled error: division by zero";
 
     #[test]
-    fn a_conditional_refuses_a_caught_failure_rather_than_reading_it_as_false() {
+    fn a_conditional_refuses_a_caught_error_rather_than_reading_it_as_false() {
         // The dangerous one. `if` and `while` ask a value whether it is truthy,
-        // and every value answers, so a failure would take the else branch and
+        // and every value answers, so an error would take the else branch and
         // look like an ordinary falsy value.
         for op in [OpCode::JumpIfFalse, OpCode::JumpIfTrue, OpCode::Truthy] {
             let error = run(|chunk| {
-                constant(chunk, failure());
+                constant(chunk, caught_error());
                 chunk.write_op(op, 4, 6);
                 if op != OpCode::Truthy {
                     chunk.write(0, 4, 6);
@@ -1590,23 +1590,23 @@ mod tests {
                 }
             })
             .err()
-            .expect("a conditional must refuse a failure");
-            assert_eq!(error.message, REFUSED, "{op:?} accepted a failure");
-            // Reported where the misuse is written, not where the failure was.
+            .expect("a conditional must refuse an error");
+            assert_eq!(error.message, REFUSED, "{op:?} accepted an error");
+            // Reported where the misuse is written, not where the error was.
             assert_eq!((error.line, error.column), (4, 6), "{op:?}");
         }
     }
 
     #[test]
-    fn a_failure_answers_for_its_own_fields_and_nothing_else() {
+    fn an_error_answers_for_its_own_fields_and_nothing_else() {
         // Reading is not using. A program has to be able to ask what went
         // wrong, so this is the one door the guard leaves open, and it opens
         // exactly as far as a closed set of names.
         let value = run(|chunk| {
-            constant(chunk, failure());
+            constant(chunk, caught_error());
             get_field(chunk, "message");
         })
-        .expect("a failure answers for its own fields");
+        .expect("an error answers for its own fields");
         assert!(value
             .equals(&Value::Str(Rc::new("division by zero".to_string())))
             .unwrap());
@@ -1614,7 +1614,7 @@ mod tests {
         // A misspelling fails rather than reading nil, the same bargain field
         // access makes on a map.
         let error = run(|chunk| {
-            constant(chunk, failure());
+            constant(chunk, caught_error());
             get_field(chunk, "mesage");
         })
         .err()
@@ -1625,29 +1625,29 @@ mod tests {
         // would answer nil for a name that is not there, which is the whole
         // thing GetField exists to avoid.
         let error = run(|chunk| {
-            constant(chunk, failure());
+            constant(chunk, caught_error());
             constant(chunk, Value::Int(0));
             chunk.write_op(OpCode::Index, 1, 1);
             chunk.write(0, 1, 1);
         })
         .err()
-        .expect("indexing a failure must be refused");
+        .expect("indexing an error must be refused");
         assert_eq!(error.message, REFUSED);
     }
 
     #[test]
-    fn a_caught_failure_is_not_callable_and_is_not_an_argument() {
+    fn a_caught_error_is_not_callable_and_is_not_an_argument() {
         let error = run(|chunk| {
-            constant(chunk, failure());
+            constant(chunk, caught_error());
             chunk.write_op(OpCode::Call, 1, 1);
             chunk.write(0, 1, 1);
         })
         .err()
-        .expect("calling a failure must be refused");
+        .expect("calling an error must be refused");
         assert_eq!(error.message, REFUSED);
 
         // A builtin that accepts anything, which print() and str() do. Without a
-        // guard this would have handed on a failure the program never dealt
+        // guard this would have handed on an error the program never dealt
         // with, as though it were a result.
         fn echo(
             _out: &mut dyn Output,
@@ -1664,12 +1664,12 @@ mod tests {
                     func: echo,
                 }),
             );
-            constant(chunk, failure());
+            constant(chunk, caught_error());
             chunk.write_op(OpCode::Call, 1, 1);
             chunk.write(1, 1, 1);
         })
         .err()
-        .expect("a builtin must not be handed a failure");
+        .expect("a builtin must not be handed an error");
         assert_eq!(error.message, REFUSED);
     }
 

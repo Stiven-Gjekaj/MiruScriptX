@@ -126,7 +126,7 @@ pub enum ExprKind {
         arguments: Vec<Expr>,
     },
     /// `try expr`. Evaluates the expression and yields its value, or, if
-    /// evaluating it fails at any depth, the failure itself as a value.
+    /// evaluating it fails at any depth, the error itself as a value.
     ///
     /// Takes the whole expression that follows rather than binding tightly like
     /// a unary operator, so `try a / b` covers the division. Parentheses narrow

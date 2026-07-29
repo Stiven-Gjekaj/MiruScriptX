@@ -21,8 +21,8 @@ wiki/ and re-run the script.
 - [Closures](#closures)
 - [Builtins](#builtins)
 - [Modules](#modules)
-- [Error messages](#error-messages)
-- [Handling failure](#handling-failure)
+- [When a program stops](#when-a-program-stops)
+- [Handling errors](#handling-errors)
 - [Next steps](#next-steps)
 
 # Introduction
@@ -768,8 +768,8 @@ print(type(3.14))   // float
 
 ## is_error(value)
 
-Whether the value is a failure caught by `try`. See
-[Handling failure](#handling-failure).
+Whether the value is an error caught by `try`. See
+[Handling errors](#handling-errors).
 
 ```
 print(is_error(try 1 / 0))   // true
@@ -1047,7 +1047,7 @@ file system, so `import` there reports that the program was not loaded from a
 file. Everything else in this lesson behaves the same in both places.
 
 
-# Error messages
+# When a program stops
 
 When something goes wrong, MiruScriptX stops and prints a single, precise error.
 Every error names the line and column where it happened and underlines (`^`) the
@@ -1161,7 +1161,7 @@ error (a missing file, a syntax error, or a runtime error) exits with a non-zero
 status, so scripts and continuous integration can tell success from failure.
 
 
-# Handling failure
+# Handling errors
 
 The previous lesson showed what an error looks like. Every one of them stops the
 program. That is the right default, and it is not always what you want: a
@@ -1172,7 +1172,7 @@ its input is not what it expected.
 
 ## try
 
-Put `try` in front of an expression. If it fails, the failure becomes the value
+Put `try` in front of an expression. If it fails, the error becomes the value
 of that expression instead of ending the program:
 
 ```
@@ -1192,7 +1192,7 @@ exactly as it did before.
 
 ## Checking
 
-`is_error` answers whether you are holding a failure:
+`is_error` answers whether you are holding an error:
 
 ```
 fn average(row) {
@@ -1211,9 +1211,9 @@ if is_error(result) {
 `type(result) == "error"` says the same thing. `is_error` is the one to reach
 for, because a misspelled string comparison quietly answers `false` forever.
 
-## What a failure knows
+## What an error knows
 
-A failure carries five things, read with a dot:
+An error carries five things, read with a dot:
 
 | Field | What it holds |
 | ----- | ------------- |
@@ -1223,7 +1223,7 @@ A failure carries five things, read with a dot:
 | `file` | The module it came from, or `nil` for the file being run |
 | `trace` | The calls it came through, as an array of strings |
 
-`trace` is the useful one. A failure remembers the path it came through, so you
+`trace` is the useful one. An error remembers the path it came through, so you
 can tell where it came from and not just that it happened:
 
 ```
@@ -1238,9 +1238,9 @@ A name that is not one of the five is an error rather than `nil`, the same
 bargain field access makes everywhere else, so a misspelling fails where it is
 written.
 
-## A failure is not an ordinary value
+## An error is not an ordinary value
 
-You may check a failure, ask its type, and read its fields. Anything else stops
+You may check an error, ask its type, and read its fields. Anything else stops
 the program:
 
 ```
@@ -1249,27 +1249,27 @@ print(count + 1)
 ```
 
 ```
-error (line 2, column 13): unhandled failure: division by zero
+error (line 2, column 13): unhandled error: division by zero
     print(count + 1)
                 ^
 ```
 
-The message names the original failure, and the position is where you *used* it,
-because that is the mistake: the program had the failure in hand and did
-something else with it. The failure's own position is still on the value, in
+The message names the original error, and the position is where you *used* it,
+because that is the mistake: the program had the error in hand and did
+something else with it. The error's own position is still on the value, in
 `.line` and `.column`.
 
 This is deliberate. The usual complaint about errors as values is that they get
 ignored, flow onward as data, and surface somewhere unrelated. Here they cannot:
 either you check one or the program stops at the line that misused it.
 
-For the same reason a failure is *not* falsy. `if r { .. }` does not mean "if it
+For the same reason an error is *not* falsy. `if r { .. }` does not mean "if it
 worked", because a successful `0`, `false`, `nil`, or `""` would be
-indistinguishable from a failure. Ask with `is_error`.
+indistinguishable from an error. Ask with `is_error`.
 
 ## What try cannot catch
 
-One failure refuses to become a value: exceeding the call depth limit.
+One error refuses to become a value: exceeding the call depth limit.
 
 ```
 fn boom(n) { return boom(n + 1) }

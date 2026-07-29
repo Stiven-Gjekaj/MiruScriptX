@@ -38,7 +38,7 @@ pub enum TokenKind {
     Import,
     As,
     /// `try expr`: evaluate the expression and, if it fails, produce the
-    /// failure as a value rather than stopping the program.
+    /// error as a value rather than stopping the program.
     Try,
     True,
     False,

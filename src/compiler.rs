@@ -380,10 +380,11 @@ impl<'g> Compiler<'g> {
         if let Some(position) = upvalues.iter().position(|existing| *existing == spec) {
             return Ok(position as u16);
         }
-        // GetUpvalue and SetUpvalue address an upvalue with one byte. Unlike a
-        // local slot, this cap is not worth lifting: a function closing over 256
-        // distinct variables is not a program anyone writes, and the emission
-        // sites below rely on the cast being lossless.
+        // GetUpvalue and SetUpvalue address an upvalue with one byte, so 255 is
+        // the most that can be addressed. Unlike a local slot, this cap is not
+        // worth lifting: a function closing over 255 distinct variables is not a
+        // program anyone writes, and the emission sites below rely on the cast
+        // being lossless.
         if upvalues.len() >= u8::MAX as usize {
             return Err(MiruError::with_column(
                 line,
@@ -624,7 +625,7 @@ impl<'g> Compiler<'g> {
             ExprKind::Try(inner) => {
                 // Both ways out leave exactly one value where this expression's
                 // result belongs: EndTry keeps what the expression produced, and
-                // a failure lands here with the failure already pushed. So they
+                // an error lands here with the error already pushed. So they
                 // converge on the next instruction and the success path needs no
                 // jump over anything.
                 let handler = self.emit_jump(OpCode::BeginTry, line, column);
@@ -894,7 +895,7 @@ impl<'g> Compiler<'g> {
 /// when evaluating it *fails*. That second case matters: `1 / 0` and an
 /// overflowing sum have to stay runtime errors reported at their own position,
 /// so a fold that would raise is abandoned and the instructions are emitted as
-/// usual, leaving the failure to happen where it always did.
+/// usual, leaving the error to happen where it always did.
 fn fold(expr: &Expr) -> Option<Value> {
     match &expr.kind {
         ExprKind::Int(n) => Some(Value::Int(*n)),

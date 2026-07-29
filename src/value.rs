@@ -99,7 +99,7 @@ pub enum Value {
     Builtin(Builtin),
     HostBuiltin(HostBuiltin),
     Nil,
-    /// A failure that `try` caught, carried as a value.
+    /// An error that `try` caught, carried as a value.
     ///
     /// This is the error itself rather than a copy of its parts, so re-raising
     /// one prints exactly what the terminal would have printed had it never
@@ -132,12 +132,12 @@ impl Value {
         !matches!(self, Value::Bool(false) | Value::Nil)
     }
 
-    /// Truthiness where a caught failure must not pass silently, for `if`,
+    /// Truthiness where a caught error must not pass silently, for `if`,
     /// `while`, and the short-circuiting operators.
     ///
-    /// A failure is deliberately not falsy. Making it falsy would read well
+    /// An error is deliberately not falsy. Making it falsy would read well
     /// (`if r { .. }`) right up to the first successful `0`, `false`, `nil`, or
-    /// empty string, which would then be indistinguishable from a failure. So
+    /// empty string, which would then be indistinguishable from an error. So
     /// the program has to say which it means.
     ///
     /// One match rather than [`Value::is_truthy`] plus a separate check, so a
@@ -359,7 +359,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_error_value_names_its_type_and_shows_the_failure_it_holds() {
+    fn an_error_value_names_its_type_and_shows_what_it_holds() {
         let value = Value::Error(Rc::new(crate::MiruError::with_column(
             3,
             5,
@@ -371,7 +371,7 @@ mod tests {
         // rather than text the program produced.
         assert_eq!(value.repr(), "<error: division by zero>");
         assert_eq!(value.display(), "<error: division by zero>");
-        // The failure is carried whole, not taken apart, so re-raising one can
+        // The error is carried whole, not taken apart, so re-raising one can
         // report the position it originally had.
         match &value {
             Value::Error(error) => {

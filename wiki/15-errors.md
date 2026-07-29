@@ -1,4 +1,4 @@
-# Error messages
+# When a program stops
 
 When something goes wrong, MiruScriptX stops and prints a single, precise error.
 Every error names the line and column where it happened and underlines (`^`) the
@@ -112,4 +112,4 @@ error (a missing file, a syntax error, or a runtime error) exits with a non-zero
 status, so scripts and continuous integration can tell success from failure.
 
 ---
-Previous: [Modules](14-modules.md) | Next: [Handling failure](16-failure.md)
+Previous: [Modules](14-modules.md) | Next: [Handling errors](16-handling-errors.md)

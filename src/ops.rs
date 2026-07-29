@@ -17,10 +17,10 @@ enum Num {
     Floats(f64, f64),
 }
 
-/// The message for using a caught failure as if it were an ordinary value.
+/// The message for using a caught error as if it were an ordinary value.
 ///
-/// Reported where the misuse is written rather than where the failure happened,
-/// because the misuse is the mistake: the program already had the failure in
+/// Reported where the misuse is written rather than where the error happened,
+/// because the misuse is the mistake: the program already had the error in
 /// hand and did something else with it. The original position stays on the
 /// value, reachable through its fields, so nothing is lost by pointing here.
 pub fn unhandled(value: &Value) -> Option<String> {
@@ -34,7 +34,7 @@ pub fn unhandled(value: &Value) -> Option<String> {
 pub fn unary(op: UnaryOp, value: Value) -> Result<Value, String> {
     // Checked here rather than in each rule below, which matters most for
     // `Not`: it answers for every value through `is_truthy` and so would
-    // otherwise quietly report a failure as `false`.
+    // otherwise quietly report an error as `false`.
     if let Some(message) = unhandled(&value) {
         return Err(message);
     }
@@ -55,7 +55,7 @@ pub fn unary(op: UnaryOp, value: Value) -> Result<Value, String> {
 pub fn binary(op: BinaryOp, left: Value, right: Value) -> Result<Value, String> {
     // Once, here, rather than in each rule. `Equal` and `NotEqual` are the ones
     // that need it: they answer for every pair through `Value::equals`, so
-    // without this a failure would compare `false` against everything and look
+    // without this an error would compare `false` against everything and look
     // like an ordinary value that simply did not match.
     //
     // The VM's integer fast path has already declined by the time this runs, so
@@ -205,7 +205,7 @@ fn ordering(left: Value, right: Value) -> Result<Ordering, String> {
 mod tests {
     use super::*;
 
-    fn failure() -> Value {
+    fn caught_error() -> Value {
         Value::Error(Rc::new(crate::MiruError::with_column(
             1,
             9,
@@ -214,18 +214,18 @@ mod tests {
     }
 
     #[test]
-    fn every_operator_refuses_a_caught_failure_as_an_operand() {
+    fn every_operator_refuses_a_caught_error_as_an_operand() {
         // The two that need saying out loud, because neither reports a type
         // error for anything: `!` answers for every value through is_truthy,
         // and `==` answers for every pair through Value::equals. Left to
-        // themselves they would call a failure `false` and "not equal to
+        // themselves they would call an error `false` and "not equal to
         // anything", which reads exactly like an ordinary value.
         assert_eq!(
-            unary(UnaryOp::Not, failure()).err().unwrap(),
+            unary(UnaryOp::Not, caught_error()).err().unwrap(),
             "unhandled error: division by zero"
         );
         assert_eq!(
-            binary(BinaryOp::Equal, failure(), Value::Int(1))
+            binary(BinaryOp::Equal, caught_error(), Value::Int(1))
                 .err()
                 .unwrap(),
             "unhandled error: division by zero"
@@ -245,30 +245,30 @@ mod tests {
             BinaryOp::GreaterEqual,
         ] {
             assert_eq!(
-                binary(op, failure(), Value::Int(1)).err().unwrap(),
+                binary(op, caught_error(), Value::Int(1)).err().unwrap(),
                 "unhandled error: division by zero",
-                "{op:?} accepted a failure on the left"
+                "{op:?} accepted an error on the left"
             );
             assert_eq!(
-                binary(op, Value::Int(1), failure()).err().unwrap(),
+                binary(op, Value::Int(1), caught_error()).err().unwrap(),
                 "unhandled error: division by zero",
-                "{op:?} accepted a failure on the right"
+                "{op:?} accepted an error on the right"
             );
         }
         assert_eq!(
-            unary(UnaryOp::Negate, failure()).err().unwrap(),
+            unary(UnaryOp::Negate, caught_error()).err().unwrap(),
             "unhandled error: division by zero"
         );
     }
 
     #[test]
-    fn a_caught_failure_is_not_an_index_or_a_key() {
+    fn a_caught_error_is_not_an_index_or_a_key() {
         assert_eq!(
-            array_index(&failure(), 3).err().unwrap(),
+            array_index(&caught_error(), 3).err().unwrap(),
             "unhandled error: division by zero"
         );
         assert_eq!(
-            map_key(&failure()).err().unwrap(),
+            map_key(&caught_error()).err().unwrap(),
             "unhandled error: division by zero"
         );
     }
