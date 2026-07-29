@@ -1,0 +1,143 @@
+name: Release
+
+# Builds `miru` for five platforms and attaches them to a GitHub release.
+#
+# Triggered by a version tag. The repository carried no tags at all until
+# v1.0.0, so this workflow and the first tag arrive together: there is no
+# history of releases for it to be inconsistent with.
+#
+# `workflow_dispatch` is here so the whole thing can be proven without creating
+# a tag. A tag is a public, permanent-looking thing to create by accident, and
+# a release workflow that can only be tested by tagging gets tested in
+# production. On a manual run the release step is skipped and the archives are
+# left as workflow artifacts to be downloaded and checked by hand.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should not hide whether the others work. On a real
+      # release every platform has to succeed anyway, and knowing which ones
+      # broke is worth more than stopping early.
+      fail-fast: false
+      matrix:
+        include:
+          # Native runners for every target, so nothing is cross-compiled. A
+          # cross toolchain is one more thing that can be subtly wrong in a way
+          # that only shows up on a user's machine.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-13
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v5
+
+      - name: Install the Rust toolchain
+        run: rustup target add ${{ matrix.target }}
+
+      # No musl-tools step. A current Rust toolchain ships its own musl libc and
+      # linker, and `cargo build --target x86_64-unknown-linux-musl` was checked
+      # on a machine with no musl-gcc at all: it produced a static-pie binary
+      # that runs. Installing a toolchain that is not used would be one more apt
+      # call that can fail for reasons unrelated to this project.
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin miru
+
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="miru-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp "target/${{ matrix.target }}/release/miru" "dist/$name/"
+          strip "dist/$name/miru" || true
+          cp README.md LICENSE "dist/$name/"
+          tar -czf "dist/$name.tar.gz" -C dist "$name"
+
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="miru-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp "target/${{ matrix.target }}/release/miru.exe" "dist/$name/"
+          cp README.md LICENSE "dist/$name/"
+          (cd dist && 7z a "$name.zip" "$name")
+
+      # The binary is checked here rather than only at the end, so a broken
+      # build is reported by the job that made it. The Windows and macOS jobs
+      # can run their own binary; nothing cross-compiled needs emulating.
+      - name: Check the binary runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="target/${{ matrix.target }}/release/miru"
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          "$bin" --version
+          echo 'print("release smoke test: " + str(6 * 7))' > smoke.miru
+          "$bin" run smoke.miru
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: miru-${{ matrix.target }}
+          path: dist/*.${{ matrix.archive }}
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only a tag publishes. A manual run stops after `build`, having proven
+    # every platform compiles and runs, and leaves the archives as artifacts.
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Collect the archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # One file for all five, so a user checks a download against a single
+      # list rather than hunting for a per-file hash.
+      - name: Write the checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/*

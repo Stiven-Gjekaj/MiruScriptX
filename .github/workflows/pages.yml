@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install the Rust toolchain
         run: rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
@@ -58,7 +58,7 @@ jobs:
           echo "wasm-bindgen $pinned, matching the CLI this workflow installs"
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -97,7 +97,7 @@ jobs:
           echo "all files present"
 
       - name: Upload the site
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: playground/web
 
@@ -111,4 +111,4 @@ jobs:
     steps:
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
