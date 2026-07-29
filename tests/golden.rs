@@ -1407,6 +1407,26 @@ fn a_value_that_contains_itself_is_survivable() {
 }
 
 #[test]
+fn assignment_never_introduces_a_name() {
+    check_all(&[
+        // One rule for both: `let` introduces a name, assignment does not.
+        // Until v1.0 assigning to a builtin's name succeeded and wrote over it
+        // for every module in the program, while assigning to any other
+        // undeclared name was already this error.
+        (
+            "print = 1",
+            "err cannot assign to undefined variable 'print' @ 1:1",
+        ),
+        ("x = 1", "err cannot assign to undefined variable 'x' @ 1:1"),
+        // Declaring it first makes it the module's own name, and a name the
+        // module owns can be assigned like any other.
+        ("let print = 1\nprint = 2\nprint", "ok 2"),
+        // Refusing the assignment leaves the builtin alone.
+        ("len(\"abc\")", "ok 3"),
+    ]);
+}
+
+#[test]
 fn declaring_a_name_a_builtin_already_has_shadows_it() {
     check_all(&[
         // Until v1.0 this wrote over the builtin's slot instead of shadowing

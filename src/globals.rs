@@ -45,6 +45,12 @@ pub struct Globals {
     builtins: HashMap<String, u16>,
     /// One name-to-slot map per module, indexed by [`ModuleId`].
     modules: Vec<HashMap<String, u16>>,
+    /// Whether each slot belongs to a builtin, indexed by slot.
+    ///
+    /// A parallel `Vec` rather than a range, because "the builtins are the
+    /// first N slots" is true today only because registration happens first,
+    /// and nothing in the types says it must.
+    builtin_slots: Vec<bool>,
 }
 
 impl Default for Globals {
@@ -62,6 +68,7 @@ impl Globals {
             // The root module always exists, so `ROOT_MODULE` is valid before
             // anything has been compiled.
             modules: vec![HashMap::new()],
+            builtin_slots: Vec::new(),
         }
     }
 
@@ -111,6 +118,7 @@ impl Globals {
         let slot = u16::try_from(self.values.len()).ok()?;
         self.values.push(None);
         self.names.push(name.to_string());
+        self.builtin_slots.push(false);
         self.modules[module].insert(name.to_string(), slot);
         Some(slot)
     }
@@ -123,6 +131,7 @@ impl Globals {
         let slot = u16::try_from(self.values.len()).ok()?;
         self.values.push(None);
         self.names.push(name.to_string());
+        self.builtin_slots.push(true);
         self.builtins.insert(name.to_string(), slot);
         Some(slot)
     }
@@ -138,7 +147,23 @@ impl Globals {
     }
 
     /// Assign to a slot that already holds a value, reporting whether it did.
+    /// Store into a slot, or refuse.
+    ///
+    /// Refuses an empty slot, which is a name nothing has declared, and refuses
+    /// a builtin's slot, which is a name *something else* declared. The caller
+    /// reports both the same way, because from the program's side they are the
+    /// same mistake: assignment does not introduce a name, `let` does.
+    ///
+    /// Without the second check, `print = 1` wrote over the builtin. Builtin
+    /// slots are shared by every module, so that broke `print` inside imported
+    /// files too. The compiler cannot catch this instead: resolving the
+    /// assignment to a fresh module slot would shadow the builtin for the rest
+    /// of the file, and `if false { print = 1 }` would break the `print` after
+    /// it.
     pub fn assign(&mut self, slot: u16, value: Value) -> bool {
+        if self.builtin_slots[slot as usize] {
+            return false;
+        }
         let cell = &mut self.values[slot as usize];
         if cell.is_none() {
             return false;

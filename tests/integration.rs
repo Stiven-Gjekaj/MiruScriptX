@@ -200,6 +200,30 @@ fn shadowing_a_builtin_in_one_file_does_not_reach_into_another() {
 }
 
 #[test]
+fn assigning_to_a_builtin_name_cannot_reach_into_another_file() {
+    // The half `let` shadowing did not cover. A bare assignment resolved to the
+    // builtin's slot, and builtin slots are shared by every module, so this
+    // still broke `print` inside the imported file.
+    let (_, err) = run_module_set(
+        "assign_builtin",
+        &[
+            (
+                "main.miru",
+                "import \"./lib.miru\" as lib\nprint = 1\nlib.greet(\"world\")\n",
+            ),
+            (
+                "lib.miru",
+                "fn greet(name) {\n  print(\"hello \" + name)\n  return 1\n}\n",
+            ),
+        ],
+    );
+    assert!(
+        err.contains("cannot assign to undefined variable 'print'"),
+        "stderr was: {err}"
+    );
+}
+
+#[test]
 fn a_missing_module_says_so_rather_than_failing_to_canonicalise() {
     let (_, err) = run_module_set("missing", &[("m.miru", "import \"./nope.miru\" as n\n")]);
     assert!(
