@@ -21,6 +21,53 @@ fn run_example(name: &str) -> String {
     String::from_utf8(output.stdout).expect("output should be valid utf-8")
 }
 
+fn run_eval(option: &str, source: &str) -> std::process::Output {
+    miru()
+        .arg(option)
+        .arg(source)
+        .output()
+        .expect("failed to launch miru")
+}
+
+#[test]
+fn eval_option_runs_a_program_without_a_file() {
+    for option in ["-e", "--eval"] {
+        let output = run_eval(option, "print(6 * 7)");
+        assert!(output.status.success(), "stderr was {:?}", output.stderr);
+        assert_eq!(output.stdout, b"42\n");
+        assert!(output.stderr.is_empty());
+    }
+}
+
+#[test]
+fn eval_option_reports_errors_without_inventing_a_file() {
+    let output = run_eval("-e", "print(missing)");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("undefined variable 'missing'"),
+        "stderr was {stderr}"
+    );
+    assert!(
+        !stderr.contains(".miru"),
+        "inline programs have no file: {stderr}"
+    );
+}
+
+#[test]
+fn eval_option_rejects_missing_program_and_imports() {
+    let missing = miru().arg("-e").output().expect("failed to launch miru");
+    assert!(!missing.status.success());
+    assert!(
+        String::from_utf8_lossy(&missing.stderr).contains("the '-e' command needs a program")
+    );
+
+    let import = run_eval("-e", "import \"./module.miru\" as module");
+    assert!(!import.status.success());
+    assert!(String::from_utf8_lossy(&import.stderr)
+        .contains("cannot import: this program was not loaded from a file"));
+}
+
 /// Write a set of `(name, source)` files into a fresh directory and run the
 /// first through the binary, returning `(stdout, stderr)`.
 ///

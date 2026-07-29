@@ -790,6 +790,8 @@ reason.
 | `miru` | Starts the REPL. |
 | `miru repl` | Starts the REPL. |
 | `miru run FILE` | Runs a program. |
+| `miru -e PROGRAM` | Runs a program supplied on the command line. |
+| `miru --eval PROGRAM` | Runs a program supplied on the command line. |
 | `miru fmt FILE` | Writes the program in the standard form. |
 | `miru fmt -w FILE` | Writes the standard form into the file. |
 | `miru disasm FILE` | Writes the bytecode of a program. |

@@ -7,6 +7,8 @@ use std::process::ExitCode;
 const USAGE: &str = "\
 Usage:
   miru run <file.miru>      Run a MiruScriptX program from a file
+  miru -e <program>         Evaluate a program supplied on the command line
+  miru --eval <program>     Evaluate a program supplied on the command line
   miru fmt <file.miru>      Format a program and print it to standard output
   miru fmt -w <file.miru>   Format a program and rewrite the file in place
   miru disasm <file.miru>   Show the bytecode a program compiles to
@@ -21,6 +23,7 @@ fn main() -> ExitCode {
         None => repl::run(),
         Some((command, rest)) => match command.as_str() {
             "run" => run_file(rest),
+            "-e" | "--eval" => eval_source(rest),
             "fmt" => fmt_file(rest),
             "disasm" => disasm_file(rest),
             "repl" => {
@@ -42,6 +45,22 @@ fn main() -> ExitCode {
             }
             other => usage_error(&format!("unknown command '{other}'")),
         },
+    }
+}
+
+fn eval_source(args: &[String]) -> ExitCode {
+    let source = match args {
+        [source] => source,
+        [] => return usage_error("the '-e' command needs a program"),
+        _ => return usage_error("the '-e' command takes a single program"),
+    };
+
+    match miruscriptx::run_source(source, Box::new(std::io::stdout())) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("miru: {}", err.render(source));
+            ExitCode::FAILURE
+        }
     }
 }
 

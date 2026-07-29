@@ -129,6 +129,13 @@ Run a program from a file:
 miru run examples/greet.miru
 ```
 
+Evaluate a short program directly from the command line with `-e` (or its
+long form, `--eval`):
+
+```sh
+miru -e 'print(6 * 7)'
+```
+
 Or start the REPL and type expressions:
 
 ```

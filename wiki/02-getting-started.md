@@ -24,6 +24,15 @@ Then run it:
 miru run hello.miru
 ```
 
+For a short program, use `-e` (or `--eval`) without creating a file:
+
+```
+miru -e 'print(6 * 7)'
+```
+
+Inline programs cannot use `import`, because they do not have a directory from
+which an imported module can be resolved.
+
 ## Use the REPL
 
 Run `miru` with no arguments to start an interactive session:
