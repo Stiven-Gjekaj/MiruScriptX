@@ -343,9 +343,17 @@ fn contains(
                 other.type_name()
             )),
         },
-        Value::Array(items) => Ok(Value::Bool(
-            items.borrow().iter().any(|item| item.equals(&args[1])),
-        )),
+        Value::Array(items) => Ok(Value::Bool({
+            let items = items.borrow();
+            let mut found = false;
+            for item in items.iter() {
+                if item.equals(&args[1])? {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        })),
         other => Err(format!(
             "contains expects a string or array but got a {}",
             other.type_name()
@@ -394,13 +402,17 @@ fn index_of(
     check_arity("index_of", &args, 2)?;
     match &args[0] {
         Value::Array(items) => {
-            let index = items
-                .borrow()
-                .iter()
-                .position(|item| item.equals(&args[1]))
-                .map(|p| p as i64)
-                .unwrap_or(-1);
-            Ok(Value::Int(index))
+            // A loop rather than `position`, because a comparison can now refuse
+            // and a closure cannot carry that out of an iterator adaptor. The
+            // refusal has to travel: swallowing it would answer -1, which reads
+            // as "not present" and is the wrong answer rather than no answer.
+            let items = items.borrow();
+            for (index, item) in items.iter().enumerate() {
+                if item.equals(&args[1])? {
+                    return Ok(Value::Int(index as i64));
+                }
+            }
+            Ok(Value::Int(-1))
         }
         other => Err(format!(
             "index_of expects an array but got a {}",

@@ -162,7 +162,47 @@ impl Value {
 
     /// The inspect form used by the REPL and inside arrays: strings are quoted
     /// and escaped, and floats always carry a decimal point.
+    ///
+    /// A container that contains itself prints as `[...]` or `{...}` at the
+    /// point it comes round again, so `a` holding `a` shows as `[[...]]` rather
+    /// than recursing until the process aborts. Nesting past
+    /// [`Value::MAX_DEPTH`] truncates the same way, which catches the deep but
+    /// acyclic case that no identity check would see.
+    ///
+    /// Printing truncates where comparing refuses, because printing always has
+    /// something true to show and the ellipsis is it: there is more here than
+    /// is worth printing.
     pub fn repr(&self) -> String {
+        self.repr_within(Value::MAX_DEPTH, &mut Vec::new())
+    }
+
+    /// `open` holds the address of every container between the top-level call
+    /// and this one. A container already on it is one this call is inside, so
+    /// descending would not terminate.
+    fn repr_within(&self, depth: usize, open: &mut Vec<usize>) -> String {
+        let address = match self {
+            Value::Array(items) => Some(Rc::as_ptr(items) as usize),
+            Value::Map(entries) => Some(Rc::as_ptr(entries) as usize),
+            _ => None,
+        };
+        if let Some(address) = address {
+            if open.contains(&address) || depth == 0 {
+                return match self {
+                    Value::Array(_) => "[...]".to_string(),
+                    Value::Map(_) => "{...}".to_string(),
+                    _ => unreachable!("only a container has an address"),
+                };
+            }
+            open.push(address);
+        }
+        let text = self.repr_parts(depth.saturating_sub(1), open);
+        if address.is_some() {
+            open.pop();
+        }
+        text
+    }
+
+    fn repr_parts(&self, depth: usize, open: &mut Vec<usize>) -> String {
         match self {
             Value::Int(n) => n.to_string(),
             Value::Float(f) => format_float(*f),
@@ -170,14 +210,24 @@ impl Value {
             Value::Nil => "nil".to_string(),
             Value::Str(s) => format!("\"{}\"", escape_string(s)),
             Value::Array(items) => {
-                let parts: Vec<String> = items.borrow().iter().map(Value::repr).collect();
+                let parts: Vec<String> = items
+                    .borrow()
+                    .iter()
+                    .map(|item| item.repr_within(depth, open))
+                    .collect();
                 format!("[{}]", parts.join(", "))
             }
             Value::Map(entries) => {
                 let parts: Vec<String> = entries
                     .borrow()
                     .iter()
-                    .map(|(key, value)| format!("\"{}\": {}", escape_string(key), value.repr()))
+                    .map(|(key, value)| {
+                        format!(
+                            "\"{}\": {}",
+                            escape_string(key),
+                            value.repr_within(depth, open)
+                        )
+                    })
                     .collect();
                 format!("{{{}}}", parts.join(", "))
             }
@@ -194,34 +244,76 @@ impl Value {
         }
     }
 
+    /// How deep [`Value::equals`] and [`Value::repr`] will walk a nested value
+    /// before they stop.
+    ///
+    /// Arrays and maps can hold themselves, and both of these used to recurse
+    /// on one until the process aborted on a Rust stack overflow: no caret, no
+    /// trace, and uncatchable by `try`, which is not an outcome a program should
+    /// be able to cause. 256 is far above any nesting real data has and far
+    /// below the depth that overflows.
+    const MAX_DEPTH: usize = 256;
+
     /// Structural value equality, with numeric promotion so `1 == 1.0`.
-    pub fn equals(&self, other: &Value) -> bool {
+    ///
+    /// Fails rather than aborting when the values nest deeper than
+    /// [`Value::MAX_DEPTH`]. Comparing is a question that can have no answer;
+    /// printing always has one, which is why [`Value::repr`] truncates instead.
+    pub fn equals(&self, other: &Value) -> Result<bool, String> {
+        self.equals_within(other, Value::MAX_DEPTH)
+    }
+
+    fn equals_within(&self, other: &Value, depth: usize) -> Result<bool, String> {
+        // Identity first, so a value that holds itself compares equal to itself
+        // without walking into the cycle at all. This is the common case and it
+        // has a right answer.
         match (self, other) {
-            (Value::Int(a), Value::Int(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => a == b,
-            (Value::Int(a), Value::Float(b)) => (*a as f64) == *b,
-            (Value::Float(a), Value::Int(b)) => *a == (*b as f64),
-            (Value::Bool(a), Value::Bool(b)) => a == b,
-            (Value::Str(a), Value::Str(b)) => a == b,
-            (Value::Nil, Value::Nil) => true,
+            (Value::Array(a), Value::Array(b)) if Rc::ptr_eq(a, b) => return Ok(true),
+            (Value::Map(a), Value::Map(b)) if Rc::ptr_eq(a, b) => return Ok(true),
+            _ => {}
+        }
+        let Some(depth) = depth.checked_sub(1) else {
+            return Err("value is nested too deeply to compare".to_string());
+        };
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => Ok(a == b),
+            (Value::Float(a), Value::Float(b)) => Ok(a == b),
+            (Value::Int(a), Value::Float(b)) => Ok((*a as f64) == *b),
+            (Value::Float(a), Value::Int(b)) => Ok(*a == (*b as f64)),
+            (Value::Bool(a), Value::Bool(b)) => Ok(a == b),
+            (Value::Str(a), Value::Str(b)) => Ok(a == b),
+            (Value::Nil, Value::Nil) => Ok(true),
             (Value::Array(a), Value::Array(b)) => {
                 let a = a.borrow();
                 let b = b.borrow();
-                a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.equals(y))
+                if a.len() != b.len() {
+                    return Ok(false);
+                }
+                for (x, y) in a.iter().zip(b.iter()) {
+                    if !x.equals_within(y, depth)? {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
             }
-            (Value::Closure(a), Value::Closure(b)) => Rc::ptr_eq(a, b),
-            (Value::Builtin(a), Value::Builtin(b)) => a.name == b.name,
-            (Value::HostBuiltin(a), Value::HostBuiltin(b)) => a.name == b.name,
+            (Value::Closure(a), Value::Closure(b)) => Ok(Rc::ptr_eq(a, b)),
+            (Value::Builtin(a), Value::Builtin(b)) => Ok(a.name == b.name),
+            (Value::HostBuiltin(a), Value::HostBuiltin(b)) => Ok(a.name == b.name),
             (Value::Map(a), Value::Map(b)) => {
                 let a = a.borrow();
                 let b = b.borrow();
-                a.len() == b.len()
-                    && a.iter().all(|(key, value)| match b.get(key) {
-                        Some(other) => value.equals(other),
-                        None => false,
-                    })
+                if a.len() != b.len() {
+                    return Ok(false);
+                }
+                for (key, value) in a.iter() {
+                    match b.get(key) {
+                        Some(other) if value.equals_within(other, depth)? => {}
+                        _ => return Ok(false),
+                    }
+                }
+                Ok(true)
             }
-            _ => false,
+            _ => Ok(false),
         }
     }
 }
@@ -318,7 +410,7 @@ mod tests {
         let a = map(&[("x", Value::Int(1))]);
         let b = map(&[("x", Value::Int(1))]);
         let c = map(&[("x", Value::Int(2))]);
-        assert!(a.equals(&b));
-        assert!(!a.equals(&c));
+        assert!(a.equals(&b).unwrap());
+        assert!(!a.equals(&c).unwrap());
     }
 }

@@ -1594,7 +1594,9 @@ mod tests {
             get_field(chunk, "message");
         })
         .expect("a failure answers for its own fields");
-        assert!(value.equals(&Value::Str(Rc::new("division by zero".to_string()))));
+        assert!(value
+            .equals(&Value::Str(Rc::new("division by zero".to_string())))
+            .unwrap());
 
         // A misspelling fails rather than reading nil, the same bargain field
         // access makes on a map.
@@ -1757,7 +1759,7 @@ mod tests {
             chunk.write_op(OpCode::Multiply, 1, 1);
         })
         .unwrap();
-        assert!(result.equals(&Value::Int(20)));
+        assert!(result.equals(&Value::Int(20)).unwrap());
     }
 
     #[test]
@@ -1767,7 +1769,7 @@ mod tests {
             chunk.write_op(OpCode::Negate, 1, 1);
         })
         .unwrap();
-        assert!(negated.equals(&Value::Int(-5)));
+        assert!(negated.equals(&Value::Int(-5)).unwrap());
 
         let compared = run(|chunk| {
             constant(chunk, Value::Int(1));
@@ -1775,7 +1777,7 @@ mod tests {
             chunk.write_op(OpCode::Less, 1, 1);
         })
         .unwrap();
-        assert!(compared.equals(&Value::Bool(true)));
+        assert!(compared.equals(&Value::Bool(true)).unwrap());
     }
 
     #[test]
@@ -1785,7 +1787,7 @@ mod tests {
             chunk.write_op(OpCode::Not, 1, 1);
         })
         .unwrap();
-        assert!(value.equals(&Value::Bool(false)));
+        assert!(value.equals(&Value::Bool(false)).unwrap());
     }
 
     #[test]

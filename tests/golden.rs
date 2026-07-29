@@ -1352,3 +1352,40 @@ fn a_higher_order_builtin_refuses_a_caught_failure_as_a_condition() {
         ),
     ]);
 }
+
+#[test]
+fn a_value_that_contains_itself_is_survivable() {
+    check_all(&[
+        // Until v1.0 each of these aborted the process on a Rust stack
+        // overflow: no caret, no trace, and uncatchable, which is not an
+        // outcome a program should be able to cause.
+        //
+        // Printing shows the cycle where it closes, as Python does.
+        ("let a = []\npush(a, a)\nstr(a)", "ok \"[[...]]\""),
+        (
+            "let m = {}\nm.self = m\nstr(m)",
+            "ok \"{\\\"self\\\": {...}}\"",
+        ),
+        // Mutual recursion closes one level further down.
+        (
+            "let a = []\nlet b = []\npush(a, b)\npush(b, a)\nstr(a)",
+            "ok \"[[[...]]]\"",
+        ),
+        // The same array twice is a shape, not a cycle, and still prints whole.
+        // A depth counter alone would have got this wrong.
+        ("let x = [1, 2]\nstr([x, x])", "ok \"[[1, 2], [1, 2]]\""),
+        // Comparing a cyclic value with itself is answered by identity before
+        // anything is walked, so it does not need the depth limit at all.
+        ("let a = []\npush(a, a)\na == a", "ok true"),
+        // Two different cyclic values have no answer, so comparing them refuses
+        // rather than guessing. It is an ordinary error: `try` catches it.
+        (
+            "let a = []\npush(a, a)\nlet b = []\npush(b, b)\na == b",
+            "err value is nested too deeply to compare @ 5:3",
+        ),
+        (
+            "let a = []\npush(a, a)\nlet b = []\npush(b, b)\nis_error(try a == b)",
+            "ok true",
+        ),
+    ]);
+}

@@ -107,8 +107,8 @@ pub fn binary(op: BinaryOp, left: Value, right: Value) -> Result<Value, String> 
                 }
             }
         },
-        BinaryOp::Equal => Ok(Value::Bool(left.equals(&right))),
-        BinaryOp::NotEqual => Ok(Value::Bool(!left.equals(&right))),
+        BinaryOp::Equal => Ok(Value::Bool(left.equals(&right)?)),
+        BinaryOp::NotEqual => Ok(Value::Bool(!left.equals(&right)?)),
         BinaryOp::Less => Ok(Value::Bool(ordering(left, right)? == Ordering::Less)),
         BinaryOp::Greater => Ok(Value::Bool(ordering(left, right)? == Ordering::Greater)),
         BinaryOp::LessEqual => Ok(Value::Bool(ordering(left, right)? != Ordering::Greater)),
@@ -277,17 +277,21 @@ mod tests {
     fn arithmetic_promotes_and_concatenates() {
         assert!(binary(BinaryOp::Add, Value::Int(1), Value::Int(2))
             .unwrap()
-            .equals(&Value::Int(3)));
+            .equals(&Value::Int(3))
+            .unwrap());
         assert!(binary(BinaryOp::Add, Value::Int(1), Value::Float(2.0))
             .unwrap()
-            .equals(&Value::Float(3.0)));
+            .equals(&Value::Float(3.0))
+            .unwrap());
         let joined = binary(
             BinaryOp::Add,
             Value::Str(Rc::new("a".to_string())),
             Value::Str(Rc::new("b".to_string())),
         )
         .unwrap();
-        assert!(joined.equals(&Value::Str(Rc::new("ab".to_string()))));
+        assert!(joined
+            .equals(&Value::Str(Rc::new("ab".to_string())))
+            .unwrap());
     }
 
     #[test]
@@ -324,7 +328,8 @@ mod tests {
     fn comparisons_and_type_errors() {
         assert!(binary(BinaryOp::Less, Value::Int(1), Value::Int(2))
             .unwrap()
-            .equals(&Value::Bool(true)));
+            .equals(&Value::Bool(true))
+            .unwrap());
         assert_eq!(
             binary(BinaryOp::Add, Value::Int(1), Value::Bool(true))
                 .err()
@@ -337,9 +342,11 @@ mod tests {
     fn not_and_negate() {
         assert!(unary(UnaryOp::Not, Value::Nil)
             .unwrap()
-            .equals(&Value::Bool(true)));
+            .equals(&Value::Bool(true))
+            .unwrap());
         assert!(unary(UnaryOp::Negate, Value::Int(5))
             .unwrap()
-            .equals(&Value::Int(-5)));
+            .equals(&Value::Int(-5))
+            .unwrap());
     }
 }
