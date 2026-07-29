@@ -878,7 +878,15 @@ impl<'g> Compiler<'g> {
         line: usize,
         column: usize,
     ) -> Result<(), MiruError> {
-        let slot = self.globals.slot_for(self.module, name).ok_or_else(|| {
+        // A declaration introduces the module's own name even when a builtin
+        // has that name; everything else resolves normally, which finds the
+        // declaration if there was one and the builtin otherwise.
+        let slot = if matches!(op, OpCode::DefineGlobal) {
+            self.globals.slot_for_declaration(self.module, name)
+        } else {
+            self.globals.slot_for(self.module, name)
+        }
+        .ok_or_else(|| {
             MiruError::with_column(line, column, "too many global variables in one program")
         })?;
         self.chunk.write_op(op, line, column);

@@ -177,6 +177,29 @@ fn a_caught_error_from_a_module_knows_which_file_it_came_from() {
 }
 
 #[test]
+fn shadowing_a_builtin_in_one_file_does_not_reach_into_another() {
+    // The failure this replaced: `let print = 1` in main.miru wrote over the
+    // builtin's slot, builtin slots are shared by every module, and so the
+    // module's own `print` call raised "a int is not callable" -- pointing at
+    // a line in a file that had done nothing wrong.
+    let (out, err) = run_module_set(
+        "shadow_builtin",
+        &[
+            (
+                "main.miru",
+                "import \"./lib.miru\" as lib\nlet print = 1\nlib.greet(\"world\")\n",
+            ),
+            (
+                "lib.miru",
+                "fn greet(name) {\n  print(\"hello \" + name)\n  return 1\n}\n",
+            ),
+        ],
+    );
+    assert_eq!(err, "", "stderr was: {err}");
+    assert_eq!(out, "hello world\n");
+}
+
+#[test]
 fn a_missing_module_says_so_rather_than_failing_to_canonicalise() {
     let (_, err) = run_module_set("missing", &[("m.miru", "import \"./nope.miru\" as n\n")]);
     assert!(

@@ -75,17 +75,39 @@ impl Globals {
     /// first time that module mentions it. Called by the compiler, so a slot may
     /// exist before anything is stored in it.
     ///
-    /// A builtin's name resolves the same from every module, and resolves ahead
-    /// of the module's own names, which is what keeps `let print = 1` writing
-    /// over the builtin rather than shadowing it. That was how a single flat
-    /// table behaved, and modules were not a reason to change it.
+    /// A module's own names are checked before the builtins, so a file that
+    /// declares `print` gets the one it declared and every other file still
+    /// gets the builtin.
+    ///
+    /// Until v1.0 the order was the other way round, which was how a single
+    /// flat table behaved before modules existed. It meant `let print = 1`
+    /// wrote *over* the builtin's slot, and builtin slots are shared by every
+    /// module, so one file could silently break `print` inside a module it
+    /// imported. That contradicts the thing v0.8 was for.
     pub fn slot_for(&mut self, module: ModuleId, name: &str) -> Option<u16> {
-        if let Some(slot) = self.builtins.get(name) {
-            return Some(*slot);
-        }
         if let Some(slot) = self.modules[module].get(name) {
             return Some(*slot);
         }
+        if let Some(slot) = self.builtins.get(name) {
+            return Some(*slot);
+        }
+        self.fresh_slot(module, name)
+    }
+
+    /// The slot a `let` at the top level of `module` should define.
+    ///
+    /// Unlike [`Globals::slot_for`] this never returns a builtin's slot: a
+    /// declaration introduces the module's own name, even when a builtin
+    /// already has that name. Reads after it find the declaration, because
+    /// `slot_for` checks the module first.
+    pub fn slot_for_declaration(&mut self, module: ModuleId, name: &str) -> Option<u16> {
+        if let Some(slot) = self.modules[module].get(name) {
+            return Some(*slot);
+        }
+        self.fresh_slot(module, name)
+    }
+
+    fn fresh_slot(&mut self, module: ModuleId, name: &str) -> Option<u16> {
         let slot = u16::try_from(self.values.len()).ok()?;
         self.values.push(None);
         self.names.push(name.to_string());

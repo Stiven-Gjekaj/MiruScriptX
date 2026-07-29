@@ -1405,3 +1405,19 @@ fn a_value_that_contains_itself_is_survivable() {
         ),
     ]);
 }
+
+#[test]
+fn declaring_a_name_a_builtin_already_has_shadows_it() {
+    check_all(&[
+        // Until v1.0 this wrote over the builtin's slot instead of shadowing
+        // it, and builtin slots are shared by every module, so one file could
+        // break `print` inside a module it imported. See the integration test
+        // for the cross-file half.
+        ("let print = 1\nprint", "ok 1"),
+        ("let len = 99\nlen", "ok 99"),
+        // The builtin is untouched everywhere the name was not declared.
+        ("len(\"abc\")", "ok 3"),
+        // And a file that shadows one still has all the others.
+        ("let len = 1\nupper(\"ab\")", "ok \"AB\""),
+    ]);
+}
