@@ -131,7 +131,11 @@ jobs:
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
 
-      - name: Create the release
+      # A draft, not a published release. Publishing is a person's decision:
+      # the notes are generated and worth reading before anyone can download
+      # them, and a draft can be deleted without leaving a version that the
+      # world briefly saw. Publish from the Releases page when it looks right.
+      - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -140,4 +144,6 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes \
+            --draft \
             dist/*
+          echo "Draft release created. Review and publish it from the Releases page."
