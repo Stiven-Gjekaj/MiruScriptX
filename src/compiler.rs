@@ -76,6 +76,9 @@ pub struct Compiler<'g> {
     upvalues: Vec<UpvalueSpec>,
     /// Functions whose compilation is paused while this one is compiled.
     enclosing: Vec<FunctionState>,
+    /// The module every function compiled here belongs to, or `None` at the top
+    /// level of the file being run.
+    file: Option<Rc<String>>,
 }
 
 impl<'g> Compiler<'g> {
@@ -89,6 +92,7 @@ impl<'g> Compiler<'g> {
             loops: Vec::new(),
             upvalues: Vec::new(),
             enclosing: Vec::new(),
+            file: None,
         }
     }
 
@@ -116,7 +120,22 @@ impl<'g> Compiler<'g> {
         globals: &'g mut Globals,
         module: ModuleId,
     ) -> Result<Rc<CompiledFunction>, MiruError> {
+        Compiler::compile_file(program, globals, module, None)
+    }
+
+    /// Compile a module, recording the path every function in it came from.
+    ///
+    /// The path rides on each [`CompiledFunction`] rather than being looked up
+    /// later, because a module's functions outlive the import that created
+    /// them and nothing else still knows where they were written.
+    pub fn compile_file(
+        program: &[Stmt],
+        globals: &'g mut Globals,
+        module: ModuleId,
+        file: Option<Rc<String>>,
+    ) -> Result<Rc<CompiledFunction>, MiruError> {
         let mut compiler = Compiler::new(globals, module);
+        compiler.file = file;
         compiler.program(program)?;
         let (line, column) = program.last().map(|stmt| (stmt.line, 1)).unwrap_or((0, 0));
         compiler.chunk.write_op(OpCode::Return, line, column);
@@ -124,6 +143,7 @@ impl<'g> Compiler<'g> {
             name: None,
             arity: 0,
             chunk: compiler.chunk,
+            file: compiler.file,
         }))
     }
 
@@ -291,6 +311,10 @@ impl<'g> Compiler<'g> {
             name: name.map(str::to_string),
             arity: params.len(),
             chunk,
+            // Every function in a module belongs to that module, however deeply
+            // nested, so this is the compiler's one file rather than anything
+            // tracked per function.
+            file: self.file.clone(),
         });
         let index = u16::try_from(self.chunk.add_function(function))
             .map_err(|_| MiruError::with_column(line, column, "too many functions in one chunk"))?;

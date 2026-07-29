@@ -129,6 +129,54 @@ fn a_module_error_names_the_module_and_not_the_importing_file() {
 }
 
 #[test]
+fn a_runtime_error_inside_a_module_names_it_and_draws_no_caret() {
+    // v0.8 got this right for errors raised while a module *loads*. An error
+    // raised later, when a function the module defined is finally called, was
+    // still reported against the importing file: the position belonged to the
+    // module and the source did not, so the caret landed on whatever happened
+    // to be on that line. Here that would be `let x = 1`, which is innocent.
+    let (_, err) = run_module_set(
+        "runtime_in_module",
+        &[
+            (
+                "main.miru",
+                "import \"./m.miru\" as m\nlet x = 1\nlet y = 2\nprint(m.boom(4))\n",
+            ),
+            ("m.miru", "fn boom(n) {\n  return n / 0\n}\n"),
+        ],
+    );
+    assert!(
+        err.contains("error (./m.miru, line 2, column 12): division by zero"),
+        "stderr was: {err}"
+    );
+    assert!(
+        !err.contains("let x = 1"),
+        "drew a caret on the importing file: {err}"
+    );
+    // The trace still works across the boundary.
+    assert!(
+        err.contains("in boom, called from line 4"),
+        "stderr was: {err}"
+    );
+}
+
+#[test]
+fn a_caught_error_from_a_module_knows_which_file_it_came_from() {
+    let (out, err) = run_module_set(
+        "caught_from_module",
+        &[
+            (
+                "main.miru",
+                "import \"./m.miru\" as m\nlet r = try m.boom(4)\nprint(r.file)\nprint(r.line)\n",
+            ),
+            ("m.miru", "fn boom(n) {\n  return n / 0\n}\n"),
+        ],
+    );
+    assert_eq!(err, "", "stderr was: {err}");
+    assert_eq!(out, "./m.miru\n2\n");
+}
+
+#[test]
 fn a_missing_module_says_so_rather_than_failing_to_canonicalise() {
     let (_, err) = run_module_set("missing", &[("m.miru", "import \"./nope.miru\" as n\n")]);
     assert!(

@@ -41,6 +41,15 @@ pub struct CompiledFunction {
     pub name: Option<String>,
     pub arity: usize,
     pub chunk: Chunk,
+    /// The module this function was compiled from, or `None` for the file being
+    /// run.
+    ///
+    /// A module's functions outlive the import that loaded them, so by the time
+    /// one is called the loader is long gone and cannot say where it came from.
+    /// Without this, a runtime error inside an imported function reported a
+    /// line and column belonging to that file against the *importing* file's
+    /// source, and drew a caret on whatever happened to be on that line.
+    pub file: Option<Rc<String>>,
 }
 
 /// A captured variable shared by a closure. While the enclosing function is

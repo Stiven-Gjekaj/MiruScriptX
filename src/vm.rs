@@ -334,7 +334,7 @@ impl Vm {
             .loading
             .push((canonical.clone(), spec.to_string()));
         let module = self.globals.new_module();
-        let outcome = self.run_module(&program, &canonical, module);
+        let outcome = self.run_module(&program, &canonical, spec, module);
         self.loader.loading.pop();
         outcome.map_err(|err| in_file(err, spec))?;
 
@@ -353,10 +353,16 @@ impl Vm {
         &mut self,
         program: &[crate::ast::Stmt],
         canonical: &Path,
+        spec: &str,
         module: ModuleId,
     ) -> Result<(), MiruError> {
         self.resolve_imports(program, Some(canonical), module)?;
-        let script = crate::compiler::Compiler::compile_module(program, &mut self.globals, module)?;
+        let script = crate::compiler::Compiler::compile_file(
+            program,
+            &mut self.globals,
+            module,
+            Some(Rc::new(spec.to_string())),
+        )?;
         self.interpret(script)?;
         Ok(())
     }
@@ -413,6 +419,20 @@ impl Vm {
                     // that hold the path are about to be discarded whether this
                     // is caught or not.
                     error.trace = self.capture_trace();
+                    // And the file for the same reason. The position on this
+                    // error belongs to whichever file the innermost frame was
+                    // compiled from, and only that frame still knows which one
+                    // that is: the import that loaded it finished long ago.
+                    if error.file.is_none() {
+                        if let Some(frame) = self.frames.last() {
+                            error.file = frame
+                                .closure
+                                .function
+                                .file
+                                .as_ref()
+                                .map(|file| file.as_str().to_string());
+                        }
+                    }
                     // Everything the loop keeps in locals is re-read from
                     // `self` when it starts, so going round again picks up the
                     // rewound state.
@@ -1552,6 +1572,7 @@ mod tests {
             name: None,
             arity: 0,
             chunk,
+            file: None,
         });
         Vm::new().interpret(script)
     }
@@ -1738,6 +1759,7 @@ mod tests {
             name: Some("outer".to_string()),
             arity: 0,
             chunk,
+            file: None,
         });
         let closure = Rc::new(Closure {
             function,
