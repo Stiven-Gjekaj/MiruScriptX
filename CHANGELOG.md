@@ -8,6 +8,78 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 1.0 (2026-07-29)
+
+The first stable release. From here, [docs/stability.md](docs/stability.md) says
+what will not change.
+
+### Added
+
+- **[A specification](docs/specification.md)**, in ASD-STE100 Simplified
+  Technical English. It defines the lexical structure, the grammar and
+  precedence, the values, the semantics, errors, modules, all 37 builtins, the
+  limits, and the CLI. It states what was previously true only because the
+  implementation said so — evaluation order, numeric promotion, overflow,
+  truthiness, scoping, and capture.
+
+- **[A stability guarantee](docs/stability.md)**. A program that is correct with
+  1.0 stays correct with every later 1.x. The document is explicit about what is
+  *not* covered: the bytecode, opcode numbering, the Rust API, `miru disasm`
+  output, speed, the wording of any error message, and the nesting limit.
+
+- **Prebuilt binaries** for Linux and macOS on x86-64 and arm64, and Windows on
+  x86-64, attached to each release with a `SHA256SUMS` file.
+
+- **An install script**:
+
+  ```
+  curl -fsSL https://raw.githubusercontent.com/stiven-gjekaj/miruscriptx/main/scripts/install.sh | sh
+  ```
+
+  It verifies the download against the published checksum and refuses to install
+  if it does not match, or if the platform has no build.
+
+- **The crate on crates.io**, installable with `cargo install miruscriptx`.
+
+### Changed
+
+- **A `let` at the top level now shadows a builtin instead of replacing it.**
+  Previously `let print = 1` wrote over the builtin's slot, and builtin slots
+  are shared by every module, so one file could break `print` inside a module it
+  imported.
+
+- **An assignment never introduces a name.** `print = 1` is now `cannot assign
+  to undefined variable 'print'`, which is what assigning to any other
+  undeclared name already did. Use `let` to introduce a name.
+
+- Comparing two different values that each contain themselves raises `value is
+  nested too deeply to compare` rather than answering. There is no answer.
+
+- The runtime message `unhandled failure:` is now `unhandled error:`, and `a
+  failure has no field` is now `an error has no field`. The language uses one
+  word for one thing.
+
+### Fixed
+
+- **`filter` no longer reads a caught error as true.** It tested its callback's
+  result with a plain truthiness check, so an error kept every element and said
+  nothing.
+
+- **A value that contains itself no longer stops the process.** `let a = [];
+  push(a, a); a == a` aborted on a Rust stack overflow: no message, no caret,
+  and `try` could not catch it. Comparing now answers `true` by identity;
+  printing shows `[[...]]` at the point the value returns to itself.
+
+- **`for x in r` over a caught error** now names the original error instead of
+  reporting `cannot iterate over a error`.
+
+- **A runtime error inside an imported module** now names the module. It
+  previously reported a position belonging to the module against the *importing*
+  file's source, drawing a caret on an unrelated line. A caught error's `file`
+  field now answers correctly for a module, as 0.9 specified but could not do.
+
+- The playground colours `import`, `as`, and `try` as keywords.
+
 ## 0.9 (2026-07-28)
 
 ### Added
