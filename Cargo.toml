@@ -5,7 +5,7 @@ members = ["playground"]
 
 [package]
 name = "miruscriptx"
-version = "0.9.33"
+version = "0.9.34"
 edition = "2021"
 description = "MiruScriptX: a small, general-purpose scripting language written in Rust."
 license = "MIT"
@@ -14,6 +14,19 @@ repository = "https://github.com/stiven-gjekaj/miruscriptx"
 readme = "README.md"
 keywords = ["language", "interpreter", "scripting"]
 categories = ["compilers"]
+# What ships to crates.io. The language, its documentation, and its examples,
+# and nothing that only serves the repository. Excluding these takes the package
+# from 76 files to 59 and drops the parts a person who installs the crate cannot
+# use: the CI configuration, the benchmark harness, the test suite, the logo
+# (the README now points at its URL, because crates.io does not resolve a
+# relative image path), and the two maintenance scripts.
+exclude = [
+    ".github/",
+    "assets/",
+    "benches/",
+    "tests/",
+    "scripts/",
+]
 
 # rustyline drives the REPL's line editing and history, which only src/repl.rs
 # uses, and that module belongs to the binary rather than the library. Excluding

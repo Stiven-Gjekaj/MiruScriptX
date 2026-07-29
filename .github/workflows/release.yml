@@ -11,6 +11,12 @@ name: Release
 # a release workflow that can only be tested by tagging gets tested in
 # production. On a manual run the release step is skipped and the archives are
 # left as workflow artifacts to be downloaded and checked by hand.
+#
+# One catch, found the hard way: GitHub only offers `workflow_dispatch` for a
+# workflow that exists on the *default* branch. Dispatching this file while it
+# lived only on a feature branch returned a 404 that named nothing. So the
+# order is: merge to main first, dispatch to prove all five platforms build,
+# and only then push the version tag.
 
 on:
   push:

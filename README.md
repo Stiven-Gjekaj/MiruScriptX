@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/Miru.png" alt="MiruScriptX" width="300">
+<img src="https://raw.githubusercontent.com/stiven-gjekaj/miruscriptx/main/assets/Miru.png" alt="MiruScriptX" width="300">
 
 ### A small, general-purpose scripting language, written in Rust
 
