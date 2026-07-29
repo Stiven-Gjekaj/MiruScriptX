@@ -261,7 +261,7 @@ strongly. All binary operators are left-associative.
 | 2 | `==`  `!=` | Left |
 | 1 | `&&` | Left |
 | 0 | `\|\|` | Left |
-| Weakest | `try` | — |
+| Weakest | `try` | None |
 
 `try` binds less strongly than every operator. `try a / b` applies `try` to the
 division. Use parentheses to make `try` apply to less: `(try a) / b`.

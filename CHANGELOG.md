@@ -8,6 +8,22 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 1.0.1 (2026-07-29)
+
+### Fixed
+
+- The release workflow builds the Intel macOS binary on an Apple Silicon runner.
+  It was pinned to GitHub's `macos-13` image, which has been retired: the job sat
+  queued with no runner assigned while every other platform finished in under two
+  minutes. Intel Mac runners are being withdrawn generally, so this builds
+  x86-64 from Apple Silicon, which Apple's toolchain supports directly.
+
+**No change to the language or the package.** This release touches only
+`.github/workflows/release.yml`, which the crate's `exclude` list keeps out of
+the published package, so the contents of 1.0.1 and 1.0 are identical. 1.0.1 is
+the first published version because the fix had to land before any release could
+be built at all.
+
 ## 1.0 (2026-07-29)
 
 The first stable release. From here, [docs/stability.md](docs/stability.md) says
@@ -19,7 +35,7 @@ what will not change.
   Technical English. It defines the lexical structure, the grammar and
   precedence, the values, the semantics, errors, modules, all 37 builtins, the
   limits, and the CLI. It states what was previously true only because the
-  implementation said so — evaluation order, numeric promotion, overflow,
+  implementation said so: evaluation order, numeric promotion, overflow,
   truthiness, scoping, and capture.
 
 - **[A stability guarantee](docs/stability.md)**. A program that is correct with

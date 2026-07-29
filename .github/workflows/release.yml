@@ -37,9 +37,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Native runners for every target, so nothing is cross-compiled. A
-          # cross toolchain is one more thing that can be subtly wrong in a way
-          # that only shows up on a user's machine.
+          # A runner of the target's own architecture wherever one exists, so
+          # nothing goes through a cross toolchain. Those are one more thing
+          # that can be subtly wrong in a way which only appears on somebody
+          # else's machine.
+          #
+          # Intel macOS is the exception, and it is not a choice. The `macos-13`
+          # label is GitHub's retired Intel image: a job pinned to it sat queued
+          # for twenty-five minutes with no runner ever assigned, while every
+          # other job here finished inside two. Intel Mac runners are being
+          # withdrawn everywhere, so moving to another Intel label would buy
+          # months at best.
+          #
+          # Building x86-64 on Apple Silicon is not the fragile kind of
+          # cross-compilation. Apple ships both architectures in one toolchain
+          # and treats this as ordinary; it is how a universal binary has always
+          # been made.
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             archive: tar.gz
@@ -47,7 +60,7 @@ jobs:
             os: ubuntu-24.04-arm
             archive: tar.gz
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
             archive: tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
@@ -95,8 +108,13 @@ jobs:
           (cd dist && 7z a "$name.zip" "$name")
 
       # The binary is checked here rather than only at the end, so a broken
-      # build is reported by the job that made it. The Windows and macOS jobs
-      # can run their own binary; nothing cross-compiled needs emulating.
+      # build is reported by the job that made it.
+      #
+      # The x86-64 macOS binary is the one built on a different architecture.
+      # An Apple Silicon runner has Rosetta, so it should run anyway. If it ever
+      # cannot, this step is the thing that says so, which is why it is not
+      # skipped for that target: an unrun binary is exactly the one worth
+      # checking.
       - name: Check the binary runs
         shell: bash
         run: |

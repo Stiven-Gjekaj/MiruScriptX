@@ -1,10 +1,9 @@
 //! Checks that hold `docs/specification.md` to the implementation.
 //!
 //! A specification that disagrees with the binary is worse than none: it is
-//! believed. These tests cannot check the prose, but they can check the two
-//! things most likely to drift silently — the list of builtins and the table of
-//! limits — because both are sets of names and numbers that a person maintains
-//! by hand.
+//! believed. These tests cannot check the prose. They can check the two things
+//! most likely to drift in silence: the list of builtins, and the table of
+//! limits. Both are sets of names and numbers that a person keeps by hand.
 
 use std::fs;
 

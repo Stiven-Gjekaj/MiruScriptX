@@ -14,7 +14,8 @@ _Compiled to bytecode, run on a stack virtual machine_
 
 <p align="center">
   <a href="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml"><img src="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <img src="https://img.shields.io/badge/version-1.0-blue?style=flat-square" alt="Version 1.0"/>
+  <a href="https://crates.io/crates/miruscriptx"><img src="https://img.shields.io/crates/v/miruscriptx?style=flat-square&color=blue" alt="The latest version on crates.io"/></a>
+  <a href="https://github.com/stiven-gjekaj/miruscriptx/releases/latest"><img src="https://img.shields.io/github/v/release/stiven-gjekaj/miruscriptx?style=flat-square&color=blue&label=release" alt="The latest GitHub release"/></a>
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"/>
 </p>
 
@@ -110,7 +111,7 @@ curl -fsSL https://raw.githubusercontent.com/stiven-gjekaj/miruscriptx/main/scri
 ```
 
 Prebuilt binaries cover Linux and macOS on x86-64 and arm64, and Windows on
-x86-64. Or install from crates.io:
+x86-64. Or install from [crates.io](https://crates.io/crates/miruscriptx):
 
 ```
 cargo install miruscriptx

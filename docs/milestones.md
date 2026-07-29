@@ -357,9 +357,9 @@ everything the road set out to build has been built.
 
   Every claim was run through the binary rather than read off the source. That
   discipline paid twice. It caught that **arithmetic cannot produce `inf` or
-  `nan` at all** — division by zero is an error, not an infinity — while
-  `float("nan")`, `float("inf")`, and `pow` can, which makes the comparison
-  rules real rather than dead text. And it caught a bad *method*: the check for
+  `nan` at all**, because division by zero is an error rather than an infinity.
+  But `float("nan")`, `float("inf")`, and `pow` can produce them, which makes
+  the comparison rules real rather than dead text. And it caught a bad *method*: the check for
   "`else` on the next line" failed in the REPL, which evaluates each line as
   soon as it is complete, while the claim itself was true. Verification can
   fail on a true statement.
@@ -386,7 +386,7 @@ everything the road set out to build has been built.
 - **One rule for names, replacing two.** `let print = 1` used to write over the
   builtin's slot, and builtin slots are shared by every module, so one file
   could break `print` inside a module it imported. A declaration now shadows,
-  and an assignment never introduces a name — which is what assignment already
+  and an assignment never introduces a name. That is what assignment already
   did for every other undeclared name. This reverses a v0.8 decision on purpose:
   it contradicted what v0.8 was for.
 
