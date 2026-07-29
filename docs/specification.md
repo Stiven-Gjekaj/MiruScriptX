@@ -180,3 +180,88 @@ is no `\u` escape and no `\x` escape.
 =   .   ,   :   ;
 (   )   [   ]   {   }
 ```
+
+---
+
+## 3. Grammar
+
+### 3.1 Program
+
+```
+program   = { statement }
+statement = import | let | assign | function | return
+          | if | while | for | break | continue | expression
+```
+
+A statement ends at a newline or a semicolon. Section 2.3 gives the rule.
+
+### 3.2 Statements
+
+```
+import    = "import" string "as" identifier
+
+let       = "let" identifier "=" expression
+
+assign    = target "=" expression
+target    = identifier | index | field
+
+function  = "fn" identifier "(" [ params ] ")" block
+params    = identifier { "," identifier }
+
+return    = "return" [ expression ]
+
+if        = "if" expression block [ "else" ( if | block ) ]
+
+while     = "while" expression block
+
+for       = "for" identifier "in" expression block
+
+break     = "break"
+continue  = "continue"
+
+block     = "{" { statement } "}"
+```
+
+`else` can be on the same line as the previous `}`, or on the next line.
+
+### 3.3 Expressions
+
+```
+expression = try | binary
+try        = "try" expression
+binary     = unary { operator unary }
+unary      = ( "-" | "!" ) unary | postfix
+postfix    = primary { call | index | field }
+call       = "(" [ arguments ] ")"
+arguments  = expression { "," expression }
+index      = "[" expression "]"
+field      = "." identifier
+primary    = integer | float | string | "true" | "false" | "nil"
+           | identifier | array | map | closure | "(" expression ")"
+array      = "[" [ expression { "," expression } ] "]"
+map        = "{" [ entry { "," entry } ] "}"
+entry      = expression ":" expression
+closure    = "fn" "(" [ params ] ")" block
+```
+
+An array literal and a map literal permit a trailing comma.
+
+### 3.4 Precedence
+
+The table gives the precedence of each operator. A larger number binds more
+strongly. All binary operators are left-associative.
+
+| Precedence | Operators | Associativity |
+| ---------- | --------- | ------------- |
+| 7 (strongest) | `f(x)`  `a[i]`  `a.b` | Left |
+| 6 | `-x`  `!x` | Right |
+| 5 | `*`  `/`  `%` | Left |
+| 4 | `+`  `-` | Left |
+| 3 | `<`  `>`  `<=`  `>=` | Left |
+| 2 | `==`  `!=` | Left |
+| 1 | `&&` | Left |
+| 0 | `\|\|` | Left |
+| Weakest | `try` | — |
+
+`try` binds less strongly than every operator. `try a / b` applies `try` to the
+division. Use parentheses to make `try` apply to less: `(try a) / b`.
