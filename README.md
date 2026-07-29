@@ -2,19 +2,19 @@
 
 <img src="https://raw.githubusercontent.com/stiven-gjekaj/miruscriptx/main/assets/Miru.png" alt="MiruScriptX" width="300">
 
-### A small, general-purpose scripting language, written in Rust
+### A complete, general-purpose scripting language, written from scratch in Rust
 
 _Compiled to bytecode, run on a stack virtual machine_
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-305_passing-427819?style=for-the-badge" alt="305 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-318_passing-427819?style=for-the-badge" alt="318 tests passing"/>
 </p>
 
 <p align="center">
   <a href="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml"><img src="https://github.com/stiven-gjekaj/miruscriptx/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <img src="https://img.shields.io/badge/version-0.9-blue?style=flat-square" alt="Version 0.9"/>
+  <img src="https://img.shields.io/badge/version-1.0-blue?style=flat-square" alt="Version 1.0"/>
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License"/>
 </p>
 
@@ -35,9 +35,12 @@ _Compiled to bytecode, run on a stack virtual machine_
 **MiruScriptX** is a minimalist, dynamically typed scripting language with a
 clean, modern syntax, written from scratch in Rust. Write functions, closures,
 loops, arrays, and maps in familiar syntax, split a program across files when it
-outgrows one, handle the failures you expect and let the rest stop the program,
+outgrows one, handle the errors you expect and let the rest stop the program,
 then run it from a file or an interactive REPL. Programs use the `.miru`
 extension.
+
+The name carries a lineage. MiruScriptX revives MiruScript, an earlier language
+by the same author written in C; the X marks the successor.
 
 Programs are compiled to bytecode and run on a stack virtual machine. A tree
 walker came first and was replaced in v0.5, once a corpus of golden tests had
@@ -86,7 +89,7 @@ for name in people {
 - File runner, a source formatter (`miru fmt`), and a REPL with history
 - A disassembler (`miru disasm`) that prints the bytecode for a program
 - Errors with a line, a column, and an underline under the token at fault
-- Failures you can catch as values, carrying the call path they came through
+- Errors you can catch as values, carrying the call path they came through
 - Minimal dependencies: rustyline at runtime, criterion for benchmarks
 - A WebAssembly build and an in-browser playground, in a separate crate
 - Unit, golden, session, and end-to-end tests, benchmarks, and CI
@@ -99,7 +102,21 @@ for name in people {
 
 ## Quick Start
 
-Build the interpreter (a recent stable Rust toolchain is all you need):
+Install the latest release. The script checks the download against the
+published checksum and refuses if it does not match:
+
+```
+curl -fsSL https://raw.githubusercontent.com/stiven-gjekaj/miruscriptx/main/scripts/install.sh | sh
+```
+
+Prebuilt binaries cover Linux and macOS on x86-64 and arm64, and Windows on
+x86-64. Or install from crates.io:
+
+```
+cargo install miruscriptx
+```
+
+Or build from source (a recent stable Rust toolchain is all you need):
 
 ```
 cargo build --release
@@ -146,7 +163,7 @@ Runnable programs live in [examples/](examples):
 | [contacts.miru](examples/contacts.miru) | Maps, lookups, and iteration |
 | [transform.miru](examples/transform.miru) | Higher-order functions: map, filter, reduce |
 | [shop.miru](examples/shop.miru) + [prices.miru](examples/prices.miru) | Two files: `import`, and names that belong to a file |
-| [recover.miru](examples/recover.miru) | `try`: surviving a failure instead of stopping at it |
+| [recover.miru](examples/recover.miru) | `try`: surviving an error instead of stopping at it |
 
 Run one with `miru run examples/contacts.miru`.
 
@@ -179,12 +196,12 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | ----- | ----- | ----- | -------------- |
 | **Lexer** | token.rs, lexer.rs | 975 | Source text to tokens, with line, column, and span tracking |
 | **Parser** | ast.rs, parser.rs | 1162 | Recursive descent plus a Pratt expression parser |
-| **Runtime model** | value.rs, ops.rs, builtins.rs | 2106 | Values, operator and indexing rules, the builtin library |
-| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 3736 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches failures |
+| **Runtime model** | value.rs, ops.rs, builtins.rs | 2272 | Values, operator and indexing rules, the builtin library |
+| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 3858 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Formatter** | formatter.rs | 676 | Reprints a program in canonical form (`miru fmt`) |
 | **CLI and REPL** | main.rs, repl.rs | 331 | File runner, `fmt` and `disasm` commands, and the REPL |
 | **Library** | lib.rs | 662 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **15 files** | **9648** | Written from scratch in Rust |
+| **Total** | **15 files** | **9936** | Written from scratch in Rust |
 
 The playground is a separate crate: 467 lines of Rust binding the language to
 WebAssembly, and 567 of hand-written HTML, CSS, and JavaScript. It is counted
@@ -228,6 +245,20 @@ scripts/     build_reference.sh regenerates the single-page reference
 <p>Status and what<br/>comes next</p>
 <a href="docs/milestones.md"><b>Milestones</b></a>
 </td>
+</tr>
+<tr>
+<td align="center" width="25%" valign="top">
+<h3>Define</h3>
+<p>What a program<br/>means, exactly</p>
+<a href="docs/specification.md"><b>Specification</b></a>
+</td>
+<td align="center" width="25%" valign="top">
+<h3>Depend</h3>
+<p>What will not<br/>change in 1.x</p>
+<a href="docs/stability.md"><b>Stability</b></a>
+</td>
+<td align="center" width="25%" valign="top"></td>
+<td align="center" width="25%" valign="top"></td>
 </tr>
 </table>
 

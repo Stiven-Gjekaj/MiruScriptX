@@ -27,7 +27,7 @@ wiki/ and re-run the script.
 
 # Introduction
 
-MiruScriptX is a small, general-purpose scripting language. If you have written
+MiruScriptX is a complete, general-purpose scripting language. If you have written
 a little JavaScript, Python, or Lua, it will feel familiar: dynamic types, a
 clean syntax, first-class functions, and arrays.
 
