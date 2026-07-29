@@ -1320,3 +1320,35 @@ fn a_field_can_be_assigned_through_and_creates_what_is_not_there() {
         ),
     ]);
 }
+
+#[test]
+fn a_higher_order_builtin_refuses_a_caught_failure_as_a_condition() {
+    check_all(&[
+        // filter asks its callback's answer whether it is true, which is the
+        // same question `if` asks, and a caught failure has to refuse it in both
+        // places. Until v1.0 this one read the failure as true and silently kept
+        // every element, which is the one path the v0.9 guard missed.
+        (
+            "filter([1, 2, 3], fn(n) { return try 1 / 0 })",
+            "err unhandled failure: division by zero @ 1:1",
+        ),
+        // The position is the call that started the task, not wherever the
+        // callback happened to be.
+        (
+            "let xs = [1]\nfilter(xs, fn(n) { return try nope })",
+            "err unhandled failure: undefined variable 'nope' @ 2:1",
+        ),
+        // Ordinary filtering is untouched.
+        (
+            "filter([1, 2, 3, 4], fn(n) { return n % 2 == 0 })",
+            "ok [2, 4]",
+        ),
+        // map and reduce only ever store what they are handed, which is what
+        // assigning a failure already does everywhere else, so they keep it.
+        // Storing one is allowed; using it is not.
+        (
+            "let out = map([1], fn(n) { return try 1 / 0 })\nis_error(out[0])",
+            "ok true",
+        ),
+    ]);
+}

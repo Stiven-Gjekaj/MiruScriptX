@@ -1018,7 +1018,10 @@ impl Vm {
         let callee = task.callback().clone();
         let mut last = None;
         loop {
-            match task.resume(last.take()) {
+            let step = task
+                .resume(last.take())
+                .map_err(|message| MiruError::with_column(line, column, message))?;
+            match step {
                 Step::Done(value) => return Ok(value),
                 Step::Call(args) => {
                     last = Some(self.call_native(callee.clone(), args.into_vec(), line, column)?);
@@ -1037,12 +1040,14 @@ impl Vm {
     /// back, all on the one loop.
     fn drive_tasks(&mut self, mut last: Option<Value>) -> Result<(), MiruError> {
         loop {
-            let step = self
-                .tasks
-                .last_mut()
-                .expect("a pending task")
+            let pending = self.tasks.last_mut().expect("a pending task");
+            // The position of the call that started the task, so a refusal
+            // points at the `filter(..)` rather than at whatever ran last.
+            let (line, column) = (pending.line, pending.column);
+            let step = pending
                 .task
-                .resume(last.take());
+                .resume(last.take())
+                .map_err(|message| MiruError::with_column(line, column, message))?;
             match step {
                 Step::Call(args) => {
                     // The callee lives on the task rather than in the step, so

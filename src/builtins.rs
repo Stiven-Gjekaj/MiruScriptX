@@ -844,7 +844,12 @@ impl HostTask {
 
     /// Advance the builtin one step. `last` is the value the previously
     /// requested call returned, or `None` on the first step.
-    pub fn resume(&mut self, last: Option<Value>) -> Step {
+    ///
+    /// Fallible because `filter` asks its callback's answer whether it is true,
+    /// and a caught error refuses to answer that. `map` and `reduce` only ever
+    /// store what they are given, which is what assigning an error already does
+    /// everywhere else, so they cannot fail here.
+    pub fn resume(&mut self, last: Option<Value>) -> Result<Step, String> {
         match self {
             HostTask::Map {
                 items, next, out, ..
@@ -853,8 +858,8 @@ impl HostTask {
                     out.push(value);
                 }
                 match take_next(items, next) {
-                    None => Step::Done(array(std::mem::take(out))),
-                    Some(item) => Step::Call(Args::One(item)),
+                    None => Ok(Step::Done(array(std::mem::take(out)))),
+                    Some(item) => Ok(Step::Call(Args::One(item))),
                 }
             }
             HostTask::Filter {
@@ -869,15 +874,19 @@ impl HostTask {
                 // cloned a second time.
                 if let Some(value) = last {
                     let item = pending.take().expect("an element under decision");
-                    if value.is_truthy() {
+                    // `condition`, not `is_truthy`: this is a conditional, and a
+                    // caught error must refuse to be one here exactly as it does
+                    // in `if` and `while`. Reading it as true kept every element
+                    // and said nothing.
+                    if value.condition()? {
                         out.push(item);
                     }
                 }
                 match take_next(items, next) {
-                    None => Step::Done(array(std::mem::take(out))),
+                    None => Ok(Step::Done(array(std::mem::take(out)))),
                     Some(item) => {
                         *pending = Some(item.clone());
-                        Step::Call(Args::One(item))
+                        Ok(Step::Call(Args::One(item)))
                     }
                 }
             }
@@ -888,12 +897,12 @@ impl HostTask {
                     *acc = value;
                 }
                 match take_next(items, next) {
-                    None => Step::Done(std::mem::replace(acc, Value::Nil)),
+                    None => Ok(Step::Done(std::mem::replace(acc, Value::Nil))),
                     Some(item) => {
                         // Move the accumulator out rather than cloning it. The
                         // call's result puts one back on the next resume.
                         let carried = std::mem::replace(acc, Value::Nil);
-                        Step::Call(Args::Two(carried, item))
+                        Ok(Step::Call(Args::Two(carried, item)))
                     }
                 }
             }
@@ -1010,11 +1019,15 @@ mod task_tests {
 
     /// The element a step asks for, as a readable string, or a description of
     /// why it was not the single-argument call the caller expected.
-    fn asked_for(step: &Step) -> String {
+    ///
+    /// Takes the whole `Result` so a refusal reads as a value here rather than
+    /// unwrapping at every call site. Only `filter` can produce one.
+    fn asked_for(step: &Result<Step, String>) -> String {
         match step {
-            Step::Call(Args::One(v)) => v.repr(),
-            Step::Call(Args::Two(a, b)) => format!("two: {} {}", a.repr(), b.repr()),
-            Step::Done(v) => format!("done: {}", v.repr()),
+            Ok(Step::Call(Args::One(v))) => v.repr(),
+            Ok(Step::Call(Args::Two(a, b))) => format!("two: {} {}", a.repr(), b.repr()),
+            Ok(Step::Done(v)) => format!("done: {}", v.repr()),
+            Err(message) => format!("refused: {message}"),
         }
     }
 
