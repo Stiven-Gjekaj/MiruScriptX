@@ -49,8 +49,8 @@ what one does.
 
 ### 2.4 The command line
 
-These commands and options keep their behaviour: `run`, `fmt`, `fmt -w`,
-`disasm`, `repl`, `--version`, and `--help`.
+These commands and options keep their behaviour: `run`, `-e` and its long form
+`--eval`, `fmt`, `fmt -w`, `disasm`, `repl`, `--version`, and `--help`.
 
 There are two exit codes, `0` and `1`, and they keep their meanings.
 

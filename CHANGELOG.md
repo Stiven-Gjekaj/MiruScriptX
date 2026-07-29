@@ -8,6 +8,25 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## Unreleased
+
+### Added
+
+- `miru -e PROGRAM`, and its long form `miru --eval PROGRAM`, run a program
+  given on the command line. No file is necessary.
+
+  ```
+  $ miru -e 'print(6 * 7)'
+  42
+  ```
+
+  An error reports the same way it does for a file, with the source line and the
+  mark below it, but it names no file, because there is none. A program given
+  this way cannot use `import`: there is no directory to resolve a module
+  against, and the existing error says so.
+
+  Thanks to @ahmadalguydi for the first contribution to this project.
+
 ## 1.0.1 (2026-07-29)
 
 ### Fixed

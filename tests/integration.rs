@@ -58,9 +58,7 @@ fn eval_option_reports_errors_without_inventing_a_file() {
 fn eval_option_rejects_missing_program_and_imports() {
     let missing = miru().arg("-e").output().expect("failed to launch miru");
     assert!(!missing.status.success());
-    assert!(
-        String::from_utf8_lossy(&missing.stderr).contains("the '-e' command needs a program")
-    );
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("the '-e' command needs a program"));
 
     let import = run_eval("-e", "import \"./module.miru\" as module");
     assert!(!import.status.success());
