@@ -725,6 +725,19 @@ impl Vm {
                                 self.stack
                                     .push(Value::Array(Rc::new(RefCell::new(snapshot))));
                             }
+                            // Iterating a caught error is a use of it, so it
+                            // names the original failure like every other use.
+                            // Without this arm the wildcard below answered
+                            // "cannot iterate over a error": true, generic, and
+                            // about the type rather than what actually went
+                            // wrong. It was the last consumer path v0.9 missed.
+                            Value::Error(error) => {
+                                return Err(runtime_error(
+                                    chunk,
+                                    op_ip,
+                                    format!("unhandled error: {}", error.message),
+                                ))
+                            }
                             other => {
                                 return Err(runtime_error(
                                     chunk,
@@ -931,7 +944,7 @@ impl Vm {
             Value::Error(error) => Err(runtime_error(
                 chunk,
                 op_ip,
-                format!("unhandled failure: {}", error.message),
+                format!("unhandled error: {}", error.message),
             )),
             other => Err(runtime_error(
                 chunk,
@@ -1382,7 +1395,7 @@ fn failure_field(
             return Err(runtime_error(
                 chunk,
                 access_ip,
-                format!("a failure has no field '{other}'"),
+                format!("an error has no field '{other}'"),
             ))
         }
     };
@@ -1423,7 +1436,7 @@ fn field_set(
         Value::Error(error) => Err(runtime_error(
             chunk,
             target_ip,
-            format!("unhandled failure: {}", error.message),
+            format!("unhandled error: {}", error.message),
         )),
         other => Err(runtime_error(
             chunk,
@@ -1461,7 +1474,7 @@ fn index_get(
         Value::Error(error) => Err(runtime_error(
             chunk,
             target_ip,
-            format!("unhandled failure: {}", error.message),
+            format!("unhandled error: {}", error.message),
         )),
         other => Err(runtime_error(
             chunk,
@@ -1498,7 +1511,7 @@ fn index_set(
         Value::Error(error) => Err(runtime_error(
             chunk,
             target_ip,
-            format!("unhandled failure: {}", error.message),
+            format!("unhandled error: {}", error.message),
         )),
         other => Err(runtime_error(
             chunk,
@@ -1560,7 +1573,7 @@ mod tests {
 
     /// The message every refusal gives, which names the failure being held
     /// rather than the type it happens to be.
-    const REFUSED: &str = "unhandled failure: division by zero";
+    const REFUSED: &str = "unhandled error: division by zero";
 
     #[test]
     fn a_conditional_refuses_a_caught_failure_rather_than_reading_it_as_false() {
@@ -1606,7 +1619,7 @@ mod tests {
         })
         .err()
         .expect("an unknown field must be refused");
-        assert_eq!(error.message, "a failure has no field 'mesage'");
+        assert_eq!(error.message, "an error has no field 'mesage'");
 
         // Indexing is not reading a field, and stays refused: `r["message"]`
         // would answer nil for a name that is not there, which is the whole

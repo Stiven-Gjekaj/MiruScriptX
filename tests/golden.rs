@@ -1211,7 +1211,7 @@ fn using_a_caught_failure_stops_the_program_where_it_was_used() {
         // with it. The failure's own message rides along.
         (
             "let r = try 1 / 0\nr + 1",
-            "err unhandled failure: division by zero @ 2:3",
+            "err unhandled error: division by zero @ 2:3",
         ),
         // The silent one. Without a guard this reads as false and the program
         // takes the else branch as though nothing had gone wrong.
@@ -1219,17 +1219,17 @@ fn using_a_caught_failure_stops_the_program_where_it_was_used() {
             "let r = try 1 / 0\nif r { 1 } else { 2 }",
             // Under `r` rather than under `if`: the condition is the failure,
             // and it is what a reader needs to look at.
-            "err unhandled failure: division by zero @ 2:4",
+            "err unhandled error: division by zero @ 2:4",
         ),
         // Likewise equality, which answers for every pair of values.
         (
             "let r = try 1 / 0\nr == nil",
-            "err unhandled failure: division by zero @ 2:3",
+            "err unhandled error: division by zero @ 2:3",
         ),
         // And a builtin that takes anything.
         (
             "let r = try 1 / 0\nprint(r)",
-            "err unhandled failure: division by zero @ 2:1",
+            "err unhandled error: division by zero @ 2:1",
         ),
     ]);
 }
@@ -1268,7 +1268,7 @@ fn a_caught_failure_can_be_asked_what_went_wrong() {
         // access makes everywhere else.
         (
             "(try 1 / 0).nope",
-            "err a failure has no field 'nope' @ 1:13",
+            "err an error has no field 'nope' @ 1:13",
         ),
     ]);
 }
@@ -1330,13 +1330,13 @@ fn a_higher_order_builtin_refuses_a_caught_failure_as_a_condition() {
         // every element, which is the one path the v0.9 guard missed.
         (
             "filter([1, 2, 3], fn(n) { return try 1 / 0 })",
-            "err unhandled failure: division by zero @ 1:1",
+            "err unhandled error: division by zero @ 1:1",
         ),
         // The position is the call that started the task, not wherever the
         // callback happened to be.
         (
             "let xs = [1]\nfilter(xs, fn(n) { return try nope })",
-            "err unhandled failure: undefined variable 'nope' @ 2:1",
+            "err unhandled error: undefined variable 'nope' @ 2:1",
         ),
         // Ordinary filtering is untouched.
         (
@@ -1350,6 +1350,22 @@ fn a_higher_order_builtin_refuses_a_caught_failure_as_a_condition() {
             "let out = map([1], fn(n) { return try 1 / 0 })\nis_error(out[0])",
             "ok true",
         ),
+    ]);
+}
+
+#[test]
+fn iterating_a_caught_error_names_the_original_failure() {
+    check_all(&[
+        // The last consumer path v0.9 missed. The wildcard answered "cannot
+        // iterate over a error", which is true, generic, and about the type
+        // rather than about what went wrong.
+        (
+            "let r = try 1 / 0\nfor x in r { }",
+            "err unhandled error: division by zero @ 2:10",
+        ),
+        // The generic message still belongs to everything that genuinely has
+        // no elements.
+        ("for x in 5 { }", "err cannot iterate over a int @ 1:10"),
     ]);
 }
 

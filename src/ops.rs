@@ -25,7 +25,7 @@ enum Num {
 /// value, reachable through its fields, so nothing is lost by pointing here.
 pub fn unhandled(value: &Value) -> Option<String> {
     match value {
-        Value::Error(error) => Some(format!("unhandled failure: {}", error.message)),
+        Value::Error(error) => Some(format!("unhandled error: {}", error.message)),
         _ => None,
     }
 }
@@ -178,7 +178,7 @@ pub fn array_index(index: &Value, len: usize) -> Result<usize, String> {
 pub fn map_key(index: &Value) -> Result<String, String> {
     match index {
         Value::Str(s) => Ok(s.to_string()),
-        Value::Error(error) => Err(format!("unhandled failure: {}", error.message)),
+        Value::Error(error) => Err(format!("unhandled error: {}", error.message)),
         other => Err(format!(
             "map key must be a string, not a {}",
             other.type_name()
@@ -222,13 +222,13 @@ mod tests {
         // anything", which reads exactly like an ordinary value.
         assert_eq!(
             unary(UnaryOp::Not, failure()).err().unwrap(),
-            "unhandled failure: division by zero"
+            "unhandled error: division by zero"
         );
         assert_eq!(
             binary(BinaryOp::Equal, failure(), Value::Int(1))
                 .err()
                 .unwrap(),
-            "unhandled failure: division by zero"
+            "unhandled error: division by zero"
         );
 
         // And the ordinary ones, on either side.
@@ -246,18 +246,18 @@ mod tests {
         ] {
             assert_eq!(
                 binary(op, failure(), Value::Int(1)).err().unwrap(),
-                "unhandled failure: division by zero",
+                "unhandled error: division by zero",
                 "{op:?} accepted a failure on the left"
             );
             assert_eq!(
                 binary(op, Value::Int(1), failure()).err().unwrap(),
-                "unhandled failure: division by zero",
+                "unhandled error: division by zero",
                 "{op:?} accepted a failure on the right"
             );
         }
         assert_eq!(
             unary(UnaryOp::Negate, failure()).err().unwrap(),
-            "unhandled failure: division by zero"
+            "unhandled error: division by zero"
         );
     }
 
@@ -265,11 +265,11 @@ mod tests {
     fn a_caught_failure_is_not_an_index_or_a_key() {
         assert_eq!(
             array_index(&failure(), 3).err().unwrap(),
-            "unhandled failure: division by zero"
+            "unhandled error: division by zero"
         );
         assert_eq!(
             map_key(&failure()).err().unwrap(),
-            "unhandled failure: division by zero"
+            "unhandled error: division by zero"
         );
     }
 

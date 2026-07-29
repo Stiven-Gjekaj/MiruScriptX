@@ -146,7 +146,7 @@ impl Value {
     pub fn condition(&self) -> Result<bool, String> {
         match self {
             Value::Bool(false) | Value::Nil => Ok(false),
-            Value::Error(error) => Err(format!("unhandled failure: {}", error.message)),
+            Value::Error(error) => Err(format!("unhandled error: {}", error.message)),
             _ => Ok(true),
         }
     }
