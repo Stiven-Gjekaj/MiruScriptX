@@ -167,12 +167,16 @@ request templates, and a branded README with a project logo.
 
 ## The road to 1.0
 
-Four milestones, three of them now behind. v0.7 finished the engine work v0.5
+Four milestones, all of them now behind. v0.7 finished the engine work v0.5
 measured but could not reach. v0.8 and v0.9 added the two things that separate a
 script runner from a language you could build something in: a way to split a
-program across files, and a way to survive a failure. v1.0 is what remains, and
-it is the promise, the packaging, and the specification rather than more
-language.
+program across files, and a way to survive an error. v1.0 was the promise, the
+packaging, and the specification rather than more language, and it is done.
+
+The road ends here. A 1.1 would add builtins or syntax under the guarantee in
+[stability.md](stability.md); it would not be another milestone on this list,
+because the list was about reaching a language you could depend on and that has
+happened.
 
 Two features are deliberately **not** on this road. User-defined types stay out:
 maps already serve as records, and Lua and early JavaScript both reached
@@ -342,57 +346,80 @@ deciding what to call this thing now that "small" no longer describes it.
 
 ## v1.0: the promise, the package, and the specification
 
-- **A stability guarantee**, which is what the version number actually means.
-  Stable: the language's syntax, the behaviour of every builtin, the CLI's
-  commands and exit codes, and the rendered shape of an error. Explicitly not
-  stable: the bytecode format, opcode numbering, the Rust API, and anything
-  `miru disasm` prints. Written down as its own document, so the line is
-  findable rather than folded into a changelog.
+Shipped. The road is complete. There is no eleventh milestone, because
+everything the road set out to build has been built.
 
-- **Prebuilt binaries.** Cloning and building is the only way to get `miru`
-  today. A tag-triggered workflow producing static binaries for Linux
-  (x86_64 and aarch64, musl so they run anywhere), macOS (Intel and Apple
-  Silicon), and Windows, attached to a GitHub release, plus a one-line install
-  script.
+- **A written specification.** `docs/specification.md`, in ASD-STE100
+  Simplified Technical English, because a document whose job is to be readable
+  one way only should not be written in a register that rewards flourish. Ten
+  sections: the lexical structure, the grammar and precedence, the values, the
+  semantics, errors, modules, all 37 builtins, the limits, and the CLI.
 
-- **crates.io.** `miruscriptx` is free; `miru` is taken by an unrelated crate at
-  0.0.0. That costs nothing, since the package is already named `miruscriptx`
-  and Cargo installs a binary named `miru` from it either way.
+  Every claim was run through the binary rather than read off the source. That
+  discipline paid twice. It caught that **arithmetic cannot produce `inf` or
+  `nan` at all** — division by zero is an error, not an infinity — while
+  `float("nan")`, `float("inf")`, and `pow` can, which makes the comparison
+  rules real rather than dead text. And it caught a bad *method*: the check for
+  "`else` on the next line" failed in the REPL, which evaluates each line as
+  soon as it is complete, while the claim itself was true. Verification can
+  fail on a true statement.
 
-- **A written specification.** A grammar and the semantics behind it, separate
-  from the wiki, which teaches rather than defines. The place to state what is
-  currently only true because the implementation says so: evaluation order,
-  numeric promotion and overflow, truthiness, scoping and capture, and every
-  limit a program can hit.
+  Every limit was reached by a program instead of read from a constant. That is
+  why the table says 255 call arguments and not 256: the compiler accepts 255,
+  and the error at 256 is what proves where the edge is.
 
-- **Retire the word "small."** It was honest early and is still defensible at
-  v0.6 (7,666 lines of Rust, roughly 1,500 of them comments and blanks) and is
-  9,600 by v0.9, but
-  modules and error handling will push it past the point where it describes
-  anything useful. By 1.0 the interesting claim is not that the language is
-  short; it is that it is *finished*, and written from scratch: a bytecode
-  compiler, a virtual machine, closures, modules, a formatter, a disassembler,
-  a stability guarantee, and a specification. Lead with that instead. The exact
-  wording is a matter of voice rather than fact, so it is left open, but the
-  direction is to claim completeness rather than size and to keep "written from
-  scratch in Rust", which is the part that actually distinguishes it.
+- **A stability guarantee.** `docs/stability.md`. The line is **shape, not
+  detail**. The shape of an error report is promised and the words in it are
+  not, so the document says outright not to compare a message against a fixed
+  string. The nesting limit of 256 and the `[...]` truncation mark are named as
+  explicitly unstable, because both were chosen during this milestone and
+  nothing measured either.
 
-- **Move the workflows to Node 24.** GitHub is migrating the Actions runtime off
-  Node 20 and warns on any action still declaring it. Nothing is broken today,
-  and the deploy that raised the warning succeeded, so this is maintenance
-  rather than a fix: bump `actions/checkout`, `actions/cache`,
-  `actions/upload-pages-artifact`, and `actions/deploy-pages` to the majors that
-  declare `node24`. Doing it here rather than sooner means the workflows are
-  touched once, alongside the release workflow this milestone adds, instead of
-  twice.
+- **Four defects closed first**, because a 1.0 cannot promise stability over
+  behaviour that is wrong. All four surfaced from writing the specification
+  rather than from any test: `filter` read a caught error as true and silently
+  kept every element; a value containing itself aborted the process on a Rust
+  stack overflow; `for x in r` on a caught error reported the type rather than
+  the failure; and a runtime error inside an imported module drew its caret on
+  the *importing* file's source, marking innocent code.
 
-- **Say where the name comes from.** MiruScriptX is a revival of MiruScript, an
-  earlier language by the same author, written in C. The X marks the successor
-  rather than decorating it. A short note in the README, and a line in the specification's
-  introduction, is enough. Worth saying because the lineage is the honest
-  version of why this project exists, and because "the same idea, rebuilt in
-  Rust with a bytecode VM instead of C" tells a reader more about the project
-  than any feature list on the page.
+- **One rule for names, replacing two.** `let print = 1` used to write over the
+  builtin's slot, and builtin slots are shared by every module, so one file
+  could break `print` inside a module it imported. A declaration now shadows,
+  and an assignment never introduces a name — which is what assignment already
+  did for every other undeclared name. This reverses a v0.8 decision on purpose:
+  it contradicted what v0.8 was for.
+
+- **Prebuilt binaries.** `.github/workflows/release.yml` builds five targets,
+  each on a runner of its own architecture so nothing is cross-compiled, and
+  attaches them to a **draft** release with one `SHA256SUMS`. A tag should build
+  a release, not announce one.
+
+  `scripts/install.sh` is POSIX sh and refuses rather than guesses: an unknown
+  platform, a missing checksum file, or a checksum that does not match all stop
+  it, because a wrong binary installed quietly is worse than no binary.
+
+- **crates.io.** `cargo publish --dry-run` is clean at 59 files and 162 KiB
+  compressed. The README image had to become an absolute URL, because crates.io
+  does not resolve a relative image path and the logo would have been broken on
+  the page most people see first.
+
+- **The word "small" is retired**, in the three places it was a claim rather
+  than ordinary English. 9,936 lines now, which makes the case by itself.
+
+Two things did not go to plan, both recorded because the next person will hit
+them:
+
+- **The Node 24 bump is three of four.** `checkout`, `cache`, and `deploy-pages`
+  declare `node24` in their new majors. `upload-pages-artifact` is a composite
+  action in both v3 and v4 and calls `upload-artifact`, which is still `node20`.
+  v4 is worth taking for pinning its inner action to a SHA, but it does not
+  reach node24 and nothing here claims it does.
+
+- **`workflow_dispatch` only works from the default branch.** Dispatching the
+  release workflow while it lived on a feature branch returned a 404 that named
+  nothing. The order that works is: merge to `main`, dispatch to prove all five
+  platforms build and run without publishing, and only then push the tag.
 
 ## Known limitations
 
@@ -407,7 +434,14 @@ lexer open anyway. Field assignment, logged in v0.8, was fixed in v0.9: `m.a = 1
 parses and assigns, and creates the field when it is absent, which is what
 `m["a"] = 1` has always done. Reading a field that is not there stays an error,
 because a misspelling on the way in is almost always a mistake and on the way
-out almost never is.)
+out almost never is.
+
+v1.0 closed four more, none of which were ever logged here, because writing the
+specification found all four before anybody could hit them: `filter` reading a
+caught error as true, a self-referential value aborting the process, `for` over
+a caught error reporting the type instead of the failure, and a module's runtime
+error drawing its caret on the importing file. That is the argument for writing
+a specification, stated as a fact rather than as a hope.)
 
 ## How versions are cut
 
