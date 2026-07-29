@@ -664,3 +664,140 @@ builtin changes that name for itself only.
 
 The language resolves and runs every import before it compiles the file that
 contains the import.
+
+---
+
+## 8. Builtins
+
+There are 37 builtins. A program can use each of them without an import.
+
+A builtin refuses a caught error, and stops the program. There are two
+exceptions: `type` and `is_error` accept one, because a program uses them to
+find out that it holds one.
+
+### 8.1 Output and input
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `print(...)` | Any number | Writes the values, separated by a space, then a newline. Gives `nil`. |
+| `input()` | 0 or 1 | Reads one line. With an argument, writes the argument first. Gives a string, or `nil` at the end of the input. |
+
+### 8.2 General
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `len(v)` | 1 | The number of characters, elements, or pairs. Refuses another type. |
+| `type(v)` | 1 | The name of the type, as a string. |
+| `is_error(v)` | 1 | `true` if the value is a caught error. |
+| `str(v)` | 1 | The value as a string, in the form `print` writes. |
+
+### 8.3 Arrays
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `push(a, v)` | 2 | Adds `v` to the end of `a`. Changes `a`. Gives `a`. |
+| `pop(a)` | 1 | Removes the last element and gives it. Refuses an empty array. |
+| `index_of(a, v)` | 2 | The index of the first equal element, or `-1`. |
+| `slice(v, s, e)` | 3 | A new array or string, from `s` to `e`. The language limits `s` and `e` to the length. |
+| `sort(a)` | 1 | A new array, sorted. Needs all numbers or all strings. |
+| `reverse(v)` | 1 | A new array or string, reversed. |
+| `range(e)` or `range(s, e)` | 1 or 2 | An array of integers, from `s` (or 0) to `e`. `e` is not in the result. |
+
+### 8.4 Strings
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `upper(s)` | 1 | The string in upper case. |
+| `lower(s)` | 1 | The string in lower case. |
+| `trim(s)` | 1 | The string without space at each end. |
+| `replace(s, a, b)` | 3 | The string with each `a` changed to `b`. |
+| `split(s, sep)` | 2 | An array of strings. An empty `sep` gives each character. |
+| `join(a, sep)` | 2 | The elements of `a` as one string, with `sep` between. |
+| `contains(v, x)` | 2 | `true` if the string holds the substring, or the array holds an equal element. |
+| `find(s, x)` | 2 | The character index of the first `x`, or `-1`. |
+
+### 8.5 Maps
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `keys(m)` | 1 | An array of the keys, in sorted order. |
+| `values(m)` | 1 | An array of the values, in the order of the keys. |
+| `has(m, k)` | 2 | `true` if the map holds the key. |
+
+### 8.6 Numbers
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `abs(n)` | 1 | The magnitude. |
+| `min(...)` | 1 or more | The smallest. |
+| `max(...)` | 1 or more | The largest. |
+| `floor(n)` | 1 | The largest integer that is not larger than `n`. Gives an `int`. |
+| `ceil(n)` | 1 | The smallest integer that is not smaller than `n`. Gives an `int`. |
+| `round(n)` | 1 | The nearest integer. A half goes away from zero. Gives an `int`. |
+| `sqrt(n)` | 1 | The square root. Refuses a negative number. |
+| `pow(b, e)` | 2 | `b` to the power `e`. Gives an `int` for two integers with `e` not negative. Gives a `float` in each other condition. |
+| `int(v)` | 1 | A string or a number as an `int`. A float goes towards zero. |
+| `float(v)` | 1 | A string or a number as a `float`. |
+
+### 8.7 Higher-order
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `map(a, f)` | 2 | A new array of `f(x)` for each element. |
+| `filter(a, f)` | 2 | A new array of the elements for which `f(x)` is true. |
+| `reduce(a, f, init)` | 3 | One value, from `f(accumulator, x)` for each element. |
+
+`filter` asks whether the result of `f` is true. A result that is a caught
+error stops the program, as `if` does. `map` and `reduce` only keep the result,
+so they do not refuse one.
+
+---
+
+## 9. Limits
+
+A program that goes past a limit stops with the message in the table. Each
+limit below was reached by a test program.
+
+| Limit | Value | Message |
+| ----- | ----- | ------- |
+| Call depth | 10000 | `call depth limit of 10000 exceeded` |
+| Call arguments | 255 | `too many call arguments` |
+| Captured variables in one function | 255 | `too many captured variables in one function` |
+| Local variables in scope | 65536 | `too many local variables in scope` |
+| Constants in one chunk | 65536 | `too many constants in one chunk` |
+| Functions in one chunk | 65536 | `too many functions in one chunk` |
+| Global names in one program | 65536 | `too many global variables in one program` |
+| Array literal elements | 65535 | `array literal has too many elements` |
+| Map literal pairs | 65535 | `map literal has too many entries` |
+| Jump distance in bytes | 65535 | `the compiled body is too large to jump over` |
+| Loop body in bytes | 65535 | `the loop body is too large to compile` |
+| Nesting for comparing and printing | 256 | `value is nested too deeply to compare` |
+
+The value stack has no limit. Only the call depth stops recursion.
+
+The call depth limit is the one limit `try` cannot catch. Section 6.6 gives the
+reason.
+
+> **Note.** The limits on constants, functions, and global names are the number
+> of different items, not the number of times a program uses one.
+
+---
+
+## 10. The command line
+
+| Command | Purpose |
+| ------- | ------- |
+| `miru` | Starts the REPL. |
+| `miru repl` | Starts the REPL. |
+| `miru run FILE` | Runs a program. |
+| `miru fmt FILE` | Writes the program in the standard form. |
+| `miru fmt -w FILE` | Writes the standard form into the file. |
+| `miru disasm FILE` | Writes the bytecode of a program. |
+| `miru --version` | Writes the version. |
+| `miru --help` | Writes the usage. |
+
+There are two exit codes. `0` means the program did all its work. `1` means an
+error stopped it, or the command line was not correct.
+
+> **Note.** `miru disasm` shows the bytecode. The bytecode is not part of this
+> specification, and it can change in a 1.x release.
