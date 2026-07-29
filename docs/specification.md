@@ -265,3 +265,250 @@ strongly. All binary operators are left-associative.
 
 `try` binds less strongly than every operator. `try a / b` applies `try` to the
 division. Use parentheses to make `try` apply to less: `(try a) / b`.
+
+---
+
+## 4. Values and types
+
+### 4.1 The eight types
+
+The `type` builtin gives the name of the type of a value. There are eight
+names.
+
+| Name | Values |
+| ---- | ------ |
+| `int` | A 64-bit signed integer |
+| `float` | A 64-bit IEEE 754 binary floating-point number |
+| `bool` | `true` or `false` |
+| `string` | A sequence of Unicode characters |
+| `array` | An ordered sequence of values |
+| `map` | A set of pairs of a string key and a value |
+| `function` | A function, a closure, or a builtin |
+| `nil` | The single value `nil` |
+
+An error is a ninth type. The `type` builtin gives the name `error` for it.
+Section 6 describes it. A program cannot make an error value without `try`.
+
+### 4.2 Value types and reference types
+
+An `int`, a `float`, a `bool`, a `string`, and `nil` are value types. An
+operation on one of these gives a new value.
+
+An `array` and a `map` are reference types. Two names can hold the same array.
+A change through one name is visible through the other name.
+
+```
+let a = [1, 2]
+let b = a
+push(b, 3)
+print(a)     // [1, 2, 3]
+```
+
+The `slice`, `sort`, `reverse`, `map`, and `filter` builtins give a new array.
+The `push` builtin changes the array and gives the same array.
+
+### 4.3 Map key order
+
+A map keeps its keys in sorted order. The `keys` builtin, the `values` builtin,
+a `for` loop, and printing all use this order. The order does not depend on the
+order of insertion.
+
+```
+print(keys({"c": 1, "a": 2, "b": 3}))   // ["a", "b", "c"]
+```
+
+### 4.4 How a value prints
+
+The `print` builtin writes a string without quotation marks. Inside an array or
+a map, a string has quotation marks and escapes.
+
+| Value | `print` writes | Inside an array |
+| ----- | -------------- | --------------- |
+| `1` | `1` | `1` |
+| `1.5` | `1.5` | `1.5` |
+| `1.0` | `1.0` | `1.0` |
+| `"a"` | `a` | `"a"` |
+| `true` | `true` | `true` |
+| `nil` | `nil` | `nil` |
+| A function `f` | `<fn f>` | `<fn f>` |
+| A builtin `len` | `<builtin len>` | `<builtin len>` |
+| An error | `<error: MESSAGE>` | `<error: MESSAGE>` |
+
+A float always has a decimal point, an exponent, `nan`, `inf`, or `-inf`.
+
+---
+
+## 5. Semantics
+
+### 5.1 Order of evaluation
+
+| Construct | Order |
+| --------- | ----- |
+| `a + b` | `a`, then `b` |
+| `f(x, y)` | `f`, then `x`, then `y` |
+| `[x, y]` | `x`, then `y` |
+| `{k: v}` | `k`, then `v`, for each pair in order |
+| `a[i]` | `a`, then `i` |
+| `a[i] = v` | **`v`, then `a`, then `i`** |
+| `a.b = v` | **`v`, then `a`** |
+| `let x = e` | `e`, then the name `x` starts to exist |
+
+An assignment through an index evaluates the value first. This is the same
+order as Python. Write the parts as separate statements if the order matters.
+
+Because `let` evaluates the value first, `let x = x` reads the outer `x`.
+
+### 5.2 Numbers
+
+An operation on two integers gives an integer. An operation on two floats gives
+a float. An operation on an integer and a float changes the integer to a float
+first, and gives a float.
+
+> **Note.** The change to a float loses precision for an integer with a
+> magnitude of more than 2^53. The language does not give a warning.
+
+Every integer operation tests for overflow. An operation that overflows gives
+an error. An integer operation never wraps around.
+
+```
+print(9223372036854775807 + 1)   // Error: integer overflow in addition
+```
+
+Division by zero gives the error `division by zero`. This applies to an integer
+and to a float. `1.0 / 0.0` does not give `inf`.
+
+The `%` operator gives the remainder. The sign of the result is the sign of the
+left operand. `-7 % 3` is `-1`. Modulo by zero gives the error `modulo by
+zero`.
+
+### 5.2.1 Infinity and not-a-number
+
+Arithmetic never gives `inf` or `nan`. Division by zero is an error, and every
+other operation that could give one of these is an error.
+
+Three operations can give one:
+
+- `float("inf")` and `float("-inf")` give an infinity.
+- `float("nan")` gives a not-a-number.
+- `pow` gives an infinity when the result is too large.
+
+A program can hold these values. The rules for them are:
+
+- Arithmetic on an infinity works. `float("inf") + 1.0` is `inf`.
+- An order comparison with an infinity works.
+- `nan` is not equal to `nan`. `==` gives `false`, and does not give an error.
+- An order comparison with `nan` gives the error `cannot compare with NaN`.
+- `sort` on an array with `nan` gives the error `sort cannot order NaN`.
+- `min` and `max` with `nan` give the error `<name> cannot compare NaN`.
+- `int`, `floor`, `ceil`, and `round` on `inf` or `nan` give the error
+  `<name> of a non-finite number`.
+
+### 5.3 Truth
+
+Only `false` and `nil` are false. Every other value is true. `0`, `0.0`, `""`,
+`[]`, and `{}` are all true.
+
+An error is not true and not false. A test on an error stops the program.
+Section 6.4 gives the rule.
+
+The `&&` and `||` operators do not evaluate the right operand if the left
+operand decides the result. Both operators give a `bool`, not the operand.
+
+```
+print(1 && 2)   // true, not 2
+```
+
+### 5.4 Equality
+
+`==` compares two values. `!=` gives the opposite result.
+
+- An integer and a float compare as numbers. `1 == 1.0` is true.
+- A `bool` is equal only to a `bool`. `true == 1` is false.
+- A string compares by its characters.
+- An array compares by its length and its elements.
+- A map compares by its keys and its values.
+- A function is equal only to itself.
+- Two values of different types are not equal.
+- `nan` is not equal to `nan`.
+
+Comparison of a value that contains itself gives an error. Section 5.7 gives
+the rule.
+
+### 5.5 Order
+
+`<`, `>`, `<=`, and `>=` compare two integers, two floats, an integer and a
+float, or two strings. A string compares by the code point of each character.
+
+A comparison with `nan` gives the error `cannot compare with NaN`. A comparison
+of two other types gives an error that names both types.
+
+### 5.6 Strings
+
+A string holds Unicode characters. Every builtin counts characters, not bytes.
+`len("héllo")` is 5.
+
+A string does not support the index operator. `"abc"[0]` gives the error
+`cannot index a string`. Use the `slice` builtin.
+
+### 5.7 A value that contains itself
+
+An array can contain itself. A map can contain itself.
+
+- To print such a value, the language writes `[...]` or `{...}` at the point
+  the value comes back to itself.
+- To compare such a value with itself gives `true`. The language compares the
+  identity first.
+- To compare two different such values gives an error. There is no answer to
+  give.
+
+A value that nests very deeply, but does not contain itself, also gives these
+results at a limit. Section 9 gives the limit.
+
+```
+let a = []
+push(a, a)
+print(a)        // [[...]]
+print(a == a)   // true
+```
+
+### 5.8 Names
+
+A name at the top level of a file is a global name. A name inside a block is a
+local name.
+
+A `let` statement makes a name. An assignment does not make a name. An
+assignment to a name that no `let` made gives the error `cannot assign to
+undefined variable '<name>'`.
+
+A `let` at the top level can use the name of a builtin. The file then has its
+own name, and every other file keeps the builtin.
+
+```
+let print = 1
+print(print)    // Error: a int is not callable
+```
+
+An inner `let` can use the name of an outer variable. The inner name hides the
+outer name until the end of the block.
+
+### 5.9 Loops
+
+A `for` loop reads an array. A `for` loop on another type gives the error
+`cannot iterate over a <type>`.
+
+A `for` loop makes a copy of the array before the first step. A change to the
+array inside the loop does not change the number of steps.
+
+The loop variable is a new name at each step. A closure that a step makes keeps
+the value of that step.
+
+### 5.10 Functions
+
+A function that reaches its end without a `return` gives `nil`.
+
+A call with the wrong number of arguments gives an error. The error names the
+function, the number it needs, and the number it received.
+
+A closure keeps the variables it uses. While the enclosing function runs, the
+closure and the function share each variable. After the enclosing function
+returns, the closure keeps its own copy.
