@@ -104,6 +104,13 @@ pub fn version() -> String {
 /// the playground has nowhere to read a line from. `shop.miru` imports
 /// `prices.miru`, and there is no file system here to resolve that against, so
 /// it would only ever show the refusal.
+///
+/// **An example that reads or writes a file cannot go in this list either**,
+/// for the same reason as `shop.miru`. The page has no file system, so
+/// `read_file` and `write_file` refuse, and `every_bundled_example_runs`
+/// requires each entry here to complete cleanly. `file_exists` and `args` are
+/// fine: they answer `false` and `[]` rather than refusing, which is the honest
+/// answer here and keeps a program that merely checks before reading runnable.
 const EXAMPLES: &[(&str, &str)] = &[
     ("greet", include_str!("../../examples/greet.miru")),
     ("fib", include_str!("../../examples/fib.miru")),

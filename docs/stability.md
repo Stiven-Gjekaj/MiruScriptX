@@ -41,8 +41,15 @@ The rules in section 5 of the specification are stable. This includes:
 
 ### 2.3 The builtins
 
-All 37 builtins keep their names, their arguments, and their results. Section 8
+All 41 builtins keep their names, their arguments, and their results. Section 8
 of the specification lists them.
+
+Four of them need something from the host: `read_file`, `write_file`,
+`file_exists`, and `args`. What is stable is what they do **when the host gives
+them a file system and a command line**, and that a host which does not is
+refused rather than silently given nothing. `miru` gives both. A host that
+embeds the language decides for itself, and the browser playground gives
+neither.
 
 A later 1.x can add a builtin. A later 1.x cannot remove one, and cannot change
 what one does.
