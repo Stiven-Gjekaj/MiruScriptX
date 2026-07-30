@@ -8,7 +8,9 @@ use std::cmp::Ordering;
 use std::rc::Rc;
 
 use crate::globals::Globals;
-use crate::value::{Builtin, BuiltinFn, HostBuiltin, HostFn, Input, Output, Value};
+use crate::value::{
+    Builtin, BuiltinFn, HostBuiltin, HostFn, Input, NativeFn, Output, SystemFn, Value,
+};
 
 /// Register every builtin into a program's globals.
 pub fn register(globals: &mut Globals) {
@@ -66,6 +68,20 @@ fn define(globals: &mut Globals, name: &'static str, func: BuiltinFn) {
     let slot = globals
         .slot_for_builtin(name)
         .expect("room for the builtins");
+    let func = NativeFn::Plain(func);
+    globals.define(slot, Value::Builtin(Builtin { name, func }));
+}
+
+/// Register a builtin that needs the host's file system or command line.
+///
+/// Called like any other builtin, and differing only in what it is handed,
+/// which is why it is a kind of [`NativeFn`] rather than a kind of [`Value`].
+#[allow(dead_code)] // Used from the next commit, when the file builtins land.
+fn define_system(globals: &mut Globals, name: &'static str, func: SystemFn) {
+    let slot = globals
+        .slot_for_builtin(name)
+        .expect("room for the builtins");
+    let func = NativeFn::System(func);
     globals.define(slot, Value::Builtin(Builtin { name, func }));
 }
 

@@ -21,7 +21,10 @@ use crate::ast::{BinaryOp, UnaryOp};
 use crate::builtins::{Args, HostTask, Step};
 use crate::chunk::{Chunk, OpCode};
 use crate::globals::{Globals, ModuleId, ROOT_MODULE};
-use crate::value::{Closure, CompiledFunction, EmptyInput, Input, Output, Upvalue, Value};
+use crate::value::{
+    Closure, CompiledFunction, EmptyInput, Input, NativeFn, NoSystem, Output, System, Upvalue,
+    Value,
+};
 use crate::MiruError;
 
 /// How deep calls may nest before the VM gives up.
@@ -161,6 +164,9 @@ pub struct Vm {
     open_upvalues: Vec<(usize, Rc<RefCell<Upvalue>>)>,
     out: Box<dyn Write>,
     input: Box<dyn Input>,
+    /// The host's file system and command line, if it has one. Absent unless
+    /// the embedder supplies it, so nothing gains file access by accident.
+    system: Box<dyn System>,
     /// The position of the instruction being executed, so a builtin can report
     /// an error where the call to it happened.
     line: usize,
@@ -201,6 +207,7 @@ impl Vm {
             open_upvalues: Vec::new(),
             out,
             input: Box::new(EmptyInput),
+            system: Box::new(NoSystem),
             line: 0,
             column: 0,
             tasks: Vec::new(),
@@ -212,6 +219,15 @@ impl Vm {
     /// Replace the input source that `input()` reads from.
     pub fn set_input(&mut self, input: Box<dyn Input>) {
         self.input = input;
+    }
+
+    /// Give this VM a file system and a command line.
+    ///
+    /// Nothing calls this except `miru` itself. A VM that is never given one
+    /// refuses every file operation, which is what the playground and any
+    /// embedder gets until it decides otherwise.
+    pub fn set_system(&mut self, system: Box<dyn System>) {
+        self.system = system;
     }
 
     /// Flush any buffered output.
@@ -1000,11 +1016,25 @@ impl Vm {
         self.column = column;
         let result = match callee {
             Value::Builtin(builtin) => {
-                // Move the input reader out so the VM can also be borrowed as the
-                // output sink during the call, then restore it.
-                let mut input = std::mem::replace(&mut self.input, Box::new(EmptyInput));
-                let result = (builtin.func)(self, &mut *input, args);
-                self.input = input;
+                // Each capability is moved out for the duration of the call and
+                // put back after. `self` is what gets passed as the output
+                // sink, so it cannot also be borrowed for a field at the same
+                // time. A system builtin needs no output, but the same swap
+                // applies for the same reason.
+                let result = match builtin.func {
+                    NativeFn::Plain(func) => {
+                        let mut input = std::mem::replace(&mut self.input, Box::new(EmptyInput));
+                        let result = func(self, &mut *input, args);
+                        self.input = input;
+                        result
+                    }
+                    NativeFn::System(func) => {
+                        let mut system = std::mem::replace(&mut self.system, Box::new(NoSystem));
+                        let result = func(&mut *system, args);
+                        self.system = system;
+                        result
+                    }
+                };
                 result.map_err(|message| MiruError::with_column(line, column, message))
             }
             // A higher-order builtin never arrives here. `call_at_stack` turns
@@ -1681,7 +1711,7 @@ mod tests {
                 chunk,
                 Value::Builtin(crate::value::Builtin {
                     name: "echo",
-                    func: echo,
+                    func: NativeFn::Plain(echo),
                 }),
             );
             constant(chunk, caught_error());

@@ -35,6 +35,66 @@ impl Input for EmptyInput {
 /// The shared signature of every native (Rust-implemented) builtin.
 pub type BuiltinFn = fn(&mut dyn Output, &mut dyn Input, Vec<Value>) -> Result<Value, String>;
 
+/// The host's file system and command line.
+///
+/// Separate from [`Output`] and [`Input`] because it is the one capability a
+/// host may not have at all. A browser has a screen and a keyboard; it has no
+/// files and no command line.
+///
+/// Absent is the **default**, not the exception. Reading a file the obvious way
+/// would compile `std::fs` into the WebAssembly build, which has no file system
+/// and no way to say so: the page would show whatever error the platform
+/// happened to produce. There is no conditional compilation anywhere in this
+/// crate and this is not the place to start one, because the question is not
+/// what the target supports but what the embedder permits. So the capability is
+/// a value the host supplies, and [`NoSystem`] is what everything gets until
+/// something says otherwise.
+pub trait System {
+    fn read_file(&mut self, path: &str) -> Result<String, String>;
+    fn write_file(&mut self, path: &str, contents: &str) -> Result<(), String>;
+    fn file_exists(&mut self, path: &str) -> bool;
+    /// The arguments the program was given, not counting its own name.
+    fn arguments(&self) -> Vec<String>;
+}
+
+/// A [`System`] with none of it.
+///
+/// Every call refuses rather than returning nothing. `input()` at end of input
+/// gives `nil` and a program carries on, which suits a missing line; a missing
+/// file does not, because a program that reads a file and silently gets nothing
+/// goes on to do the wrong thing with it. `import` takes the same view, and
+/// `try` makes either recoverable.
+pub struct NoSystem;
+
+impl NoSystem {
+    /// One sentence, used by each refusal, naming the situation rather than the
+    /// operation, because a reader who sees it needs to know the host has no
+    /// files at all and not that this one call went wrong.
+    const REFUSAL: &'static str = "this program is running where there is no file system";
+}
+
+impl System for NoSystem {
+    fn read_file(&mut self, _path: &str) -> Result<String, String> {
+        Err(NoSystem::REFUSAL.to_string())
+    }
+
+    fn write_file(&mut self, _path: &str, _contents: &str) -> Result<(), String> {
+        Err(NoSystem::REFUSAL.to_string())
+    }
+
+    fn file_exists(&mut self, _path: &str) -> bool {
+        false
+    }
+
+    fn arguments(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
+
+/// The signature of a builtin that needs the host's file system or command
+/// line. It gets [`System`] and nothing else, because none of them writes.
+pub type SystemFn = fn(&mut dyn System, Vec<Value>) -> Result<Value, String>;
+
 /// A function compiled to bytecode. The whole program is itself one of these,
 /// an anonymous script with no parameters.
 pub struct CompiledFunction {
@@ -224,7 +284,23 @@ impl Drop for Closure {
 #[derive(Clone)]
 pub struct Builtin {
     pub name: &'static str,
-    pub func: BuiltinFn,
+    pub func: NativeFn,
+}
+
+/// What a [`Builtin`] is, which is a question about what it is handed.
+///
+/// Not a variant of [`Value`], the way [`HostBuiltin`] is. That one is separate
+/// because a higher-order builtin *behaves* differently: the engine drives it as
+/// a task rather than calling it. These are called exactly like any other
+/// builtin and differ only in their argument, so they belong here, where they
+/// cost no new arm in `type_name`, in printing, in comparing, or in the
+/// playground's list of names to highlight.
+#[derive(Clone, Copy)]
+pub enum NativeFn {
+    /// Takes the output sink and the input source, as most builtins do.
+    Plain(BuiltinFn),
+    /// Takes the host's file system and command line.
+    System(SystemFn),
 }
 
 /// The signature of a higher-order builtin: it checks its arguments and returns
