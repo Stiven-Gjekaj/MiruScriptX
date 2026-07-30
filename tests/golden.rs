@@ -1715,3 +1715,15 @@ fn the_file_builtins_check_their_arguments() {
         ),
     ]);
 }
+
+/// `args()` gives an empty array where there is no command line, rather than
+/// refusing. A program given no arguments and a program that could not have
+/// been given any both have none, and the loop over them is the same.
+#[test]
+fn args_is_empty_where_there_is_no_command_line() {
+    check_all(&[
+        ("args()", "ok []"),
+        ("len(args())", "ok 0"),
+        ("args(1)", "err args expects 0 argument(s) but got 1 @ 1:1"),
+    ]);
+}

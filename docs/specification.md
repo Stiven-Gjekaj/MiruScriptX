@@ -669,7 +669,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 40 builtins. A program can use each of them without an import.
+There are 41 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -689,6 +689,7 @@ find out that it holds one.
 | `read_file(path)` | 1 string | Gives the contents of the file as a string. |
 | `write_file(path, text)` | 2 strings | Writes the text to the file, and replaces what was there. Gives `nil`. |
 | `file_exists(path)` | 1 string | Gives `true` if there is a file at the path. |
+| `args()` | 0 | Gives the arguments the program was given, as an array of strings. The program's own path is not among them. |
 
 **A path is resolved against the working directory**, which is the directory the
 program was started from. This is not the rule for `import`, which resolves
