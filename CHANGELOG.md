@@ -64,6 +64,12 @@ semantic versioning.
   machine it was measured on the benchmark harness cannot resolve a change this
   size. `docs/architecture.md` has the numbers.
 
+- **The README's numbers are pinned by a test.** The line counts, the file
+  count, the playground's size, and the test badge are all facts about the tree
+  that were maintained by hand, and all of them drifted repeatedly. They are now
+  computed and checked, so the README cannot quietly disagree with the
+  repository it describes.
+
 - **The size of a `Value` is pinned** by an assertion. The virtual machine's
   stack is a `Vec<Value>`, so that figure is the unit of most of the copying the
   engine does, and nothing was watching it.
