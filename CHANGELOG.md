@@ -25,7 +25,7 @@ semantic versioning.
   this way cannot use `import`: there is no directory to resolve a module
   against, and the existing error says so.
 
-  Thanks to @ahmadalguydi for the first contribution to this project.
+  Thanks to @tomatotomata for the first contribution to this project.
 
 - **Files and the command line.** Four builtins, which together are what turn a
   program into a script:
