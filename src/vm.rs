@@ -338,7 +338,7 @@ impl Vm {
         self.loader.loading.pop();
         outcome.map_err(|err| in_file(err, spec))?;
 
-        let exports = Value::Map(Rc::new(RefCell::new(self.globals.exports(module))));
+        let exports = Value::map(self.globals.exports(module));
         self.loader.cache.insert(canonical, exports.clone());
         Ok(exports)
     }
@@ -683,7 +683,7 @@ impl Vm {
                         ip += 2;
                         let start = self.stack.len() - count;
                         let items = self.stack.split_off(start);
-                        self.stack.push(Value::Array(Rc::new(RefCell::new(items))));
+                        self.stack.push(Value::array(items));
                     }
                     OpCode::Map => {
                         let count = read_u16(chunk, ip) as usize;
@@ -698,7 +698,7 @@ impl Vm {
                                 .map_err(|message| runtime_error(chunk, op_ip, message))?;
                             entries.insert(key, value);
                         }
-                        self.stack.push(Value::Map(Rc::new(RefCell::new(entries))));
+                        self.stack.push(Value::map(entries));
                     }
                     OpCode::Index => {
                         // The operand byte holds no value; its position entry is the
@@ -742,8 +742,7 @@ impl Vm {
                         match value {
                             Value::Array(items) => {
                                 let snapshot = items.borrow().clone();
-                                self.stack
-                                    .push(Value::Array(Rc::new(RefCell::new(snapshot))));
+                                self.stack.push(Value::array(snapshot));
                             }
                             // Iterating a caught error is a use of it, so it
                             // names the original error like every other use.
@@ -1409,7 +1408,7 @@ fn error_field(
                     )))
                 })
                 .collect();
-            Value::Array(Rc::new(RefCell::new(entries)))
+            Value::array(entries)
         }
         other => {
             return Err(runtime_error(
@@ -1583,7 +1582,7 @@ mod tests {
         for (key, value) in pairs {
             entries.insert((*key).to_string(), value.clone());
         }
-        Value::Map(Rc::new(RefCell::new(entries)))
+        Value::map(entries)
     }
 
     /// A caught error, which no program can produce yet. Putting one in the

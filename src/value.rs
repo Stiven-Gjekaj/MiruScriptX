@@ -69,6 +69,50 @@ pub struct Closure {
     pub upvalues: Vec<Rc<RefCell<Upvalue>>>,
 }
 
+/// What an array value points at.
+///
+/// A newtype over the `RefCell` it used to be, so that the array's contents can
+/// be released without recursion. A `Value` holding a `Value` holding a `Value`
+/// is a chain that the compiler's own destructor walks one frame at a time, and
+/// a program can build one longer than the stack. The teardown that fixes that
+/// has to live on a type of this crate's own, and `RefCell<Vec<Value>>` is not
+/// one.
+///
+/// It dereferences to the `RefCell`, so `borrow` and `borrow_mut` reach through
+/// it exactly as they did before and no reader has to know it is here.
+pub struct ArrayBody(RefCell<Vec<Value>>);
+
+impl ArrayBody {
+    pub fn new(items: Vec<Value>) -> ArrayBody {
+        ArrayBody(RefCell::new(items))
+    }
+}
+
+impl std::ops::Deref for ArrayBody {
+    type Target = RefCell<Vec<Value>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// What a map value points at. [`ArrayBody`] explains why it exists.
+pub struct MapBody(RefCell<BTreeMap<String, Value>>);
+
+impl MapBody {
+    pub fn new(entries: BTreeMap<String, Value>) -> MapBody {
+        MapBody(RefCell::new(entries))
+    }
+}
+
+impl std::ops::Deref for MapBody {
+    type Target = RefCell<BTreeMap<String, Value>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 /// A native function implemented in Rust and exposed to programs.
 #[derive(Clone)]
 pub struct Builtin {
@@ -102,8 +146,8 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Str(Rc<String>),
-    Array(Rc<RefCell<Vec<Value>>>),
-    Map(Rc<RefCell<BTreeMap<String, Value>>>),
+    Array(Rc<ArrayBody>),
+    Map(Rc<MapBody>),
     Closure(Rc<Closure>),
     Builtin(Builtin),
     HostBuiltin(HostBuiltin),
@@ -121,6 +165,16 @@ pub enum Value {
 }
 
 impl Value {
+    /// Build an array value.
+    pub fn array(items: Vec<Value>) -> Value {
+        Value::Array(Rc::new(ArrayBody::new(items)))
+    }
+
+    /// Build a map value.
+    pub fn map(entries: BTreeMap<String, Value>) -> Value {
+        Value::Map(Rc::new(MapBody::new(entries)))
+    }
+
     /// The name of this value's type, as returned by the `type` builtin.
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -395,7 +449,7 @@ mod tests {
         for (key, value) in pairs {
             entries.insert((*key).to_string(), value.clone());
         }
-        Value::Map(Rc::new(RefCell::new(entries)))
+        Value::map(entries)
     }
 
     #[test]
