@@ -75,7 +75,7 @@ Three rules earned the hard way:
 - **One logical change per commit.** Code and its tests together, documentation
   separately, and a wide mechanical rename on its own with no behaviour change
   inside it.
-- **Branches**: `feat/`, `bugfix/`, `perf/`, `docs/`.
+- **Branches**: `feat/`, `bugfix/`, `perf/`, `docs/`, `release/`.
 - **Commit as yourself.** See "Sign your own work" below.
 - **Do not open a pull request unless asked.**
 - **No em-dashes** in anything written for this repository.
