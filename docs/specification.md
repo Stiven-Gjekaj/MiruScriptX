@@ -772,7 +772,7 @@ limit below was reached by a test program.
 | Jump distance in bytes | 65535 | `the compiled body is too large to jump over` |
 | Loop body in bytes | 65535 | `the loop body is too large to compile` |
 | Nesting for comparing and printing | 256 | `value is nested too deeply to compare` |
-| Nesting in the source text | 64 | `the program is nested too deeply` |
+| Nesting in the source text | 1000 | `the program is nested too deeply` |
 
 The value stack has no limit. Only the call depth stops recursion.
 

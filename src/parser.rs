@@ -39,25 +39,35 @@ impl Parser {
     /// The figure comes from the tightest configuration measured, not the
     /// roomiest, because the promise is that deep source reports rather than
     /// aborts, and a promise that holds only on the main thread is not one.
-    /// Nested maps, the most expensive construct, survived to this depth:
     ///
-    /// | Stack     | Debug | Release |
-    /// | --------- | ----- | ------- |
-    /// | 8 MiB     | 255   | 255     |
-    /// | 2 MiB     | 112   | 255     |
-    /// | 1 MiB     | 48    | 255     |
-    /// | 512 KiB   | 16    | 255     |
+    /// It is measured against a stack this project chooses rather than one it
+    /// inherits. `miru` starts a thread with 64 MiB (`STACK_SIZE` in
+    /// `src/main.rs`) and the WebAssembly build links a 16 MiB shadow stack
+    /// (`.cargo/config.toml`), because a language whose grammar depends on
+    /// which thread it runs on does not have a grammar. Nested maps, the most
+    /// expensive construct, survived to:
     ///
-    /// 2 MiB is what a thread gets by default, and is therefore what the test
-    /// suite and any embedder who does not ask for more will have. 64 leaves a
-    /// margin of nearly two there. Release builds have room to spare at every
-    /// size, and the playground, which is release wasm, is one of those.
+    /// | Build                  | Depth  |
+    /// | ---------------------- | ------ |
+    /// | Debug, 64 MiB thread   | 3000   |
+    /// | Release, 64 MiB thread | 12000+ |
+    ///
+    /// 1000 leaves a margin of three on the tightest of those. The other
+    /// constructs all reach further: a chain of operators, an index chain, and
+    /// a field chain each cleared 12000 even in debug.
+    ///
+    /// **An embedder calling the library directly gets its own thread's stack**,
+    /// which is 2 MiB by default and will not support this limit. The `miru`
+    /// binary and the playground both provide the stack; anything else has to
+    /// ask for it. `docs/stability.md` says so, and the deep tests in
+    /// `tests/golden.rs` spawn a thread rather than assume one.
     ///
     /// For scale, the deepest nesting in this project's own example programs is
-    /// four. [`crate::value::Value`] limits nesting at 256 for comparing and
-    /// printing, which is a different figure for a different thing: a loop can
-    /// build a value far deeper than the source that made it.
-    pub const MAX_NESTING: usize = 64;
+    /// four. Before 1.1 there was no limit at all, and the process aborted
+    /// somewhere past 600. [`crate::value::Value`] limits nesting at 256 for
+    /// comparing and printing, which is a different figure for a different
+    /// thing: a loop can build a value far deeper than the source that made it.
+    pub const MAX_NESTING: usize = 1000;
 
     /// Parse a full program (a list of statements) from a token stream.
     pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, MiruError> {

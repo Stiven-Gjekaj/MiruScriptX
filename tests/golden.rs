@@ -1442,61 +1442,107 @@ fn declaring_a_name_a_builtin_already_has_shadows_it() {
     ]);
 }
 
+/// Run a test body on the stack the interpreter is built to assume.
+///
+/// A libtest thread gets 2 MiB, which is less than `Parser::MAX_NESTING`
+/// requires. `miru` starts a 64 MiB thread for exactly this reason (`STACK_SIZE`
+/// in `src/main.rs`) and the WebAssembly build links a 16 MiB shadow stack.
+/// Without the same here, a test that reaches the limit overflows before it gets
+/// there, and measures libtest rather than the language.
+fn with_interpreter_stack<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) -> T {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(body)
+        .expect("the operating system can start a thread")
+        .join()
+        .expect("the test body did not panic")
+}
+
 /// Deep source used to abort the process with a Rust stack overflow: no
 /// message, no caret, and nothing `try` could catch. Every one of these was
 /// reproduced as an abort before the parser started counting.
 ///
-/// The sources are generated rather than written out, because the shortest one
-/// that reaches the limit is over two thousand characters.
+/// The sources are generated rather than written out, and follow
+/// `Parser::MAX_NESTING`, so raising the limit does not quietly stop these from
+/// reaching it.
 #[test]
 fn source_that_nests_too_deeply_is_an_error_rather_than_an_abort() {
-    let over = miruscriptx::parser::Parser::MAX_NESTING + 1;
-    let cases: Vec<String> = vec![
-        // Nesting the parser descends through. These overflow on the way down,
-        // before there is a tree to measure.
-        format!("{}{}", "[".repeat(over), "]".repeat(over)),
-        format!("({}1{})", "(".repeat(over), ")".repeat(over)),
-        format!("{}1{}", "{\"a\": ".repeat(over), "}".repeat(over)),
-        format!("{}1", "try ".repeat(over)),
-        format!("{}1", "-".repeat(over)),
-        format!("{}true", "!".repeat(over)),
-        // Spines. These are one Rust frame however long they run, so counting
-        // the parser's recursion sees nothing: the tree is what gets tall.
-        format!("1{}", " + 1".repeat(over)),
-        format!("a{}", "[0]".repeat(over)),
-        format!("a{}", ".b".repeat(over)),
-        format!("a{}", "(1)".repeat(over)),
-        // A spine at every level of nesting. The tree grows as the product of
-        // the two, so counting either one alone lets this through.
-        (0..over).fold(String::from("1"), |inner, _| {
-            format!("({}{})", inner, " + 1".repeat(over))
-        }),
-    ];
-    for source in &cases {
-        let outcome = outcome(source);
-        assert!(
-            outcome.starts_with("err the program is nested too deeply"),
-            "expected a nesting error, got: {outcome}\n  source begins: {:?}",
-            &source[..source.len().min(60)]
-        );
-    }
+    with_interpreter_stack(|| {
+        let over = miruscriptx::parser::Parser::MAX_NESTING + 1;
+        // The composition case grows as the product of its two dimensions, so
+        // each side only needs to be the square root of the limit to pass it.
+        // Using `over` for both would build a source of several megabytes.
+        let side = (over as f64).sqrt() as usize + 2;
+        let cases: Vec<String> = vec![
+            // Nesting the parser descends through. These overflow on the way
+            // down, before there is a tree to measure.
+            format!("{}{}", "[".repeat(over), "]".repeat(over)),
+            format!("({}1{})", "(".repeat(over), ")".repeat(over)),
+            format!("{}1{}", "{\"a\": ".repeat(over), "}".repeat(over)),
+            format!("{}1", "try ".repeat(over)),
+            format!("{}1", "-".repeat(over)),
+            format!("{}true", "!".repeat(over)),
+            // Spines. These are one Rust frame however long they run, so
+            // counting the parser's recursion sees nothing: the tree gets tall.
+            format!("1{}", " + 1".repeat(over)),
+            format!("a{}", "[0]".repeat(over)),
+            format!("a{}", ".b".repeat(over)),
+            format!("a{}", "(1)".repeat(over)),
+            // A spine at every level of nesting. The tree grows as the product
+            // of the two, so counting either alone lets this through.
+            (0..side).fold(String::from("1"), |inner, _| {
+                format!("({}{})", inner, " + 1".repeat(side))
+            }),
+        ];
+        for source in &cases {
+            let outcome = outcome(source);
+            assert!(
+                outcome.starts_with("err the program is nested too deeply"),
+                "expected a nesting error, got: {outcome}\n  source begins: {:?}",
+                &source[..source.len().min(60)]
+            );
+        }
+    });
 }
 
 #[test]
 fn nesting_well_within_the_limit_still_works() {
-    // The limit must not interfere with ordinary programs. The deepest bracket
-    // nesting anywhere in this repository's own examples is 4.
-    let deep = miruscriptx::parser::Parser::MAX_NESTING / 2;
-    check_all(&[
-        ("[[[[[[[[1]]]]]]]]", "ok [[[[[[[[1]]]]]]]]"),
-        ("((((((((1))))))))", "ok 1"),
-        ("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1", "ok 8"),
-    ]);
-    // And a spine half the length of the limit is fine, which is far more
-    // arithmetic than anyone writes on one line.
-    let sum = format!("1{}", " + 1".repeat(deep - 1));
-    assert_eq!(outcome(&sum), format!("ok {deep}"));
-    // As is nesting to half the limit.
-    let nest = format!("{}1{}", "[".repeat(deep), "]".repeat(deep));
-    assert!(outcome(&nest).starts_with("ok ["));
+    with_interpreter_stack(|| {
+        // The limit must not interfere with ordinary programs. The deepest
+        // bracket nesting anywhere in this repository's own examples is 4.
+        let deep = miruscriptx::parser::Parser::MAX_NESTING / 2;
+        check_all(&[
+            ("[[[[[[[[1]]]]]]]]", "ok [[[[[[[[1]]]]]]]]"),
+            ("((((((((1))))))))", "ok 1"),
+            ("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1", "ok 8"),
+        ]);
+        // A spine half the length of the limit is fine, which is far more
+        // arithmetic than anyone writes on one line.
+        let sum = format!("1{}", " + 1".repeat(deep - 1));
+        assert_eq!(outcome(&sum), format!("ok {deep}"));
+        // As is nesting to half the limit.
+        let nest = format!("{}1{}", "[".repeat(deep), "]".repeat(deep));
+        assert!(outcome(&nest).starts_with("ok ["));
+    });
+}
+
+/// The limit exists to keep a 1.0 program working, not only to stop an abort.
+///
+/// 1.0 had no limit, so anything that fitted the stack parsed. The first attempt
+/// at this fix set the limit at 64, taken from a 2 MiB thread, which refused
+/// programs 1.0 accepted and broke section 2.1 of the stability guarantee.
+/// These depths are the ones a real program plausibly reaches.
+#[test]
+fn depths_a_1_0_program_could_reach_still_parse() {
+    with_interpreter_stack(|| {
+        // A generated expression summing several hundred terms.
+        let sum = format!("1{}", " + 1".repeat(499));
+        assert_eq!(outcome(&sum), "ok 500");
+        // A generated table, nested well past anything written by hand.
+        let nest = format!("{}1{}", "[".repeat(200), "]".repeat(200));
+        assert!(outcome(&nest).starts_with("ok ["));
+        // A long chain of field accesses, as a generated accessor path.
+        let fields = format!("let m = {{}}\nm{}", ".a".repeat(300));
+        assert!(outcome(&fields).starts_with("err no field"));
+    });
 }
