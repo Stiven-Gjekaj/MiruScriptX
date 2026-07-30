@@ -179,6 +179,15 @@ impl Globals {
     /// playground uses it to colour builtins, by populating a table with
     /// [`crate::builtins::register`] and asking it, rather than keeping a second
     /// list of builtin names that could fall out of step with the real one.
+    /// How many builtins are registered.
+    ///
+    /// Exists so a test can check the pinned list against what `register`
+    /// actually did, in both directions. A list that is merely a subset would
+    /// otherwise pass while missing a builtin nothing else names.
+    pub fn builtin_count(&self) -> usize {
+        self.builtins.len()
+    }
+
     pub fn contains(&self, name: &str) -> bool {
         self.builtins.contains_key(name) || self.modules[ROOT_MODULE].contains_key(name)
     }

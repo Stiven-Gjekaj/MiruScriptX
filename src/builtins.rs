@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use crate::globals::Globals;
 use crate::value::{
-    Builtin, BuiltinFn, HostBuiltin, HostFn, Input, NativeFn, Output, SystemFn, Value,
+    Builtin, BuiltinFn, HostBuiltin, HostFn, Input, NativeFn, Output, System, SystemFn, Value,
 };
 
 /// Register every builtin into a program's globals.
@@ -48,6 +48,9 @@ pub fn register(globals: &mut Globals) {
     define(globals, "int", int);
     define(globals, "float", float);
     define(globals, "input", input);
+    define_system(globals, "read_file", read_file);
+    define_system(globals, "write_file", write_file);
+    define_system(globals, "file_exists", file_exists);
     define_host(globals, "map", map);
     define_host(globals, "filter", filter);
     define_host(globals, "reduce", reduce);
@@ -76,7 +79,6 @@ fn define(globals: &mut Globals, name: &'static str, func: BuiltinFn) {
 ///
 /// Called like any other builtin, and differing only in what it is handed,
 /// which is why it is a kind of [`NativeFn`] rather than a kind of [`Value`].
-#[allow(dead_code)] // Used from the next commit, when the file builtins land.
 fn define_system(globals: &mut Globals, name: &'static str, func: SystemFn) {
     let slot = globals
         .slot_for_builtin(name)
@@ -726,6 +728,56 @@ fn float(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
             .map(Value::Float)
             .map_err(|_| format!("cannot convert \"{s}\" to a float")),
         other => Err(format!("float cannot convert a {}", other.type_name())),
+    }
+}
+
+/// `read_file(path)` gives the whole file as a string.
+///
+/// A relative path is resolved against the working directory, which is not what
+/// `import` does. Section 8 of the specification states the difference and why.
+fn read_file(system: &mut dyn System, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("read_file", &args, 1)?;
+    match &args[0] {
+        Value::Str(path) => system.read_file(path).map(|text| Value::Str(Rc::new(text))),
+        other => Err(format!(
+            "read_file expects a string path but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `write_file(path, contents)` writes the string, replacing what was there.
+fn write_file(system: &mut dyn System, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("write_file", &args, 2)?;
+    match (&args[0], &args[1]) {
+        (Value::Str(path), Value::Str(contents)) => {
+            system.write_file(path, contents).map(|()| Value::Nil)
+        }
+        (Value::Str(_), other) => Err(format!(
+            "write_file expects a string to write but got a {}",
+            other.type_name()
+        )),
+        (other, _) => Err(format!(
+            "write_file expects a string path but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `file_exists(path)` says whether there is a file at the path.
+///
+/// This one answers rather than refusing where there is no file system, because
+/// the honest answer to "is there a file there" is then no. A program that asks
+/// before reading gets a useful `false` instead of an error it has to catch, and
+/// the read itself still refuses if it is tried anyway.
+fn file_exists(system: &mut dyn System, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("file_exists", &args, 1)?;
+    match &args[0] {
+        Value::Str(path) => Ok(Value::Bool(system.file_exists(path))),
+        other => Err(format!(
+            "file_exists expects a string path but got a {}",
+            other.type_name()
+        )),
     }
 }
 
@@ -1480,31 +1532,85 @@ mod tests {
 mod count {
     use super::*;
 
-    /// The number of builtins, pinned.
+    /// The pinned list and what `register` actually does are the same set.
     ///
     /// Two comments in this codebase carried a hand-counted total, and both
     /// drifted: one said forty and one said thirty-seven, and neither was
     /// checked by anything. The specification and the stability guarantee both
-    /// promise behaviour for "every builtin", so the count has to be a fact
-    /// rather than a recollection.
+    /// promise behaviour for "every builtin", so the membership has to be a
+    /// fact rather than a recollection.
+    ///
+    /// Checked in **both** directions on purpose. A name in the list but not
+    /// registered is a promise the language does not keep. A builtin registered
+    /// but not in the list is worse, because `tests/specification.rs` generates
+    /// its checks from this list, so an omission here means the specification is
+    /// never asked about that builtin at all.
+    ///
+    /// The length is not asserted against a literal. `BUILTIN_NAMES` declares
+    /// its own size, so a literal here would be a second place to update and a
+    /// third to get wrong: exactly the drift this test exists to stop.
     #[test]
-    fn the_number_of_builtins_is_thirty_seven() {
+    fn the_pinned_list_holds_every_builtin_that_is_registered() {
         let mut globals = Globals::new();
         register(&mut globals);
-        let named: Vec<&str> = BUILTIN_NAMES.to_vec();
-        assert_eq!(named.len(), 37, "the pinned list is the wrong length");
-        for name in &named {
-            assert!(globals.contains(name), "'{name}' is not registered");
+        for name in BUILTIN_NAMES {
+            assert!(
+                globals.contains(name),
+                "'{name}' is listed but not registered"
+            );
         }
+        assert_eq!(
+            globals.builtin_count(),
+            BUILTIN_NAMES.len(),
+            "register defines {} builtins but the list names {}",
+            globals.builtin_count(),
+            BUILTIN_NAMES.len()
+        );
     }
 }
 
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 37] = [
-    "print", "len", "push", "str", "type", "is_error", "range", "keys", "values", "has", "upper",
-    "lower", "trim", "replace", "split", "join", "contains", "find", "pop", "index_of", "slice",
-    "sort", "reverse", "abs", "min", "max", "floor", "ceil", "round", "sqrt", "pow", "int",
-    "float", "input", "map", "filter", "reduce",
+pub const BUILTIN_NAMES: [&str; 40] = [
+    "print",
+    "len",
+    "push",
+    "str",
+    "type",
+    "is_error",
+    "range",
+    "keys",
+    "values",
+    "has",
+    "upper",
+    "lower",
+    "trim",
+    "replace",
+    "split",
+    "join",
+    "contains",
+    "find",
+    "pop",
+    "index_of",
+    "slice",
+    "sort",
+    "reverse",
+    "abs",
+    "min",
+    "max",
+    "floor",
+    "ceil",
+    "round",
+    "sqrt",
+    "pow",
+    "int",
+    "float",
+    "input",
+    "read_file",
+    "write_file",
+    "file_exists",
+    "map",
+    "filter",
+    "reduce",
 ];

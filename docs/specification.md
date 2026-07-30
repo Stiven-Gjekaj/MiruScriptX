@@ -669,7 +669,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 37 builtins. A program can use each of them without an import.
+There are 40 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -682,7 +682,28 @@ find out that it holds one.
 | `print(...)` | Any number | Writes the values, separated by a space, then a newline. Gives `nil`. |
 | `input()` | 0 or 1 | Reads one line. With an argument, writes the argument first. Gives a string, or `nil` at the end of the input. |
 
-### 8.2 General
+### 8.2 Files
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `read_file(path)` | 1 string | Gives the contents of the file as a string. |
+| `write_file(path, text)` | 2 strings | Writes the text to the file, and replaces what was there. Gives `nil`. |
+| `file_exists(path)` | 1 string | Gives `true` if there is a file at the path. |
+
+**A path is resolved against the working directory**, which is the directory the
+program was started from. This is not the rule for `import`, which resolves
+against the file that holds it.
+
+The two rules are different because the two things are different. A module is
+part of the program and stays with it. A data file belongs to the person who
+runs the program, and is where that person is. A program started with `-e` can
+read a file for the same reason, although it cannot `import`.
+
+`read_file` and `write_file` give an error if the host has no file system, for
+example in a browser. `file_exists` gives `false` in that situation, because the
+honest answer to the question is then no. `try` catches the error.
+
+### 8.3 General
 
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
@@ -691,7 +712,7 @@ find out that it holds one.
 | `is_error(v)` | 1 | `true` if the value is a caught error. |
 | `str(v)` | 1 | The value as a string, in the form `print` writes. |
 
-### 8.3 Arrays
+### 8.4 Arrays
 
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
@@ -703,7 +724,7 @@ find out that it holds one.
 | `reverse(v)` | 1 | A new array or string, reversed. |
 | `range(e)` or `range(s, e)` | 1 or 2 | An array of integers, from `s` (or 0) to `e`. `e` is not in the result. |
 
-### 8.4 Strings
+### 8.5 Strings
 
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
@@ -716,7 +737,7 @@ find out that it holds one.
 | `contains(v, x)` | 2 | `true` if the string holds the substring, or the array holds an equal element. |
 | `find(s, x)` | 2 | The character index of the first `x`, or `-1`. |
 
-### 8.5 Maps
+### 8.6 Maps
 
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
@@ -724,7 +745,7 @@ find out that it holds one.
 | `values(m)` | 1 | An array of the values, in the order of the keys. |
 | `has(m, k)` | 2 | `true` if the map holds the key. |
 
-### 8.6 Numbers
+### 8.7 Numbers
 
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
@@ -739,7 +760,7 @@ find out that it holds one.
 | `int(v)` | 1 | A string or a number as an `int`. A float goes towards zero. |
 | `float(v)` | 1 | A string or a number as a `float`. |
 
-### 8.7 Higher-order
+### 8.8 Higher-order
 
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
