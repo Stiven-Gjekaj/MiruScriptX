@@ -1374,7 +1374,7 @@ Without `try`, that program prints one line and stops.
 
 # Next steps
 
-You now know all of MiruScriptX v0.8. Here is where to go from here.
+You now know all of MiruScriptX 1.1. Here is where to go from here.
 
 ## Try it without installing anything
 
