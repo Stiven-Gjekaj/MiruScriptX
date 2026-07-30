@@ -594,9 +594,8 @@ message, no caret, and nothing `try` could catch, because `try` is a runtime
 construct and this happened before the program ran. `miru fmt` did it too, which
 made merely formatting an untrusted file dangerous.
 
-`Parser::MAX_NESTING` (1000) fixes it, but the obvious single counter is not
-enough. Two different quantities have to stay below the limit, and neither
-implies the other:
+Two counters fix it, and the obvious single one is not enough. Two different
+quantities have to stay bounded, and neither implies the other:
 
 - **How far the parser calls itself.** `[[[ .. ]]]` descends one frame per
   bracket and overflows on the way *down*, before there is a tree to measure.
@@ -617,9 +616,48 @@ the *product* of the two, and 60 levels of 60 still aborted while both counters
 read 60.
 
 The height is tested as each level is added rather than on the finished
-expression. That ordering is the point: a tree too tall to walk is also too tall
-to release, so building it and then rejecting it moves the abort from the
-compiler into the destructor and fixes nothing.
+expression. That ordering is the point: a tree too tall to walk was also too
+tall to release, so building it and then rejecting it moved the abort from the
+compiler into the destructor and fixed nothing. Releasing became iterative later
+in the same release, which removes that particular reason, but the ordering
+stays: it costs one comparison and it keeps the compiler and the formatter safe
+without either of them carrying its own guard.
+
+### The two counters need two numbers
+
+They shared one at first, and that was wrong in a way the first measurement hid.
+
+`Parser::MAX_NESTING` is 1000 and `Parser::MAX_HEIGHT` is 10000, because the two
+quantities cost different amounts of stack for the same figure. A level of
+nesting spends a parser frame, so a thousand of them spend a thousand frames. A
+term in a chain spends nothing at parse time and only shows up later, one frame
+per level in whichever pass walks the tree, and those frames are much smaller
+than the parser's.
+
+Held to one number, the limit was set by the expensive quantity and applied to
+the cheap one. The effect was quiet, because it looked like a limit rather than
+a regression: `1 + 1 + ...` with two thousand terms parsed under 1.0 on every
+build including the browser, and became a syntax error.
+
+Both numbers are now bounded from two directions, measured rather than reasoned
+about. From below by what 1.0 did on the smallest stack it ever ran on, which is
+the 1 MiB shadow stack the playground had: 917 levels of nesting, and 4959 terms
+in a chain. From above by what the current passes survive on the 16 MiB stack
+the WebAssembly build links, which is the smallest of any build that ships:
+
+| Pass          | Height reached |
+| ------------- | -------------- |
+| `miru run`    | 80000          |
+| `miru disasm` | 80000          |
+| `miru fmt`    | 61000          |
+
+The formatter binds, which is worth knowing on its own: the pass most likely to
+be run on a file somebody else wrote is the one with the least room. 10000 keeps
+a margin of six under it and is twice what 1.0 reached on its smallest stack.
+
+A chain past the limit reports `the expression is too long` rather than
+`the program is nested too deeply`. They are separate faults and a reader given
+the wrong one goes looking for brackets that are not in their program.
 
 ### Choosing the stack, rather than inheriting it
 

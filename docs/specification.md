@@ -795,14 +795,28 @@ limit below was reached by a test program.
 | Loop body in bytes | 65535 | `the loop body is too large to compile` |
 | Nesting for comparing and printing | 256 | `value is nested too deeply to compare` |
 | Nesting in the source text | 1000 | `the program is nested too deeply` |
+| Length of one expression | 10000 | `the expression is too long` |
 
 The value stack has no limit. Only the call depth stops recursion.
 
-The two nesting limits count different things, and one does not follow from the
-other. The limit of 1000 counts how deeply a *program* nests: brackets inside
-brackets, and also the length of one chain of operators, because `a + b + c`
-holds `a + b`. The limit of 256 counts how deeply a *value* nests, which a loop
-can make much deeper than the program that builds it.
+The three nesting limits count different things, and none of them follows from
+another.
+
+The limit of 1000 counts how deeply a *program* nests: brackets inside
+brackets, as in `[[[ ... ]]]`.
+
+The limit of 10000 counts how *long* one expression is: the number of operators
+in one chain, as in `a + b + c`, and equally a chain of index operations such as
+`a[0][0][0]` or of field accesses such as `a.b.b.b`. Nothing is nested inside
+anything in these, which is why the message is different.
+
+The two figures differ because the constructs cost different amounts of memory
+to read. Nesting is read by a procedure that calls itself once for each level.
+A chain is read by a loop, which costs nothing per term, and shows its cost only
+later, when the program is compiled or formatted.
+
+The limit of 256 counts how deeply a *value* nests, which a loop can make much
+deeper than the program that builds it.
 
 The call depth limit is the one limit `try` cannot catch. Section 6.6 gives the
 reason.

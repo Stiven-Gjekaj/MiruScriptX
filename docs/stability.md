@@ -121,28 +121,40 @@ Two of them are recent, and neither has evidence behind the value: the nesting
 limit of 256 for comparing and printing, and the mark `[...]` that printing
 uses for a value that contains itself. Do not depend on either.
 
-The limit of 1000 on nesting in the source text can also change, and is more
-likely to than the others. It is set by how much stack the tightest supported
-build has. A later 1.x can raise it. No 1.x lowers it.
+The two limits on the source text can also change, and are more likely to than
+the others: 1000 on how deeply a program nests, and 10000 on how long one
+expression is. Each is set by how much stack the tightest supported build has.
+A later 1.x can raise either. No 1.x lowers either.
 
-What does not change is what happens at the limit: a program that goes past it
-stops with an error that gives a line and a column. Before 1.1 there was no
+Both were chosen to sit above what 1.0 did, and not only above what aborts.
+1.0 had no limit, so it ran until the stack ran out, and its release binary on
+the 1 MiB stack the playground had reached 917 levels of nesting and a sum of
+4959 terms. Every program that worked on every 1.0 build still works.
+
+A sum longer than about 10000 terms is the one case that does not. 1.0 reached
+40255 of them on an 8 MiB main thread, and nothing near that in a browser, so
+such a program ran on one build and stopped the process on another. Section 2.1
+is about a program that was correct with 1.0, and a program that aborted the
+process wherever the stack was smaller was not.
+
+What does not change is what happens at either limit: a program that goes past
+one stops with an error that gives a line and a column. Before 1.1 there was no
 limit, and such a program stopped the whole process with no message.
 
-### 3.3 The stack the limit assumes
+### 3.3 The stack the limits assume
 
 This is a condition on the guarantee, not a limit. Read it if you use
 MiruScriptX as a Rust library.
 
-The interpreter walks its own structures by recursion, so the limit above holds
-only where there is stack for it. Two builds supply that stack:
+The interpreter walks its own structures by recursion, so the limits above hold
+only where there is stack for them. Two builds supply that stack:
 
 - The `miru` program runs its work on a thread of 64 MiB.
 - The WebAssembly build links a shadow stack of 16 MiB.
 
 **The `miruscriptx` crate does not.** A call to `run_source` uses the stack of
-the thread that makes the call, which is 2 MiB by default and does not support a
-limit of 1000. Give the call a thread with a larger stack:
+the thread that makes the call, which is 2 MiB by default and does not support
+either limit. Give the call a thread with a larger stack:
 
 ```rust
 std::thread::Builder::new()
