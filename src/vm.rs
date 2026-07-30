@@ -1516,9 +1516,12 @@ fn index_get(
             Ok(element)
         }
         Value::Map(entries) => {
-            let key = crate::ops::map_key(index)
+            // Borrowed, not copied: this only looks the key up, and a `BTreeMap`
+            // keyed by `String` accepts a `&str`. Copying here allocated a
+            // string per read and dropped it on the next line.
+            let key = crate::ops::map_key_ref(index)
                 .map_err(|message| runtime_error(chunk, index_ip, message))?;
-            Ok(entries.borrow().get(&key).cloned().unwrap_or(Value::Nil))
+            Ok(entries.borrow().get(key).cloned().unwrap_or(Value::Nil))
         }
         Value::Error(error) => Err(runtime_error(
             chunk,

@@ -174,16 +174,25 @@ pub fn array_index(index: &Value, len: usize) -> Result<usize, String> {
     Ok(index)
 }
 
-/// Validate a map key: it must be a string.
-pub fn map_key(index: &Value) -> Result<String, String> {
+/// Validate a map key without copying it: it must be a string.
+///
+/// Reading a map only needs to look the key up, and `BTreeMap<String, _>::get`
+/// takes a `&str` through `Borrow`. Use this there. [`map_key`] copies, which a
+/// read does not need and an insert does.
+pub fn map_key_ref(index: &Value) -> Result<&str, String> {
     match index {
-        Value::Str(s) => Ok(s.to_string()),
+        Value::Str(s) => Ok(s.as_str()),
         Value::Error(error) => Err(format!("unhandled error: {}", error.message)),
         other => Err(format!(
             "map key must be a string, not a {}",
             other.type_name()
         )),
     }
+}
+
+/// Validate a map key and copy it, for the paths that store it.
+pub fn map_key(index: &Value) -> Result<String, String> {
+    map_key_ref(index).map(str::to_string)
 }
 
 /// Order two values: integers and strings compare directly, mixed numbers are
