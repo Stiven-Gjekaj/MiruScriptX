@@ -223,9 +223,13 @@ jobs:
             body=(--generate-notes)
           fi
 
+          # "MiruScriptX Release v1.1.0", not "v1.1.0". The tag name alone was
+          # what this passed for 1.0.1 and 1.1.0, and both were renamed by hand
+          # on the Releases page before publishing. A default that gets
+          # corrected every time is the wrong default.
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "${GITHUB_REF_NAME}" \
+            --title "MiruScriptX Release ${GITHUB_REF_NAME}" \
             "${body[@]}" \
             --draft \
             dist/*
