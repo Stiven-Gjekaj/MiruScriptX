@@ -431,7 +431,7 @@ error positions, including while the hot paths were being rewritten.
 
 ### Optimization is measured, not assumed
 
-`benches/vm.rs` holds eight workloads, run end to end so the numbers reflect
+`benches/vm.rs` holds eleven workloads, run end to end so the numbers reflect
 `miru run` rather than the dispatch loop in isolation. The rule is that a change
 which does not move them is not an optimization and should be reverted rather
 than kept for the complexity it adds.

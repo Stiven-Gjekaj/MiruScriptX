@@ -8,9 +8,13 @@ The [playground](https://stiven-gjekaj.github.io/MiruScriptX/) runs MiruScriptX
 in your browser. It is the same lexer, compiler, and virtual machine as the
 `miru` command, built to WebAssembly, so anything that works there works on your
 machine and the other way round. It has the example programs ready to load, a
-Format button, and a tab showing the bytecode your program compiles to. The one
-thing it cannot do is `import`, because there is no file system in a browser to
-resolve a path against.
+Format button, and a tab showing the bytecode your program compiles to.
+
+What it cannot do is anything that needs a file, because a browser has no file
+system to give it: `import`, `read_file`, and `write_file` all report there
+rather than pretending. `file_exists` answers `false` and `args` gives an empty
+array, since those are the honest answers when there is no file system and no
+command line. `input` reads nothing, because there is no keyboard to read from.
 
 ## Practice
 
