@@ -1546,3 +1546,79 @@ fn depths_a_1_0_program_could_reach_still_parse() {
         assert!(outcome(&fields).starts_with("err no field"));
     });
 }
+
+/// A chain of values used to abort the process when it was released.
+///
+/// Building one is a loop, so it needs no stack. Releasing one walked the chain
+/// by recursion, one Rust frame per link, and overflowed. It happened at the
+/// assignment that dropped the last reference, or at the end of the program,
+/// where it also lost whatever was still buffered on standard output.
+///
+/// Deliberately **not** wrapped in `with_interpreter_stack`. These run on a
+/// 2 MiB libtest thread, which is the point: teardown must not depend on the
+/// stack the `miru` binary gives itself. Every depth here aborted before.
+#[test]
+fn a_long_chain_of_values_is_released_without_recursion() {
+    check_all(&[
+        // An array holding an array holding an array, 50000 deep. This aborted
+        // somewhere above 30000 in a debug build.
+        (
+            "let a = []\nlet i = 0\nwhile i < 50000 {\n  a = [a]\n  i = i + 1\n}\na = 0\n\"released\"",
+            "ok \"released\"",
+        ),
+        // The same through maps.
+        (
+            "let m = {}\nlet i = 0\nwhile i < 50000 {\n  m = {\"a\": m}\n  i = i + 1\n}\nm = 0\n\"released\"",
+            "ok \"released\"",
+        ),
+        // And through closures, which chain by capturing each other. This one
+        // was not in the plan: the audit found it.
+        (
+            "fn base() { return 0 }\nlet f = base\nlet i = 0\nwhile i < 50000 {\n  let g = f\n  f = fn() { return g() }\n  i = i + 1\n}\nf = 0\n\"released\"",
+            "ok \"released\"",
+        ),
+    ]);
+}
+
+/// Releasing one holder must not release what another still points at.
+///
+/// This matters more than the depth tests. Teardown descends only into a body
+/// nobody else holds; getting that condition wrong frees live data, which is a
+/// use-after-free rather than a crash, and no depth test would notice.
+#[test]
+fn releasing_one_holder_leaves_a_shared_value_alone() {
+    check_all(&[
+        // `b` still sees the shared array after `a` goes.
+        (
+            "let inner = [1, 2, 3]\nlet a = [inner]\nlet b = [inner]\na = 0\nb",
+            "ok [[1, 2, 3]]",
+        ),
+        // And it is still the *same* array, not a copy: writing through one
+        // name shows through the other.
+        (
+            "let inner = [1, 2]\nlet a = [inner]\nlet b = [inner]\na = 0\npush(inner, 3)\nb",
+            "ok [[1, 2, 3]]",
+        ),
+        // The same for a map.
+        (
+            "let inner = {\"n\": 1}\nlet a = [inner]\nlet b = [inner]\na = 0\ninner[\"n\"] = 2\nb",
+            "ok [{\"n\": 2}]",
+        ),
+        // A deep chain held twice: releasing one holder keeps the other whole.
+        (
+            "let s = []\nlet i = 0\nwhile i < 50000 {\n  s = [s]\n  i = i + 1\n}\nlet keep = [s]\ns = 0\nlen(keep)",
+            "ok 1",
+        ),
+    ]);
+}
+
+/// v1.0 promised that a value containing itself does not stop the process.
+/// Teardown must not change that: such a value is a cycle, so no reference
+/// count reaches zero and nothing is released, which is what happened before.
+#[test]
+fn a_value_that_contains_itself_still_behaves_as_promised() {
+    check_all(&[
+        ("let a = []\npush(a, a)\na == a", "ok true"),
+        ("let a = []\npush(a, a)\nstr(a)", "ok \"[[...]]\""),
+    ]);
+}
