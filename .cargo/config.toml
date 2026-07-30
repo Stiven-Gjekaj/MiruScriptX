@@ -1,0 +1,19 @@
+# The WebAssembly stack.
+#
+# The interpreter recurses over its own structures, so how deeply a program may
+# nest depends on how much stack it has. The `miru` binary settles that for
+# itself by starting a thread with an explicit size (see `STACK_SIZE` in
+# `src/main.rs`). WebAssembly has no threads, so the only lever there is the
+# shadow stack the linker carves out of linear memory, and its default is 1 MiB.
+#
+# 16 MiB. This is what the playground gets, and because it is the smallest stack
+# of any build that ships, it is the one that sets `Parser::MAX_NESTING`. The
+# figure buys a large margin over that limit in a release build, which is what
+# the playground is, while costing the page 16 MiB of linear memory rather than
+# anything unbounded.
+#
+# Kept here rather than in `.github/workflows/pages.yml` so that a playground
+# built by hand has the same ceiling as the one CI deploys. A limit that holds
+# only on the deployment machine is not a limit.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=-zstack-size=16777216"]
