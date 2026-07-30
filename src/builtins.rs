@@ -4,7 +4,6 @@
 //! plain strings; the virtual machine attaches the source line and column of
 //! the call before surfacing them.
 
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
@@ -182,7 +181,7 @@ fn range(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
         items.push(Value::Int(current));
         current += 1;
     }
-    Ok(Value::Array(Rc::new(RefCell::new(items))))
+    Ok(Value::array(items))
 }
 
 /// `keys(map)` returns an array of the map's keys, in sorted order.
@@ -195,7 +194,7 @@ fn keys(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resu
                 .keys()
                 .map(|key| Value::Str(Rc::new(key.clone())))
                 .collect();
-            Ok(Value::Array(Rc::new(RefCell::new(items))))
+            Ok(Value::array(items))
         }
         other => Err(format!(
             "keys expects a map but got a {}",
@@ -214,7 +213,7 @@ fn values(
     match &args[0] {
         Value::Map(entries) => {
             let items: Vec<Value> = entries.borrow().values().cloned().collect();
-            Ok(Value::Array(Rc::new(RefCell::new(items))))
+            Ok(Value::array(items))
         }
         other => Err(format!(
             "values expects a map but got a {}",
@@ -308,7 +307,7 @@ fn split(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
                     .map(|part| Value::Str(Rc::new(part.to_string())))
                     .collect()
             };
-            Ok(Value::Array(Rc::new(RefCell::new(parts))))
+            Ok(Value::array(parts))
         }
         _ => Err("split expects two string arguments".to_string()),
     }
@@ -456,7 +455,7 @@ fn slice(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
         Value::Array(items) => {
             let items = items.borrow();
             let (lo, hi) = clamp_range(start, end, items.len());
-            Ok(Value::Array(Rc::new(RefCell::new(items[lo..hi].to_vec()))))
+            Ok(Value::array(items[lo..hi].to_vec()))
         }
         Value::Str(s) => {
             let chars: Vec<char> = s.chars().collect();
@@ -520,7 +519,7 @@ fn sort(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resu
     } else {
         return Err("sort expects an array of all numbers or all strings".to_string());
     }
-    Ok(Value::Array(Rc::new(RefCell::new(sorted))))
+    Ok(Value::array(sorted))
 }
 
 /// `reverse(seq)` returns a reversed copy of an array or string.
@@ -534,7 +533,7 @@ fn reverse(
         Value::Array(items) => {
             let mut copy = items.borrow().clone();
             copy.reverse();
-            Ok(Value::Array(Rc::new(RefCell::new(copy))))
+            Ok(Value::array(copy))
         }
         Value::Str(s) => Ok(Value::Str(Rc::new(s.chars().rev().collect()))),
         other => Err(format!(
@@ -932,7 +931,7 @@ fn take_next(items: &mut [Value], next: &mut usize) -> Option<Value> {
 }
 
 fn array(items: Vec<Value>) -> Value {
-    Value::Array(Rc::new(RefCell::new(items)))
+    Value::array(items)
 }
 
 /// Check the two-argument shape `map` and `filter` share: an array to walk and a
