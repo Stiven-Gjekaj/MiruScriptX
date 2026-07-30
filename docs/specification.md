@@ -772,8 +772,15 @@ limit below was reached by a test program.
 | Jump distance in bytes | 65535 | `the compiled body is too large to jump over` |
 | Loop body in bytes | 65535 | `the loop body is too large to compile` |
 | Nesting for comparing and printing | 256 | `value is nested too deeply to compare` |
+| Nesting in the source text | 64 | `the program is nested too deeply` |
 
 The value stack has no limit. Only the call depth stops recursion.
+
+The two nesting limits count different things, and one does not follow from the
+other. The limit of 64 counts how deeply a *program* nests: brackets inside
+brackets, and also the length of one chain of operators, because `a + b + c`
+holds `a + b`. The limit of 256 counts how deeply a *value* nests, which a loop
+can make much deeper than the program that builds it.
 
 The call depth limit is the one limit `try` cannot catch. Section 6.6 gives the
 reason.

@@ -102,6 +102,15 @@ Two of them are recent, and neither has evidence behind the value: the nesting
 limit of 256 for comparing and printing, and the mark `[...]` that printing
 uses for a value that contains itself. Do not depend on either.
 
+The limit of 64 on nesting in the source text can also change, and is more
+likely to than the others. It is set by how much stack the tightest supported
+build has, which is a property of the machine and not of the language. A later
+1.x can raise it. No 1.x lowers it.
+
+What does not change is what happens at the limit: a program that goes past it
+stops with an error that gives a line and a column. Before 1.1 there was no
+limit, and such a program stopped the whole process with no message.
+
 ### 3.3 The bytecode
 
 The bytecode, the numbers of the opcodes, and the output of `miru disasm` are

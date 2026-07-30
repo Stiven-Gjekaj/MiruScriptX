@@ -27,6 +27,43 @@ semantic versioning.
 
   Thanks to @ahmadalguydi for the first contribution to this project.
 
+### Fixed
+
+- **Deeply nested source no longer aborts the process.** `[[[[ ... ]]]]`, a long
+  `1 + 1 + 1 ...`, `a[0][0][0] ...`, nested `if` blocks, and every other way of
+  nesting overflowed the Rust stack and killed the process outright:
+
+  ```
+  thread 'main' has overflowed its stack
+  fatal runtime error: stack overflow, aborting
+  ```
+
+  No message, no line, no caret, and nothing `try` could catch. `miru fmt` and
+  `miru disasm` did the same, so formatting a file was enough to trigger it.
+
+  The parser now refuses past a nesting limit of 64 and reports it the way any
+  other syntax error is reported, with a line and a column. The limit is in the
+  specification, section 9.
+
+  Two separate things had to be counted, and neither implies the other. Nesting
+  such as `[[[ ... ]]]` makes the parser call itself, and overflows on the way
+  down before a tree exists to measure. A chain such as `1 + 1 + 1 ...` is one
+  frame and one loop however long it runs, and leaves behind a tree as tall as
+  the chain is long, which then overflows the compiler, the formatter, or the
+  code that releases it. Expressions carry their height for the second case,
+  and the limit is applied as each level is added: a tree too tall to walk is
+  also too tall to release, so rejecting it after building it aborts in the
+  destructor instead.
+
+  This is the same class of defect 1.0 closed for values, where `push(a, a)`
+  followed by `a == a` aborted. That fix guarded comparing and printing. The
+  parser was never checked.
+
+### Changed
+
+- Corrected the line counts and the test count in the README. Both had drifted
+  when `-e` was added.
+
 ## 1.0.1 (2026-07-29)
 
 ### Fixed
