@@ -593,6 +593,60 @@ lines that satisfy it. The deep tests in `tests/golden.rs` do the same through
 `with_interpreter_stack`, rather than assuming a stack libtest does not give
 them.
 
+### Releasing a value is iterative, because building one is unbounded
+
+The limit above bounds how deeply a *program* nests. It does not bound how
+deeply a *value* nests, and nothing does: a loop builds one a link at a time.
+
+```
+let a = []
+while .. { a = [a] }
+```
+
+Rust's own destructor for that walks the chain by recursion, one frame per link,
+so releasing it overflowed the stack and aborted. It happened at the assignment
+that dropped the last reference, or at the end of the program, where it also
+lost whatever was still buffered on standard output. Nothing could catch it,
+because by then the program had finished.
+
+Inspecting such a value was already guarded: `repr` truncates at 256 and
+`equals` refuses past the same depth, both from v1.0. So the language would let
+a program build a value it then declined to look at, and died on releasing it.
+Guarding the two obvious walks and not the third is the shape this defect keeps
+taking.
+
+`release` in `src/value.rs` puts the children on a list instead of on the stack.
+Each container taken off the list surrenders its own children to the list before
+it is released, and the loop runs until the list is empty. Depth becomes length,
+and length is heap.
+
+Two details carry the correctness, and both are easy to get wrong in a way no
+test of depth would catch:
+
+- **Descend only into a body nobody else holds.** `Rc::try_unwrap` succeeds for
+  exactly those. Descending into a shared one releases values another reference
+  still points at, which is a use-after-free rather than a crash: nothing
+  observable goes wrong until much later.
+- **Empty a body before letting it fall out of scope.** Its own destructor runs
+  at that moment, and finding nothing left is what stops it recursing back into
+  the case being avoided.
+
+`Drop` sits on `ArrayBody`, `MapBody`, and `Closure` rather than on `Value`,
+because Rust forbids moving a field out of a type that implements `Drop` and
+this codebase matches `Value` by value in a great many places. The bodies
+dereference to the `RefCell` they wrap, so every `borrow` and `borrow_mut`
+reaches through them untouched.
+
+**Three chains, not one.** Arrays and maps were expected. Closures were not: a
+closure holds its captures, a capture can hold a closure, and rebinding one in a
+loop builds a chain exactly as an array does. It was found by auditing for the
+class rather than by fixing the instance, which is the whole argument for doing
+the audit first.
+
+A value that contains itself is unaffected. It is a cycle, so no reference count
+reaches zero and nothing is released, which is what happened before and what
+section 2.6 of the stability guarantee describes.
+
 ## How to extend it
 
 ### Add a builtin

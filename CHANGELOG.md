@@ -59,6 +59,42 @@ semantic versioning.
   followed by `a == a` aborted. That fix guarded comparing and printing. The
   parser was never checked.
 
+- **Releasing a long chain of values no longer aborts the process.** Nothing
+  bounds how deeply a value nests, because a loop builds one a link at a time:
+
+  ```
+  let a = []
+  let i = 0
+  while i < 60000 { a = [a]  i = i + 1 }
+  print("built it")     // printed
+  a = 0                 // aborted here, in the destructor
+  ```
+
+  It happened at the assignment that dropped the last reference, or at the end
+  of the program, where it also lost whatever was still buffered on standard
+  output. Nothing could catch it, because by then the program had finished.
+
+  Inspecting such a value was already guarded, so the language would let a
+  program build a value it then refused to look at, and died on releasing it.
+
+  Releasing is iterative now: the children go on a list rather than on the
+  stack. An array chain of two million releases where thirty thousand used to
+  abort.
+
+  Three kinds of chain, not one. Arrays and maps were expected. **Closures** were
+  not: a closure holds its captures, a capture can hold a closure, and rebinding
+  one in a loop builds a chain the same way. That one was found by auditing for
+  the class rather than by fixing the instance.
+
+  A value that contains itself is unchanged. It is a cycle, so nothing is
+  released, which is what 1.0 promised.
+
+- **`tests/never_aborts.rs`** generates programs and requires that none of them
+  kills the process. Every instance of this defect so far was found by a person
+  reasoning about the code, and each time the reasoning stopped one instance
+  short of the class. An error is a pass; only death by signal, a panic, or an
+  exit code that is neither 0 nor 1 fails.
+
 ### Changed
 
 - **The interpreter chooses its own stack.** `miru` runs its work on a thread of

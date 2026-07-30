@@ -68,11 +68,23 @@ A caught error keeps its five fields: `message`, `line`, `column`, `file`, and
 
 ### 2.6 Termination
 
-A program that makes a value that contains itself does not stop the process.
-The language gives an error, or it prints a mark, but it does not fail in a way
-the program cannot see.
+**No program makes the process fail in a way the program cannot see.** This is
+the general form. Three cases show what it means:
+
+- A value that contains itself gives an error, or prints a mark. It does not
+  stop the process.
+- A value nested to any depth, and a chain of values of any length, is released
+  without stopping the process. A loop can build one far deeper than any
+  literal.
+- Source nested past the limit in section 9 of the specification gives a syntax
+  error with a line and a column.
 
 Recursion that does not stop gives the call depth error. `try` cannot catch it.
+
+Before 1.1 the first case was the whole promise, and the other two stopped the
+process outright: no message, nothing to catch, and at the end of a program the
+output still in the buffer was lost as well. The wording was narrow because the
+defect was seen as one value rather than as a class.
 
 ### 2.7 Modules
 
