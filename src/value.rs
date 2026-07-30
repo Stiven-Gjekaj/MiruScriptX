@@ -347,6 +347,28 @@ pub enum Value {
     Error(Rc<crate::MiruError>),
 }
 
+/// How wide a `Value` is, pinned.
+///
+/// The virtual machine's stack is a `Vec<Value>`, so is a chunk's constant pool,
+/// and so is the inside of every array. This number is therefore the unit of
+/// almost all the copying the engine does: every `GetLocal` clones one, every
+/// push moves one, and every time a `Vec<Value>` grows it copies this many bytes
+/// per element.
+///
+/// It is set by the **largest** variant, not the common one. `Value::Int` needs
+/// 8 bytes and gets this many. So the figure is worth watching, and until now
+/// nothing watched it: adding a field to a rarely-used variant silently widens
+/// the hot path.
+///
+/// 32 is where it stands. Of that, 24 bytes exist to describe a builtin
+/// (`&'static str` plus a function pointer and its tag), which is a thing the
+/// stack holds approximately never. The discriminant is free: rustc niche-fills
+/// it into the non-null pointer inside that name.
+const _: () = assert!(
+    std::mem::size_of::<Value>() == 32,
+    "Value changed size; the VM stack is a Vec<Value>, so measure before accepting it"
+);
+
 impl Value {
     /// Build an array value.
     pub fn array(items: Vec<Value>) -> Value {
