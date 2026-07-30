@@ -85,6 +85,16 @@ semantic versioning.
   stack is a `Vec<Value>`, so that figure is the unit of most of the copying the
   engine does, and nothing was watching it.
 
+- **A release takes its notes from this file.** The release workflow asked
+  GitHub to generate them, which produces a list of merged pull requests. There
+  were none when 1.0.1 shipped, so the body read "There were no pull requests
+  associated with the commits included in this release" while the entry written
+  for that version sat here unused, and it was pasted in by hand.
+
+  The section for the tag being built is now the body of the draft. A version
+  with no section here falls back to the generated notes rather than publishing
+  an empty release.
+
 ### Fixed
 
 - **Deeply nested source no longer aborts the process.** `[[[[ ... ]]]]`, a long
