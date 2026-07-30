@@ -777,7 +777,7 @@ limit below was reached by a test program.
 The value stack has no limit. Only the call depth stops recursion.
 
 The two nesting limits count different things, and one does not follow from the
-other. The limit of 64 counts how deeply a *program* nests: brackets inside
+other. The limit of 1000 counts how deeply a *program* nests: brackets inside
 brackets, and also the length of one chain of operators, because `a + b + c`
 holds `a + b`. The limit of 256 counts how deeply a *value* nests, which a loop
 can make much deeper than the program that builds it.

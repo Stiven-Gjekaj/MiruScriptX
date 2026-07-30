@@ -102,30 +102,53 @@ Two of them are recent, and neither has evidence behind the value: the nesting
 limit of 256 for comparing and printing, and the mark `[...]` that printing
 uses for a value that contains itself. Do not depend on either.
 
-The limit of 64 on nesting in the source text can also change, and is more
+The limit of 1000 on nesting in the source text can also change, and is more
 likely to than the others. It is set by how much stack the tightest supported
-build has, which is a property of the machine and not of the language. A later
-1.x can raise it. No 1.x lowers it.
+build has. A later 1.x can raise it. No 1.x lowers it.
 
 What does not change is what happens at the limit: a program that goes past it
 stops with an error that gives a line and a column. Before 1.1 there was no
 limit, and such a program stopped the whole process with no message.
 
-### 3.3 The bytecode
+### 3.3 The stack the limit assumes
+
+This is a condition on the guarantee, not a limit. Read it if you use
+MiruScriptX as a Rust library.
+
+The interpreter walks its own structures by recursion, so the limit above holds
+only where there is stack for it. Two builds supply that stack:
+
+- The `miru` program runs its work on a thread of 64 MiB.
+- The WebAssembly build links a shadow stack of 16 MiB.
+
+**The `miruscriptx` crate does not.** A call to `run_source` uses the stack of
+the thread that makes the call, which is 2 MiB by default and does not support a
+limit of 1000. Give the call a thread with a larger stack:
+
+```rust
+std::thread::Builder::new()
+    .stack_size(64 * 1024 * 1024)
+    .spawn(|| miruscriptx::run_source(source, out))
+```
+
+Everything in section 2 holds when you do. Without it, deep source can still
+stop the process.
+
+### 3.4 The bytecode
 
 The bytecode, the numbers of the opcodes, and the output of `miru disasm` are
 not stable. They are how the language runs, not what it means.
 
-### 3.4 The Rust API
+### 3.5 The Rust API
 
 The `miruscriptx` crate has public Rust items. They are not stable. They exist
 for the `miru` program and for the playground.
 
-### 3.5 The WebAssembly interface
+### 3.6 The WebAssembly interface
 
 The functions the playground uses are not stable.
 
-### 3.6 Speed
+### 3.7 Speed
 
 Speed is not part of the promise. A later 1.x can be faster or slower.
 

@@ -531,7 +531,7 @@ message, no caret, and nothing `try` could catch, because `try` is a runtime
 construct and this happened before the program ran. `miru fmt` did it too, which
 made merely formatting an untrusted file dangerous.
 
-`Parser::MAX_NESTING` (64) fixes it, but the obvious single counter is not
+`Parser::MAX_NESTING` (1000) fixes it, but the obvious single counter is not
 enough. Two different quantities have to stay below the limit, and neither
 implies the other:
 
@@ -558,14 +558,40 @@ expression. That ordering is the point: a tree too tall to walk is also too tall
 to release, so building it and then rejecting it moves the abort from the
 compiler into the destructor and fixes nothing.
 
-The limit is 64 rather than a rounder number because it was measured on the
-tightest configuration rather than the roomiest. A promise that deep source
-reports instead of aborting is worth nothing if it holds only on the main
-thread. Nested maps, the most expensive construct, survive to 112 in a debug
-build on the 2 MiB stack a spawned thread gets by default, which is what the
-test suite and any embedder has. Release builds clear 255 at every stack size
-down to 512 KiB, and the playground is release wasm. For scale, the deepest
-nesting in this project's own examples is four.
+### Choosing the stack, rather than inheriting it
+
+The first attempt at the limit measured the stack the program happened to have
+and set the number from that. It came out at 64, and that was wrong in a way
+worth recording, because everything about the measurement was correct.
+
+A main thread usually gets 8 MiB, a spawned thread 2 MiB, `ulimit -s` moves
+both, and none of it is promised. Measuring the tightest of them gives a limit
+that is safe everywhere and useful nowhere: at 64, `1 + 1 + ...` with a hundred
+terms was a syntax error. 1.0 had no limit and accepted it, so the fix for the
+abort broke section 2.1 of the stability guarantee, which promises that every
+program parsing under 1.0 parses under every later 1.x. A language whose grammar
+depends on which thread it runs on does not have a grammar.
+
+So the stack is chosen instead. `miru` does its work on a thread it starts with
+64 MiB (`STACK_SIZE` in `src/main.rs`), and the WebAssembly build links a 16 MiB
+shadow stack (`.cargo/config.toml`), because wasm has no threads and the linker
+is the only lever there. An explicit thread stack is mapped rather than grown
+from the process stack, so `ulimit -s` no longer reaches it either.
+
+Measured against that, nested maps, the most expensive construct, survive to
+3000 in a debug build and past 12000 in release. Every other construct reaches
+further: a chain of operators, an index chain, and a field chain each cleared
+12000 even in debug. 1000 leaves a margin of three on the tightest, and accepts
+every depth a real program plausibly reaches. For scale, the deepest nesting in
+this project's own examples is four.
+
+The catch, and it is a real one: **an embedder calling the library gets its own
+thread's stack.** `run_source` does not spawn, because it cannot on wasm, so a
+caller on a default 2 MiB thread does not have room for a limit of 1000. Section
+3.3 of the stability guarantee states this as a condition and shows the four
+lines that satisfy it. The deep tests in `tests/golden.rs` do the same through
+`with_interpreter_stack`, rather than assuming a stack libtest does not give
+them.
 
 ## How to extend it
 

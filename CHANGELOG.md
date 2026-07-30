@@ -41,7 +41,7 @@ semantic versioning.
   No message, no line, no caret, and nothing `try` could catch. `miru fmt` and
   `miru disasm` did the same, so formatting a file was enough to trigger it.
 
-  The parser now refuses past a nesting limit of 64 and reports it the way any
+  The parser now refuses past a nesting limit of 1000 and reports it the way any
   other syntax error is reported, with a line and a column. The limit is in the
   specification, section 9.
 
@@ -60,6 +60,26 @@ semantic versioning.
   parser was never checked.
 
 ### Changed
+
+- **The interpreter chooses its own stack.** `miru` runs its work on a thread of
+  64 MiB, and the WebAssembly build links a shadow stack of 16 MiB.
+
+  How deeply a program may nest depends on how much stack the interpreter has,
+  and that was whatever the machine handed out: 8 MiB on a main thread, 2 MiB on
+  a spawned one, and `ulimit -s` moving both. The first nesting limit was
+  measured against the tightest of those and came out at 64, which refused
+  programs 1.0 accepted and so broke section 2.1 of the stability guarantee.
+
+  Measured against a stack the project controls, the limit is 1000. A sum of
+  several hundred terms, or two hundred levels of nesting, parses again.
+
+  An explicit thread stack is mapped rather than grown from the process stack,
+  so `ulimit -s` no longer reaches it: a value 100000 deep survives under
+  `ulimit -s 512`, where it aborted before.
+
+  **If you use `miruscriptx` as a Rust library**, `run_source` uses the stack of
+  the thread that calls it, which does not support this limit by default.
+  Section 3.3 of the stability guarantee is new and says what to do about it.
 
 - Corrected the line counts and the test count in the README. Both had drifted
   when `-e` was added.
