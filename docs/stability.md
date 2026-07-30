@@ -1,6 +1,6 @@
 # The MiruScriptX Stability Guarantee
 
-Version 1.0
+Version 1.1
 
 This document tells you what will not change while MiruScriptX has the version
 number 1. It is short on purpose. A promise that nobody can check is not a
