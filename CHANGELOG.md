@@ -27,6 +27,37 @@ semantic versioning.
 
   Thanks to @ahmadalguydi for the first contribution to this project.
 
+- **Files and the command line.** Four builtins, which together are what turn a
+  program into a script:
+
+  ```
+  let names = args()
+  if file_exists(names[0]) {
+    write_file("out.txt", upper(read_file(names[0])))
+  }
+  ```
+
+  `read_file(path)` gives a file as a string. `write_file(path, text)` writes
+  one, replacing what was there. `file_exists(path)` says whether one is there.
+  `args()` gives the arguments the program was given, without its own path.
+
+  **A path is resolved against the working directory**, not against the script.
+  `import` does the opposite, and the difference is deliberate: a module is part
+  of the program and travels with it, while a data file belongs to whoever runs
+  the program. Section 8.2 of the specification states both rules together.
+
+  Everything after the file path on the command line now belongs to the program,
+  including anything shaped like an option, so `miru run tool.miru --verbose`
+  hands `--verbose` to the program. Invocations that were errors before now
+  work; none that worked has changed.
+
+  **The capability is absent by default.** Reading and writing refuse unless the
+  host supplies a file system, which only the `miru` program does. The browser
+  playground refuses with a sentence rather than a platform error, and a Rust
+  embedder gets nothing until it asks. `file_exists` and `args` answer `false`
+  and `[]` rather than refusing, because those are the honest answers where
+  there is no file system and no command line.
+
 ### Fixed
 
 - **Deeply nested source no longer aborts the process.** `[[[[ ... ]]]]`, a long

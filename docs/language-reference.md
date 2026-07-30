@@ -894,6 +894,59 @@ let name = input("What is your name? ")
 print("Hello,", name)
 ```
 
+## Files and the command line
+
+These four are what turn a program into a script: something you run from a
+terminal, that reads a file, writes one, and takes arguments.
+
+- `read_file(path)` gives the whole file as a string.
+- `write_file(path, text)` writes the text, replacing whatever was there, and
+  gives `nil`.
+- `file_exists(path)` gives `true` if there is a file at the path.
+- `args()` gives the arguments the program was given, as an array of strings.
+  The program's own path is not one of them.
+
+```
+// upper.miru — read a file named on the command line and shout it
+let names = args()
+if len(names) == 0 {
+  print("give me a file to read")
+} else {
+  let path = names[0]
+  if file_exists(path) {
+    print(upper(read_file(path)))
+  } else {
+    print("no file at", path)
+  }
+}
+```
+
+```
+$ miru run upper.miru notes.txt
+```
+
+**A path is relative to where you are, not to where the script is.** If you run
+`miru run scripts/tool.miru` and the program reads `data.txt`, it looks for
+`data.txt` in the directory you ran the command from.
+
+This is the opposite of `import`, which finds a module next to the file that
+imports it. The two are different on purpose: a module is part of the program
+and travels with it, while a data file belongs to whoever is running the
+program.
+
+Reading and writing fail with an error where there is no file system, such as in
+the browser playground. `try` catches it:
+
+```
+let text = try read_file("data.txt")
+if is_error(text) {
+  print("could not read it:", text.message)
+}
+```
+
+`file_exists` gives `false` there rather than failing, because the honest answer
+to the question is then no.
+
 ## Higher-order functions
 
 These apply a function across an array. The function can be a named function, a
