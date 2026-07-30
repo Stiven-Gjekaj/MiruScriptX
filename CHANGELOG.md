@@ -58,6 +58,16 @@ semantic versioning.
   and `[]` rather than refusing, because those are the honest answers where
   there is no file system and no command line.
 
+- **Reading a map no longer copies the key.** `m["k"]` allocated a `String` and
+  dropped it a line later; `BTreeMap` keyed by `String` accepts a `&str`. This
+  is recorded as a simplification and **not** as a speed-up, because on the
+  machine it was measured on the benchmark harness cannot resolve a change this
+  size. `docs/architecture.md` has the numbers.
+
+- **The size of a `Value` is pinned** by an assertion. The virtual machine's
+  stack is a `Vec<Value>`, so that figure is the unit of most of the copying the
+  engine does, and nothing was watching it.
+
 ### Fixed
 
 - **Deeply nested source no longer aborts the process.** `[[[[ ... ]]]]`, a long

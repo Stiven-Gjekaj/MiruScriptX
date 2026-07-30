@@ -448,6 +448,69 @@ an integer fast path, an unchecked opcode decode, hoisting the chunk pointer out
 of the dispatch loop, resolving globals to slots, and folding a constant operand
 into the operator.
 
+#### The five percent rule assumes a machine this one is not
+
+Measured in July 2026 on a shared four-core cloud host: the **same binary**, no
+code change of any kind, benchmarked twice back to back.
+
+| Workload | Reported change, from nothing |
+| -------- | ----------------------------- |
+| `fib` | **+14.8%** |
+| `globals` | **-14.8%** |
+| `bridge_setup` | -9.2% |
+| `bridge_builtin` | -6.2% |
+| `constants` | +6.1% |
+| `arrays` | -5.8% |
+| `higher_order` | -3.5% |
+| `maps` | -3.3% |
+
+Every one of those is criterion reporting a difference between a binary and
+itself. So on a host like this the resolution is about **fifteen percent**, and
+the five percent rule above is not conservative enough. It was written on a
+quieter machine and it is right for one; inheriting the number without
+re-measuring the floor is the mistake.
+
+The way to know is the experiment in that table, which costs two benchmark runs
+and settles what any later comparison is worth. Run it first, on the machine in
+front of you, before believing a result from this harness.
+
+**How this misled once, in detail, because the shape recurs.** A change that
+removed one allocation from the map *read* path measured `maps` at -6.6%, twice.
+The same runs put `bridge_builtin` at -35.6% and -35.7%. That program never
+reads a map, so the number could not be the change. Reproducing to a tenth of a
+percent looked like proof it was real; it was two runs sharing one stale
+baseline, taken before two heavy builds ran on the same host. Re-measured
+properly, paired and back to back, the same change put `bridge_builtin` at
+-13.3% and `globals` at -10.4%, both still impossible, and the control above
+then explained all of it.
+
+Three lessons, in the order they were learned:
+
+1. **A reproducible number is not a true one.** Two runs against one bad
+   baseline reproduce each other perfectly.
+2. **Check the result against the mechanism.** A change to map reads cannot move
+   a benchmark that never reads a map. That contradiction was visible in the
+   first run and should have stopped the second.
+3. **Measure the floor before the change.** Everything above would have been
+   avoided by the two runs in that table.
+
+#### What was left alone, and why
+
+Two candidates were identified and **not attempted**: shrinking `Value` from 32
+bytes to 16 by interning `Builtin`, and removing two of the three reference
+count operations each call performs on its callee. Both are plausible and both
+are real work.
+
+Neither was started, because on a host with a fifteen percent floor there is no
+way to tell a win from a regression, and a refactor kept on an unmeasurable
+number is worse than no refactor. They are recorded here so the next person
+starts from the candidates rather than the search, and they should be attempted
+on a quiet machine where the control experiment above shows a floor worth
+trusting.
+
+`size_of::<Value>()` is pinned by an assertion in `src/value.rs`, so the figure
+those candidates would move cannot drift unnoticed in the meantime.
+
 ### Input and output go through traits
 
 Builtins that print do not write to stdout directly. Instead they receive a
