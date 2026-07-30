@@ -64,6 +64,17 @@ semantic versioning.
   machine it was measured on the benchmark harness cannot resolve a change this
   size. `docs/architecture.md` has the numbers.
 
+- **`AGENTS.md`**, for contributors working with an AI agent. It records the
+  traps this project has actually fallen into rather than general advice: the
+  verification gate and why the WebAssembly half of it is not optional, which
+  files are generated, which numbers are pinned by tests, what the stability
+  guarantee forbids, and how to tell a real benchmark result from a machine
+  having a bad minute. `CLAUDE.md` points at it rather than repeating it.
+
+  It also asks that commits be authored by the contributor rather than the
+  agent or its vendor. A commit is a claim that somebody read the change and
+  will answer for it later, and an agent cannot make that claim.
+
 - **The README's numbers are pinned by a test.** The line counts, the file
   count, the playground's size, and the test badge are all facts about the tree
   that were maintained by hand, and all of them drifted repeatedly. They are now
