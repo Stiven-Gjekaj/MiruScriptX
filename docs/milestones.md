@@ -173,10 +173,11 @@ script runner from a language you could build something in: a way to split a
 program across files, and a way to survive an error. v1.0 was the promise, the
 packaging, and the specification rather than more language, and it is done.
 
-The road ends here. A 1.1 would add builtins or syntax under the guarantee in
-[stability.md](stability.md); it would not be another milestone on this list,
-because the list was about reaching a language you could depend on and that has
-happened.
+The road ends here. 1.1 added builtins under the guarantee in
+[stability.md](stability.md) rather than another milestone on this list, because
+the list was about reaching a language you could depend on and that has
+happened. Everything after 1.0 is recorded under its version below and in
+[CHANGELOG.md](../CHANGELOG.md).
 
 Two features are deliberately **not** on this road. User-defined types stay out:
 maps already serve as records, and Lua and early JavaScript both reached
@@ -420,6 +421,46 @@ them:
   release workflow while it lived on a feature branch returned a 404 that named
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
+
+## 1.1: files, and closing the abort class
+
+Shipped. Not a milestone on the road above, which ended at 1.0. This is what a
+version under the guarantee looks like: additions that leave every 1.0 program
+meaning the same thing, and fixes for defects that should never have shipped.
+[CHANGELOG.md](../CHANGELOG.md) has the detail; this is what it amounts to.
+
+- **A program can read and write a file, and see its own command line.**
+  `read_file`, `write_file`, `file_exists`, and `args`. Until this the language
+  read stdin and wrote stdout and nothing else, which is the gap somebody hits
+  first in a thing described as a scripting language. The capability is absent
+  by default and only the `miru` binary grants it, so the playground refuses
+  with a sentence and an embedder gets nothing until it asks.
+
+- **The abort class is closed.** 1.0 stopped a self-referential *value* from
+  killing the process and guarded comparing and printing to do it. Nobody asked
+  what else walks a structure by recursion. Three more instances were there:
+  deep source in the parser, a long chain of values in the destructor, and
+  closures chained through their captures, which the audit found rather than a
+  person reasoning about the code. `tests/never_aborts.rs` generates programs
+  and requires that none of them kills the process, so the class stays closed
+  by something other than remembering to check.
+
+- **The interpreter chooses its own stack** rather than inheriting whatever the
+  machine handed out, and the source limits are measured against it.
+
+Two things worth carrying forward:
+
+- **Fixing one instance of a class is not fixing the class.** Both post-1.0
+  abort defects were of the class 1.0 thought it had closed. The way to find
+  the rest was to ask which other code walks a structure by recursion, and to
+  keep asking after the first answer.
+
+- **One limit for two quantities was wrong twice.** The first attempt set it at
+  64 and refused programs 1.0 ran, which was caught. The second set it at 1000
+  for both how deeply a program nests and how long an expression is; that was
+  right for the first and far too strict for the second, and it was caught only
+  because somebody measured what 1.0 actually did before releasing. A number
+  that looks like a limit does not announce itself as a regression.
 
 ## Known limitations
 
