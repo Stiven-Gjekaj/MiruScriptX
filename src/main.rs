@@ -17,7 +17,41 @@ Usage:
   miru --version            Print the version and exit
   miru --help               Show this help and exit";
 
+/// The stack the interpreter runs on.
+///
+/// The interpreter walks its own structures by recursion. The parser descends
+/// through nested source, and the compiler, the formatter, and the destructor
+/// each walk the tree it built. So how deeply a program may nest is decided by
+/// how much stack this program has, and the default is not the same everywhere:
+/// a main thread usually gets 8 MiB, a spawned thread 2 MiB, and neither number
+/// is promised.
+///
+/// Choosing the stack here turns that around. The limit in [`miruscriptx::
+/// parser::Parser::MAX_NESTING`] is then set from a figure this program
+/// controls, rather than inherited from whatever the operating system happened
+/// to hand out. A language should not have a different grammar on a thread.
+const STACK_SIZE: usize = 64 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    match std::thread::Builder::new()
+        .name("miru".to_string())
+        .stack_size(STACK_SIZE)
+        .spawn(dispatch)
+    {
+        Ok(handle) => match handle.join() {
+            Ok(code) => code,
+            // The thread panicked. Its message has already gone to stderr
+            // through the default hook, so there is nothing to add here.
+            Err(_) => ExitCode::FAILURE,
+        },
+        // A system that refuses to start a thread can still run a program, with
+        // whatever stack the main thread has. Less room is a better answer than
+        // not running at all.
+        Err(_) => dispatch(),
+    }
+}
+
+fn dispatch() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.split_first() {
         None => repl::run(),
