@@ -1654,3 +1654,64 @@ fn nested_function_literals_are_bounded_by_the_statement_counter() {
         );
     });
 }
+
+/// The file builtins refuse where the host has no file system.
+///
+/// Golden tests run through `eval_source`, which grants no `System` at all, so
+/// this is exactly the state the playground and any embedder is in. The refusal
+/// is a raised error rather than `nil`, because a program that reads a file and
+/// silently gets nothing goes on to do the wrong thing with it.
+#[test]
+fn the_file_builtins_refuse_where_there_is_no_file_system() {
+    check_all(&[
+        (
+            "read_file(\"data.txt\")",
+            "err this program is running where there is no file system @ 1:1",
+        ),
+        (
+            "write_file(\"data.txt\", \"x\")",
+            "err this program is running where there is no file system @ 1:1",
+        ),
+        // Asking whether a file is there answers rather than refusing: with no
+        // file system, the honest answer is no.
+        ("file_exists(\"data.txt\")", "ok false"),
+        // The refusal is catchable, like any other runtime error.
+        ("is_error(try read_file(\"data.txt\"))", "ok true"),
+        (
+            "let r = try read_file(\"data.txt\")\nr.message",
+            "ok \"this program is running where there is no file system\"",
+        ),
+    ]);
+}
+
+/// Argument checking happens before the host is consulted, so a program gets
+/// the same complaint about a wrong type whether or not files are available.
+#[test]
+fn the_file_builtins_check_their_arguments() {
+    check_all(&[
+        (
+            "read_file(1)",
+            "err read_file expects a string path but got a int @ 1:1",
+        ),
+        (
+            "write_file(1, \"x\")",
+            "err write_file expects a string path but got a int @ 1:1",
+        ),
+        (
+            "write_file(\"p\", 1)",
+            "err write_file expects a string to write but got a int @ 1:1",
+        ),
+        (
+            "file_exists([])",
+            "err file_exists expects a string path but got a array @ 1:1",
+        ),
+        (
+            "read_file()",
+            "err read_file expects 1 argument(s) but got 0 @ 1:1",
+        ),
+        (
+            "write_file(\"p\")",
+            "err write_file expects 2 argument(s) but got 1 @ 1:1",
+        ),
+    ]);
+}

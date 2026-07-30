@@ -82,6 +82,39 @@ fn dispatch() -> ExitCode {
     }
 }
 
+/// The real file system, which only this program hands out.
+///
+/// The library grants nothing by default, so a program run through
+/// `miruscriptx` as a crate, or in the playground, cannot touch a file unless
+/// its host says so. This is that host saying so.
+///
+/// A relative path resolves against the working directory, which is what
+/// `std::fs` already does and what every other command line tool does.
+/// `import` is the exception rather than this: a module is part of the program
+/// and is found beside it, while a data file is wherever the person running the
+/// program is standing. Section 8 of the specification states both rules
+/// together, because meeting the second one by surprise is the way to be
+/// confused by it.
+struct RealSystem;
+
+impl miruscriptx::value::System for RealSystem {
+    fn read_file(&mut self, path: &str) -> Result<String, String> {
+        std::fs::read_to_string(path).map_err(|err| format!("cannot read '{path}': {err}"))
+    }
+
+    fn write_file(&mut self, path: &str, contents: &str) -> Result<(), String> {
+        std::fs::write(path, contents).map_err(|err| format!("cannot write '{path}': {err}"))
+    }
+
+    fn file_exists(&mut self, path: &str) -> bool {
+        std::path::Path::new(path).is_file()
+    }
+
+    fn arguments(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
+
 fn eval_source(args: &[String]) -> ExitCode {
     let source = match args {
         [source] => source,
@@ -89,7 +122,7 @@ fn eval_source(args: &[String]) -> ExitCode {
         _ => return usage_error("the '-e' command takes a single program"),
     };
 
-    match miruscriptx::run_source(source, Box::new(std::io::stdout())) {
+    match miruscriptx::run_source(source, Box::new(std::io::stdout()), Box::new(RealSystem)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("miru: {}", err.render(source));
@@ -131,7 +164,8 @@ fn run_file(args: &[String]) -> ExitCode {
     };
 
     let out = Box::new(std::io::stdout());
-    match miruscriptx::run_source_from(&source, Some(std::path::Path::new(path)), out) {
+    let system = Box::new(RealSystem);
+    match miruscriptx::run_source_from(&source, Some(std::path::Path::new(path)), out, system) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("miru: {}", err.render(&source));

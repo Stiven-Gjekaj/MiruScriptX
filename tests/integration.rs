@@ -565,3 +565,107 @@ fn a_runtime_error_prints_the_call_path() {
         .unwrap_or_else(|| panic!("no total frame in:\n{stderr}"));
     assert!(add < total, "frames out of order in:\n{stderr}");
 }
+
+/// A directory of its own, so a test that writes cannot disturb another.
+fn scratch(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("miru-files-{}-{tag}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the temporary directory is creatable");
+    dir
+}
+
+/// Reading and writing work through the binary, which is the only thing that
+/// grants a file system.
+///
+/// These belong here rather than in `tests/golden.rs` because a golden test
+/// runs through `eval_source`, which deliberately grants nothing. That split is
+/// the design: golden tests pin the refusal, and these pin the real thing.
+#[test]
+fn a_program_reads_and_writes_files() {
+    let dir = scratch("roundtrip");
+    let data = dir.join("data.txt");
+    std::fs::write(&data, "hello from a file\n").expect("writable");
+
+    let program = dir.join("prog.miru");
+    std::fs::write(
+        &program,
+        "let text = read_file(\"data.txt\")\n\
+         print(trim(text))\n\
+         write_file(\"out.txt\", upper(trim(text)))\n\
+         print(read_file(\"out.txt\"))\n\
+         print(file_exists(\"out.txt\"))\n\
+         print(file_exists(\"absent.txt\"))\n",
+    )
+    .expect("writable");
+
+    // Run from inside the directory, because a relative path resolves against
+    // the working directory. That is the rule this test exists to pin.
+    let output = miru()
+        .arg("run")
+        .arg("prog.miru")
+        .current_dir(&dir)
+        .output()
+        .expect("failed to launch miru");
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr was: {err}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "hello from a file\nHELLO FROM A FILE\ntrue\nfalse\n"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A path resolves against the working directory, not against the script.
+///
+/// This is the one rule that differs from `import`, so it gets a test of its
+/// own rather than riding along inside another. The script sits in one
+/// directory and the data in another, and the program finds the data only if
+/// the working directory is what counts.
+#[test]
+fn a_file_path_resolves_against_the_working_directory_not_the_script() {
+    let dir = scratch("cwd");
+    let scripts = dir.join("scripts");
+    std::fs::create_dir_all(&scripts).expect("creatable");
+
+    // The data sits beside nothing: it is in `dir`, and the script is in
+    // `dir/scripts`. A script-relative rule would look in `dir/scripts` and
+    // fail.
+    std::fs::write(dir.join("data.txt"), "found").expect("writable");
+    std::fs::write(
+        scripts.join("tool.miru"),
+        "print(read_file(\"data.txt\"))\n",
+    )
+    .expect("writable");
+
+    let output = miru()
+        .arg("run")
+        .arg("scripts/tool.miru")
+        .current_dir(&dir)
+        .output()
+        .expect("failed to launch miru");
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr was: {err}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "found\n");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A missing file is an ordinary error: it names the path, points a caret at
+/// the call, and `try` can catch it.
+#[test]
+fn reading_a_missing_file_is_a_catchable_error() {
+    let output = run_eval("-e", "print(read_file(\"definitely-not-here.txt\"))");
+    assert!(!output.status.success());
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        err.contains("cannot read 'definitely-not-here.txt'"),
+        "stderr was: {err}"
+    );
+    assert!(err.contains('^'), "the caret is missing: {err}");
+
+    let caught = run_eval(
+        "-e",
+        "let r = try read_file(\"definitely-not-here.txt\")\nprint(is_error(r))",
+    );
+    assert!(caught.status.success());
+    assert_eq!(caught.stdout, b"true\n");
+}

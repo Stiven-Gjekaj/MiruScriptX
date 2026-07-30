@@ -72,8 +72,12 @@ pub fn format_source(source: &str) -> Result<String, MiruError> {
 
 /// Lex, parse, compile, and run a source string, sending `print` output to
 /// `out` and reading `input()` from standard input.
-pub fn run_source(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
-    run_source_from(source, None, out)
+pub fn run_source(
+    source: &str,
+    out: Box<dyn Write>,
+    system: Box<dyn value::System>,
+) -> Result<(), MiruError> {
+    run_source_from(source, None, out, system)
 }
 
 /// Like [`run_source`], but for a program that came from `path`, which is what
@@ -83,14 +87,20 @@ pub fn run_source(source: &str, out: Box<dyn Write>) -> Result<(), MiruError> {
 /// implementation and a one-line wrapper, rather than two entry points, is why
 /// the forty-odd existing callers did not have to change: a wrapper that is
 /// literally `f(source, None, out)` cannot drift from what it wraps.
+///
+/// `system` is what the program is allowed to do with files, and it is a
+/// parameter rather than a default so that granting file access is a decision
+/// somebody wrote down. Pass [`value::NoSystem`] to grant none.
 pub fn run_source_from(
     source: &str,
     path: Option<&std::path::Path>,
     out: Box<dyn Write>,
+    system: Box<dyn value::System>,
 ) -> Result<(), MiruError> {
     let program = parse_program(source)?;
     let mut vm = vm::Vm::with_output(out);
     vm.set_input(Box::new(StdinInput));
+    vm.set_system(system);
     vm.run_from(&program, path)?;
     vm.flush();
     Ok(())
