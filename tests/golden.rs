@@ -1622,3 +1622,35 @@ fn a_value_that_contains_itself_still_behaves_as_promised() {
         ("let a = []\npush(a, a)\nstr(a)", "ok \"[[...]]\""),
     ]);
 }
+
+/// A function literal is a height leaf: `ExprKind::Function` holds statements,
+/// not expressions, so `Expr::height` stops at one there. Nesting them is
+/// bounded by the separate counter in `Parser::statement` instead.
+///
+/// That is a claim about two mechanisms meeting, which is the kind that is
+/// usually assumed and occasionally wrong, so it gets a test. The compiler
+/// walks a nested function by recursion when it compiles the inner chunks, so
+/// the consequence of being wrong is the same abort as everywhere else.
+#[test]
+fn nested_function_literals_are_bounded_by_the_statement_counter() {
+    with_interpreter_stack(|| {
+        let nest = |levels: usize| {
+            let mut source = String::from("0");
+            for _ in 0..levels {
+                source = format!("fn() {{\n  return {source}\n}}");
+            }
+            format!("let f = {source}\ntype(f)")
+        };
+        // Deep nesting is ordinary and compiles.
+        assert_eq!(outcome(&nest(200)), "ok \"function\"");
+        // Past the point where the statement counter adds up to the limit, it
+        // reports rather than aborting. Each level costs more than one unit, so
+        // this trips well below `MAX_NESTING` levels of function, which is the
+        // conservative direction.
+        let outcome = outcome(&nest(miruscriptx::parser::Parser::MAX_NESTING));
+        assert!(
+            outcome.starts_with("err the program is nested too deeply"),
+            "expected a nesting error, got: {outcome}"
+        );
+    });
+}
