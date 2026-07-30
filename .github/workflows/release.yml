@@ -140,6 +140,17 @@ jobs:
     # every platform compiles and runs, and leaves the archives as artifacts.
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
+      # Before the download, not after. `actions/checkout` defaults to
+      # `clean: true`, which runs `git clean -ffdx` over the workspace, and that
+      # would delete the archives if they were already there. Checking out first
+      # sidesteps it rather than turning the cleaning off.
+      #
+      # This job needs no source to build anything. It checks out for one
+      # reason: the release notes are read from `CHANGELOG.md` below, and the
+      # ref being built is the tag, so the file is the one that release ships.
+      - name: Check out the code
+        uses: actions/checkout@v5
+
       - name: Collect the archives
         uses: actions/download-artifact@v4
         with:
@@ -156,18 +167,66 @@ jobs:
           cat SHA256SUMS
 
       # A draft, not a published release. Publishing is a person's decision:
-      # the notes are generated and worth reading before anyone can download
-      # them, and a draft can be deleted without leaving a version that the
-      # world briefly saw. Publish from the Releases page when it looks right.
+      # the notes are worth reading before anyone can download them, and a draft
+      # can be deleted without leaving a version that the world briefly saw.
+      # Publish from the Releases page when it looks right.
+      #
+      # The body is the section of `CHANGELOG.md` for the version being tagged,
+      # which is written for a person to read. `--generate-notes` lists merged
+      # pull requests instead, and when 1.0.1 shipped there were none, so it
+      # produced "There were no pull requests associated with the commits
+      # included in this release" and the real notes were pasted in by hand.
+      #
+      # This step cannot be proven by `workflow_dispatch`, because the job is
+      # gated on the ref being a tag and a manual run skips it. The extraction
+      # is a shell command and is checked by running it against `CHANGELOG.md`
+      # directly. The tag is the first thing to exercise the `gh` call, and what
+      # makes that acceptable is that the result is a draft and that a section
+      # which cannot be found falls back rather than failing.
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          notes="${RUNNER_TEMP}/release-notes.md"
+
+          # Each `.` becomes `[.]` rather than being escaped with a backslash,
+          # because awk implementations disagree about a backslash in a `gsub`
+          # replacement. Left as a metacharacter, `1.0` would also match a
+          # heading `## 100`.
+          #
+          # The version has to be followed by a space or the end of the line, so
+          # a release of `1.0` does not take the `## 1.0.1` section. The
+          # `## Unreleased` section cannot be selected at all: the version comes
+          # from a `v*` tag and is never that word.
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$version" '
+              BEGIN { gsub(/\./, "[.]", v); heading = "^## " v "([ \t]|$)" }
+              $0 ~ heading { inside = 1; next }
+              inside && /^## / { exit }
+              inside { print }
+            ' CHANGELOG.md > "$notes"
+          else
+            : > "$notes"
+          fi
+
+          # A heading with nothing under it is worth no more than no heading, so
+          # this asks for content rather than for a file with bytes in it.
+          # `grep` is avoided: it exits 1 when it matches nothing, and `set -e`
+          # would end the job at the point the fallback is meant to run.
+          if [ -n "$(tr -d '[:space:]' < "$notes")" ]; then
+            echo "Notes for ${version} read from CHANGELOG.md ($(wc -l < "$notes") lines)."
+            body=(--notes-file "$notes")
+          else
+            echo "No '## ${version}' section in CHANGELOG.md. Falling back to generated notes."
+            body=(--generate-notes)
+          fi
+
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
+            "${body[@]}" \
             --draft \
             dist/*
           echo "Draft release created. Review and publish it from the Releases page."
