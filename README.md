@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-318_passing-427819?style=for-the-badge" alt="318 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-324_passing-427819?style=for-the-badge" alt="324 tests passing"/>
 </p>
 
 <p align="center">
@@ -203,13 +203,13 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | Stage | Files | Lines | Responsibility |
 | ----- | ----- | ----- | -------------- |
 | **Lexer** | token.rs, lexer.rs | 975 | Source text to tokens, with line, column, and span tracking |
-| **Parser** | ast.rs, parser.rs | 1162 | Recursive descent plus a Pratt expression parser |
+| **Parser** | ast.rs, parser.rs | 1332 | Recursive descent plus a Pratt expression parser |
 | **Runtime model** | value.rs, ops.rs, builtins.rs | 2272 | Values, operator and indexing rules, the builtin library |
 | **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 3858 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Formatter** | formatter.rs | 676 | Reprints a program in canonical form (`miru fmt`) |
-| **CLI and REPL** | main.rs, repl.rs | 331 | File runner, `fmt` and `disasm` commands, and the REPL |
+| **CLI and REPL** | main.rs, repl.rs | 350 | File runner, `fmt` and `disasm` commands, and the REPL |
 | **Library** | lib.rs | 662 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **15 files** | **9936** | Written from scratch in Rust |
+| **Total** | **15 files** | **10125** | Written from scratch in Rust |
 
 The playground is a separate crate: 467 lines of Rust binding the language to
 WebAssembly, and 567 of hand-written HTML, CSS, and JavaScript. It is counted

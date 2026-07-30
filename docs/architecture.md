@@ -109,6 +109,12 @@ higher minimum power to get left associativity. Prefix operators, calls, and
 indexing are handled by `unary` and `postfix`. This keeps operator precedence in
 one readable place instead of a deep cascade of functions.
 
+The loop is worth noticing for a second reason. Because same-precedence
+operators are consumed by iterating rather than by recursing, a long chain costs
+one stack frame while producing a tree as tall as the chain is long. That gap
+between how deep the parser goes and how deep its output is turns out to matter;
+"Parsing has a limit too" below is about closing it.
+
 ### Names are resolved at compile time, not at run time
 
 Nothing looks a variable up by name while a program runs.
@@ -499,7 +505,10 @@ stack the way a tree walker's would; left alone it grows until memory runs out.
 `MAX_CALL_DEPTH` (10,000) turns that into an ordinary runtime error with a line,
 a column, and a caret.
 
-That is the only cap. Until v0.7 there was a second one, `MAX_HOST_CALL_DEPTH`,
+That is the only cap on *running* a program. Parsing one has its own, for a
+different reason and on a different resource; the next section covers it.
+
+Until v0.7 there was a second cap here, `MAX_HOST_CALL_DEPTH`,
 set to 64: a user function called *by a builtin*, as `map` calls the function it
 is given, used to run on a nested bytecode loop, which is a real Rust call
 consuming real machine stack that a frame count does not account for. Recursion
@@ -511,6 +520,52 @@ of making them itself, so a callback costs a heap frame like any other call and
 the frame count accounts for all of it. Recursion through `map` reaches the same
 limit direct recursion does. Two hundred levels deep failed outright before;
 five hundred is unremarkable now.
+
+### Parsing has a limit too, and it needs two counters
+
+Call frames are on the heap, but the *parser* is ordinary Rust recursion on the
+machine stack, and so is every later pass over the tree: the compiler, the
+formatter, and the destructor that releases it. Until 1.1 nothing bounded any of
+that, so deep enough source aborted the process with a Rust stack overflow. No
+message, no caret, and nothing `try` could catch, because `try` is a runtime
+construct and this happened before the program ran. `miru fmt` did it too, which
+made merely formatting an untrusted file dangerous.
+
+`Parser::MAX_NESTING` (64) fixes it, but the obvious single counter is not
+enough. Two different quantities have to stay below the limit, and neither
+implies the other:
+
+- **How far the parser calls itself.** `[[[ .. ]]]` descends one frame per
+  bracket and overflows on the way *down*, before there is a tree to measure.
+  `Parser::enter` counts this, and `unary` is where it is counted, because every
+  expression passes through it on the way to `primary`.
+- **How tall the tree gets.** `parse_binary` loops over infix operators rather
+  than recursing for them, which is what makes precedence readable. The cost is
+  that `1 + 1 + 1 ..` is one frame and one loop however long it runs: a counter
+  watching recursion sees nothing, and the tree left behind is as tall as the
+  chain is long. The same is true of `a[0][0][0]` and `a.b.c` in `postfix`.
+  `Expr::height` counts this, computed once in `Expr::new` from the children's
+  own heights, so keeping it costs one comparison per node.
+
+Counting only the first lets a spine through. Counting only the second aborts
+during the descent, before any height exists. Counting them separately but
+independently is also wrong: a spine at every level of nesting grows the tree as
+the *product* of the two, and 60 levels of 60 still aborted while both counters
+read 60.
+
+The height is tested as each level is added rather than on the finished
+expression. That ordering is the point: a tree too tall to walk is also too tall
+to release, so building it and then rejecting it moves the abort from the
+compiler into the destructor and fixes nothing.
+
+The limit is 64 rather than a rounder number because it was measured on the
+tightest configuration rather than the roomiest. A promise that deep source
+reports instead of aborting is worth nothing if it holds only on the main
+thread. Nested maps, the most expensive construct, survive to 112 in a debug
+build on the 2 MiB stack a spawned thread gets by default, which is what the
+test suite and any embedder has. Release builds clear 255 at every stack size
+down to 512 KiB, and the playground is release wasm. For scale, the deepest
+nesting in this project's own examples is four.
 
 ## How to extend it
 

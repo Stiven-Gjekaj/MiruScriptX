@@ -69,19 +69,77 @@ pub struct Expr {
     pub kind: ExprKind,
     pub line: usize,
     pub column: usize,
+    /// How many levels this expression holds, counting itself. A literal is 1.
+    ///
+    /// The compiler, the formatter, and the code that releases the tree all
+    /// walk it by recursion, so a tall tree overflows the Rust stack and aborts
+    /// the process. The parser refuses to build one, and this is the figure it
+    /// tests. It is kept on the node because it cannot be recovered later
+    /// without the recursive walk that it exists to make safe.
+    pub height: usize,
 }
 
 impl Expr {
     pub fn new(kind: ExprKind, line: usize, column: usize) -> Expr {
-        Expr { kind, line, column }
+        let height = kind.height();
+        Expr {
+            kind,
+            line,
+            column,
+            height,
+        }
     }
 }
 
 /// Two expressions are equal when their kinds match; positions are ignored so
-/// tests can compare tree shape without tracking every line and column.
+/// tests can compare tree shape without tracking every line and column. The
+/// height follows from the kind, so it needs no separate test.
 impl PartialEq for Expr {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
+    }
+}
+
+fn tallest(exprs: &[Expr]) -> usize {
+    exprs.iter().map(|expr| expr.height).max().unwrap_or(0)
+}
+
+impl ExprKind {
+    /// One more than the tallest child.
+    ///
+    /// Each child already carries its own height, so this reads one level and
+    /// not the whole tree. Every node is built exactly once, through
+    /// [`Expr::new`], which makes the total cost of keeping the figure linear
+    /// in the size of the program.
+    ///
+    /// A function literal counts as a leaf. Its body holds statements, not
+    /// expressions, and the parser limits how deeply statements nest by
+    /// counting its own recursion.
+    fn height(&self) -> usize {
+        let below = match self {
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Str(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Nil
+            | ExprKind::Identifier(_)
+            | ExprKind::Function { .. } => 0,
+            ExprKind::Array(items) => tallest(items),
+            ExprKind::Map(pairs) => pairs
+                .iter()
+                .map(|(key, value)| key.height.max(value.height))
+                .max()
+                .unwrap_or(0),
+            ExprKind::Index { target, index } => target.height.max(index.height),
+            ExprKind::Field { target, .. } => target.height,
+            ExprKind::Unary { operand, .. } => operand.height,
+            ExprKind::Binary { left, right, .. } | ExprKind::Logical { left, right, .. } => {
+                left.height.max(right.height)
+            }
+            ExprKind::Call { callee, arguments } => callee.height.max(tallest(arguments)),
+            ExprKind::Try(inner) => inner.height,
+        };
+        below + 1
     }
 }
 

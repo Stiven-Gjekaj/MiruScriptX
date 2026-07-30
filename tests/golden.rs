@@ -1441,3 +1441,62 @@ fn declaring_a_name_a_builtin_already_has_shadows_it() {
         ("let len = 1\nupper(\"ab\")", "ok \"AB\""),
     ]);
 }
+
+/// Deep source used to abort the process with a Rust stack overflow: no
+/// message, no caret, and nothing `try` could catch. Every one of these was
+/// reproduced as an abort before the parser started counting.
+///
+/// The sources are generated rather than written out, because the shortest one
+/// that reaches the limit is over two thousand characters.
+#[test]
+fn source_that_nests_too_deeply_is_an_error_rather_than_an_abort() {
+    let over = miruscriptx::parser::Parser::MAX_NESTING + 1;
+    let cases: Vec<String> = vec![
+        // Nesting the parser descends through. These overflow on the way down,
+        // before there is a tree to measure.
+        format!("{}{}", "[".repeat(over), "]".repeat(over)),
+        format!("({}1{})", "(".repeat(over), ")".repeat(over)),
+        format!("{}1{}", "{\"a\": ".repeat(over), "}".repeat(over)),
+        format!("{}1", "try ".repeat(over)),
+        format!("{}1", "-".repeat(over)),
+        format!("{}true", "!".repeat(over)),
+        // Spines. These are one Rust frame however long they run, so counting
+        // the parser's recursion sees nothing: the tree is what gets tall.
+        format!("1{}", " + 1".repeat(over)),
+        format!("a{}", "[0]".repeat(over)),
+        format!("a{}", ".b".repeat(over)),
+        format!("a{}", "(1)".repeat(over)),
+        // A spine at every level of nesting. The tree grows as the product of
+        // the two, so counting either one alone lets this through.
+        (0..over).fold(String::from("1"), |inner, _| {
+            format!("({}{})", inner, " + 1".repeat(over))
+        }),
+    ];
+    for source in &cases {
+        let outcome = outcome(source);
+        assert!(
+            outcome.starts_with("err the program is nested too deeply"),
+            "expected a nesting error, got: {outcome}\n  source begins: {:?}",
+            &source[..source.len().min(60)]
+        );
+    }
+}
+
+#[test]
+fn nesting_well_within_the_limit_still_works() {
+    // The limit must not interfere with ordinary programs. The deepest bracket
+    // nesting anywhere in this repository's own examples is 4.
+    let deep = miruscriptx::parser::Parser::MAX_NESTING / 2;
+    check_all(&[
+        ("[[[[[[[[1]]]]]]]]", "ok [[[[[[[[1]]]]]]]]"),
+        ("((((((((1))))))))", "ok 1"),
+        ("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1", "ok 8"),
+    ]);
+    // And a spine half the length of the limit is fine, which is far more
+    // arithmetic than anyone writes on one line.
+    let sum = format!("1{}", " + 1".repeat(deep - 1));
+    assert_eq!(outcome(&sum), format!("ok {deep}"));
+    // As is nesting to half the limit.
+    let nest = format!("{}1{}", "[".repeat(deep), "]".repeat(deep));
+    assert!(outcome(&nest).starts_with("ok ["));
+}

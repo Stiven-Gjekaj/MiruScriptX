@@ -13,17 +13,97 @@ pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
     loop_depth: usize,
+    depth: usize,
 }
 
 impl Parser {
+    /// How deeply one program may nest.
+    ///
+    /// Without a limit, deep source overflows the Rust stack and aborts the
+    /// process: no message, no caret, and nothing `try` can catch.
+    ///
+    /// Two different things have to stay below this, and one does not imply the
+    /// other:
+    ///
+    /// 1. **How far the parser calls itself.** `[[[ .. ]]]` descends one frame
+    ///    per bracket, and overflows on the way down, before a tree exists to
+    ///    measure. [`Parser::enter`] counts this.
+    /// 2. **How tall the tree gets.** `1 + 1 + 1 ..` is one frame and one loop,
+    ///    however long it runs, and leaves a tree as tall as the sum is long.
+    ///    Nothing overflows until the compiler, the formatter, or the code that
+    ///    releases the tree walks it. [`Expr::height`] counts this, and the
+    ///    parser tests it as each level is added, because a tree too tall to
+    ///    walk is also too tall to release: rejecting it after it is built
+    ///    aborts in the same way, in the destructor.
+    ///
+    /// The figure comes from the tightest configuration measured, not the
+    /// roomiest, because the promise is that deep source reports rather than
+    /// aborts, and a promise that holds only on the main thread is not one.
+    /// Nested maps, the most expensive construct, survived to this depth:
+    ///
+    /// | Stack     | Debug | Release |
+    /// | --------- | ----- | ------- |
+    /// | 8 MiB     | 255   | 255     |
+    /// | 2 MiB     | 112   | 255     |
+    /// | 1 MiB     | 48    | 255     |
+    /// | 512 KiB   | 16    | 255     |
+    ///
+    /// 2 MiB is what a thread gets by default, and is therefore what the test
+    /// suite and any embedder who does not ask for more will have. 64 leaves a
+    /// margin of nearly two there. Release builds have room to spare at every
+    /// size, and the playground, which is release wasm, is one of those.
+    ///
+    /// For scale, the deepest nesting in this project's own example programs is
+    /// four. [`crate::value::Value`] limits nesting at 256 for comparing and
+    /// printing, which is a different figure for a different thing: a loop can
+    /// build a value far deeper than the source that made it.
+    pub const MAX_NESTING: usize = 64;
+
     /// Parse a full program (a list of statements) from a token stream.
     pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, MiruError> {
         let mut parser = Parser {
             tokens,
             pos: 0,
             loop_depth: 0,
+            depth: 0,
         };
         parser.program()
+    }
+
+    /// Count one level of nesting, and refuse past the limit.
+    ///
+    /// Every `enter` has a matching `leave` on the path that succeeds. On the
+    /// path that fails the count is left as it is, because an error ends the
+    /// parse: `Parser::parse` returns it, and this parser is never asked for
+    /// anything else.
+    fn enter(&mut self, line: usize, column: usize) -> Result<(), MiruError> {
+        self.depth += 1;
+        if self.depth > Parser::MAX_NESTING {
+            return Err(MiruError::with_column(
+                line,
+                column,
+                "the program is nested too deeply".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn leave(&mut self) {
+        self.depth -= 1;
+    }
+
+    /// Refuse an expression that is too tall to walk.
+    ///
+    /// Called on each level as it is added, never on the finished expression.
+    fn checked(&self, expr: Expr) -> Result<Expr, MiruError> {
+        if expr.height > Parser::MAX_NESTING {
+            return Err(MiruError::with_column(
+                expr.line,
+                expr.column,
+                "the program is nested too deeply".to_string(),
+            ));
+        }
+        Ok(expr)
     }
 
     fn program(&mut self) -> Result<Vec<Stmt>, MiruError> {
@@ -42,8 +122,17 @@ impl Parser {
 
     // --- Statements -------------------------------------------------------
 
+    /// A block holds statements, and a statement can open a block, so `if`
+    /// inside `if` inside `if` descends here as far as the source says to.
     fn statement(&mut self) -> Result<Stmt, MiruError> {
-        let line = self.peek().line;
+        let (line, column) = (self.peek().line, self.peek().column);
+        self.enter(line, column)?;
+        let statement = self.statement_kind(line);
+        self.leave();
+        statement
+    }
+
+    fn statement_kind(&mut self, line: usize) -> Result<Stmt, MiruError> {
         match self.peek_kind() {
             TokenKind::Import => self.import_statement(line),
             TokenKind::Let => self.let_statement(line),
@@ -318,9 +407,13 @@ impl Parser {
         // outer one unreachable.
         if self.check(&TokenKind::Try) {
             let token = self.advance().clone();
-            let inner = self.expression()?;
+            // Charged here rather than left to `unary`: this arm calls itself,
+            // so `try try try` never reaches `unary` more than once.
+            self.enter(token.line, token.column)?;
+            let inner = self.expression();
+            self.leave();
             return Ok(Expr::new(
-                ExprKind::Try(Box::new(inner)),
+                ExprKind::Try(Box::new(inner?)),
                 token.line,
                 token.column,
             ));
@@ -330,13 +423,17 @@ impl Parser {
 
     fn parse_binary(&mut self, min_bp: u8) -> Result<Expr, MiruError> {
         let mut left = self.unary()?;
+        // Each pass wraps everything parsed so far, so the tree grows one level
+        // per operator while this loop stays at a single Rust frame however far
+        // it runs. Counting the recursion here would see nothing: `1 + 1 + 1
+        // ...` parses happily and overflows whoever walks the result instead.
         while let Some(bp) = Parser::infix_binding_power(self.peek_kind()) {
             if bp < min_bp {
                 break;
             }
             let op = self.advance();
             let right = self.parse_binary(bp + 1)?;
-            left = Parser::make_infix(&op, left, right);
+            left = self.checked(Parser::make_infix(&op, left, right))?;
         }
         Ok(left)
     }
@@ -392,7 +489,19 @@ impl Parser {
         Expr::new(kind, op.line, op.column)
     }
 
+    /// Every expression passes through here on its way down to `primary`, so
+    /// one count covers a nested array, a nested map, a parenthesised group, a
+    /// call argument, and an index, as well as the `-` and `!` chains that call
+    /// this function directly.
     fn unary(&mut self) -> Result<Expr, MiruError> {
+        let (line, column) = (self.peek().line, self.peek().column);
+        self.enter(line, column)?;
+        let expr = self.unary_operand();
+        self.leave();
+        expr
+    }
+
+    fn unary_operand(&mut self) -> Result<Expr, MiruError> {
         match self.peek_kind() {
             TokenKind::Minus => {
                 let op = self.advance();
@@ -424,20 +533,23 @@ impl Parser {
 
     fn postfix(&mut self) -> Result<Expr, MiruError> {
         let mut expr = self.primary()?;
+        // A call, a field, or an index wraps what came before it, so `a[0][0]`
+        // and `a.b.c` grow the tree without growing this loop. Tested the same
+        // way the operator spine in `parse_binary` is, and for the same reason.
         loop {
             match self.peek_kind() {
                 TokenKind::LParen => {
                     self.advance();
                     let arguments = self.parse_arguments()?;
                     let (line, column) = (expr.line, expr.column);
-                    expr = Expr::new(
+                    expr = self.checked(Expr::new(
                         ExprKind::Call {
                             callee: Box::new(expr),
                             arguments,
                         },
                         line,
                         column,
-                    );
+                    ))?;
                 }
                 TokenKind::Dot => {
                     self.advance();
@@ -461,28 +573,28 @@ impl Parser {
                         }
                     };
                     self.advance();
-                    expr = Expr::new(
+                    expr = self.checked(Expr::new(
                         ExprKind::Field {
                             target: Box::new(expr),
                             name,
                         },
                         field.line,
                         field.column,
-                    );
+                    ))?;
                 }
                 TokenKind::LBracket => {
                     self.advance();
                     let index = self.expression()?;
                     self.expect(TokenKind::RBracket, "to close an index")?;
                     let (line, column) = (expr.line, expr.column);
-                    expr = Expr::new(
+                    expr = self.checked(Expr::new(
                         ExprKind::Index {
                             target: Box::new(expr),
                             index: Box::new(index),
                         },
                         line,
                         column,
-                    );
+                    ))?;
                 }
                 _ => break,
             }

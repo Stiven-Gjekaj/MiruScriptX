@@ -53,11 +53,25 @@ fn the_limits_the_specification_states_are_the_limits_that_apply() {
         ("call arguments", "255"),
         ("captured variables", "255"),
         ("array elements", "65535"),
-        ("nesting", "256"),
+        ("nesting for comparing and printing", "256"),
     ] {
         assert!(
             text.contains(number),
             "section 9 does not quote the {what} limit of {number}"
         );
     }
+}
+
+#[test]
+fn the_source_nesting_limit_in_the_specification_is_the_one_the_parser_applies() {
+    // Read from the constant rather than written out, because this is the one
+    // limit set by how much stack the machine has rather than by a byte in the
+    // bytecode. It is expected to move, and when it does the document has to
+    // move with it.
+    let text = specification();
+    let limit = miruscriptx::parser::Parser::MAX_NESTING;
+    assert!(
+        text.contains(&format!("| Nesting in the source text | {limit} |")),
+        "section 9 does not quote the source nesting limit of {limit}"
+    );
 }
