@@ -113,6 +113,113 @@ impl std::ops::Deref for MapBody {
     }
 }
 
+/// Release a chain of values without one stack frame per link.
+///
+/// A value can hold a value that holds a value, as deep as a loop cares to go:
+///
+/// ```text
+/// let a = []
+/// while .. { a = [a] }
+/// ```
+///
+/// The destructor Rust writes for that walks the chain by recursion, so
+/// releasing it overflowed the stack and aborted the process. It happened at
+/// the assignment that dropped the last reference, or at the end of the
+/// program, where it also lost whatever was still buffered on standard output.
+/// Nothing could catch it, because by then the program had finished.
+///
+/// So the children go on a list instead of on the stack. Each container taken
+/// off the list surrenders its own children to the list before it is released,
+/// and the loop keeps going until the list is empty. Depth becomes length, and
+/// length is heap.
+///
+/// Two rules matter more than the shape:
+///
+/// - **Descend only into a body nobody else holds.** `Rc::try_unwrap` succeeds
+///   for exactly those. Descending into a shared one would release values that
+///   another reference still points at.
+/// - **Empty a body before letting it fall out of scope.** Its own destructor
+///   runs at that moment, and finding nothing left is what stops it recursing
+///   back into the case this function exists to avoid.
+fn release(mut work: Vec<Value>) {
+    while let Some(value) = work.pop() {
+        match value {
+            Value::Array(rc) => {
+                if let Ok(body) = Rc::try_unwrap(rc) {
+                    work.append(&mut body.borrow_mut());
+                }
+            }
+            Value::Map(rc) => {
+                if let Ok(body) = Rc::try_unwrap(rc) {
+                    let mut entries = body.borrow_mut();
+                    work.extend(std::mem::take(&mut *entries).into_values());
+                }
+            }
+            Value::Closure(rc) => {
+                if let Ok(mut closure) = Rc::try_unwrap(rc) {
+                    // Taken rather than moved out, for two reasons. `Closure`
+                    // implements `Drop`, and Rust does not let a field be moved
+                    // out of such a type. And leaving the captures in place
+                    // would hand them to `Closure::drop`, which calls this
+                    // function again: the recursion would be back, one level
+                    // further down. Emptied first, that destructor finds
+                    // nothing and returns.
+                    work.extend(closed_captures(&mut closure.upvalues));
+                }
+            }
+            // Everything else is a leaf. `Value::Error` looks like it might not
+            // be, but `MiruError` holds a line, a column, a message, and a trace
+            // of plain Rust structs. No value hides in one.
+            _ => {}
+        }
+    }
+}
+
+/// Take the values a closure had captured, leaving it holding none.
+///
+/// Only a capture nobody else shares yields a value. An upvalue still open
+/// points at a stack slot and owns nothing, and one another closure also holds
+/// is not this closure's to release.
+fn closed_captures(upvalues: &mut Vec<Rc<RefCell<Upvalue>>>) -> Vec<Value> {
+    std::mem::take(upvalues)
+        .into_iter()
+        .filter_map(|slot| match Rc::try_unwrap(slot) {
+            Ok(upvalue) => match upvalue.into_inner() {
+                Upvalue::Closed(inner) => Some(inner),
+                Upvalue::Open(_) => None,
+            },
+            Err(_) => None,
+        })
+        .collect()
+}
+
+impl Drop for ArrayBody {
+    fn drop(&mut self) {
+        release(std::mem::take(&mut *self.borrow_mut()));
+    }
+}
+
+impl Drop for MapBody {
+    fn drop(&mut self) {
+        release(
+            std::mem::take(&mut *self.borrow_mut())
+                .into_values()
+                .collect(),
+        );
+    }
+}
+
+impl Drop for Closure {
+    fn drop(&mut self) {
+        // A closure holds its captures, and a capture can hold a closure, so
+        // rebinding one in a loop builds a chain exactly as an array does:
+        //
+        //     let f = base
+        //     while .. { let g = f  f = fn() { return g() } }
+        release(closed_captures(&mut self.upvalues));
+    }
+}
+
 /// A native function implemented in Rust and exposed to programs.
 #[derive(Clone)]
 pub struct Builtin {
@@ -420,6 +527,54 @@ fn escape_string(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Teardown descends only into a body no one else holds. If it descended
+    /// into a shared one it would release values another reference still points
+    /// at, which is a use-after-free rather than a crash: nothing observable
+    /// goes wrong until much later, and no test of depth would catch it.
+    #[test]
+    fn releasing_one_holder_leaves_a_shared_body_intact() {
+        let shared = Rc::new(ArrayBody::new(vec![Value::Int(1), Value::Int(2)]));
+        let first = Value::Array(Rc::clone(&shared));
+        let second = Value::Array(Rc::clone(&shared));
+        assert_eq!(Rc::strong_count(&shared), 3);
+
+        drop(first);
+        assert_eq!(Rc::strong_count(&shared), 2);
+        assert_eq!(shared.borrow().len(), 2, "the contents survived");
+
+        drop(second);
+        assert_eq!(Rc::strong_count(&shared), 1);
+        assert_eq!(shared.borrow().len(), 2, "and survive while we hold it");
+    }
+
+    /// The last holder does release the contents. A teardown that never
+    /// descends would pass the test above and leak everything.
+    #[test]
+    fn releasing_the_last_holder_releases_the_contents() {
+        let inner = Rc::new(ArrayBody::new(vec![Value::Int(7)]));
+        let outer = Value::array(vec![Value::Array(Rc::clone(&inner))]);
+        assert_eq!(Rc::strong_count(&inner), 2);
+
+        drop(outer);
+        assert_eq!(
+            Rc::strong_count(&inner),
+            1,
+            "the outer array gave up its reference to the inner one"
+        );
+    }
+
+    /// A chain longer than the stack, built and released in Rust rather than
+    /// through a program, so the failure is attributed here rather than to the
+    /// interpreter. This overflowed before teardown became iterative.
+    #[test]
+    fn a_chain_longer_than_the_stack_is_released() {
+        let mut chain = Value::array(Vec::new());
+        for _ in 0..200_000 {
+            chain = Value::array(vec![chain]);
+        }
+        drop(chain);
+    }
 
     #[test]
     fn an_error_value_names_its_type_and_shows_what_it_holds() {
