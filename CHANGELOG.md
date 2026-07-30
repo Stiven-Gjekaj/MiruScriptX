@@ -99,8 +99,8 @@ semantic versioning.
   No message, no line, no caret, and nothing `try` could catch. `miru fmt` and
   `miru disasm` did the same, so formatting a file was enough to trigger it.
 
-  The parser now refuses past a nesting limit of 1000 and reports it the way any
-  other syntax error is reported, with a line and a column. The limit is in the
+  The parser now refuses past a limit and reports it the way any other syntax
+  error is reported, with a line and a column. Both limits are in the
   specification, section 9.
 
   Two separate things had to be counted, and neither implies the other. Nesting
@@ -109,9 +109,19 @@ semantic versioning.
   frame and one loop however long it runs, and leaves behind a tree as tall as
   the chain is long, which then overflows the compiler, the formatter, or the
   code that releases it. Expressions carry their height for the second case,
-  and the limit is applied as each level is added: a tree too tall to walk is
-  also too tall to release, so rejecting it after building it aborts in the
+  and the limit is applied as each level is added: a tree too tall to walk was
+  also too tall to release, so rejecting it after building it aborted in the
   destructor instead.
+
+  **The two get different numbers, because they cost different amounts of
+  stack.** Nesting is limited to 1000 and one expression to 10000. A level of
+  nesting spends a parser frame; a term in a chain spends none at parse time and
+  shows up only in the later passes, whose frames are much smaller. Both figures
+  were measured, from below against what 1.0 managed on the smallest stack it
+  ever ran on, and from above against what the passes survive on the smallest
+  stack that ships. A chain past its limit says `the expression is too long`
+  rather than `the program is nested too deeply`, because nothing in
+  `1 + 1 + 1 ...` is nested inside anything.
 
   This is the same class of defect 1.0 closed for values, where `push(a, a)`
   followed by `a == a` aborted. That fix guarded comparing and printing. The
@@ -164,15 +174,25 @@ semantic versioning.
   measured against the tightest of those and came out at 64, which refused
   programs 1.0 accepted and so broke section 2.1 of the stability guarantee.
 
-  Measured against a stack the project controls, the limit is 1000. A sum of
-  several hundred terms, or two hundred levels of nesting, parses again.
+  Measured against a stack the project controls, nesting is limited to 1000 and
+  the length of one expression to 10000.
+
+  Both clear what 1.0 did, which is the test that matters rather than whether
+  they clear an abort. 1.0 had no limit and simply ran until the stack ran out,
+  and on the 1 MiB shadow stack the playground had, the smallest any 1.0 build
+  had, its release binary reached 917 levels of nesting and a sum of 4959 terms.
+
+  One case is narrower than 1.0 and is worth stating rather than leaving to be
+  found. A sum of more than about 10000 terms is now a syntax error. 1.0 reached
+  40255 of them on an 8 MiB main thread and nothing near that in a browser, so
+  such a program ran on one build and stopped the process on another.
 
   An explicit thread stack is mapped rather than grown from the process stack,
   so `ulimit -s` no longer reaches it: a value 100000 deep survives under
   `ulimit -s 512`, where it aborted before.
 
   **If you use `miruscriptx` as a Rust library**, `run_source` uses the stack of
-  the thread that calls it, which does not support this limit by default.
+  the thread that calls it, which does not support these limits by default.
   Section 3.3 of the stability guarantee is new and says what to do about it.
 
 - Corrected the line counts and the test count in the README. Both had drifted
