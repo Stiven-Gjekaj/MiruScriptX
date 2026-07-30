@@ -360,12 +360,17 @@ pub enum Value {
 /// nothing watched it: adding a field to a rarely-used variant silently widens
 /// the hot path.
 ///
-/// 32 is where it stands. Of that, 24 bytes exist to describe a builtin
-/// (`&'static str` plus a function pointer and its tag), which is a thing the
-/// stack holds approximately never. The discriminant is free: rustc niche-fills
-/// it into the non-null pointer inside that name.
+/// Four pointers wide: 32 bytes where a pointer is 8, and 16 on a 32-bit target
+/// such as the WebAssembly build. Three of those four exist to describe a
+/// builtin (`&'static str` plus a function pointer and its tag), which is a
+/// thing the stack holds approximately never. The discriminant is free: rustc
+/// niche-fills it into the non-null pointer inside that name.
+///
+/// Written against the pointer rather than as a byte count, because the first
+/// version of this assertion said 32 and broke the WebAssembly build, where a
+/// pointer is half as wide. The invariant was never about bytes.
 const _: () = assert!(
-    std::mem::size_of::<Value>() == 32,
+    std::mem::size_of::<Value>() == 4 * std::mem::size_of::<usize>(),
     "Value changed size; the VM stack is a Vec<Value>, so measure before accepting it"
 );
 
