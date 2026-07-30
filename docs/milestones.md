@@ -441,9 +441,24 @@ specification found all four before anybody could hit them: `filter` reading a
 caught error as true, a self-referential value aborting the process, `for` over
 a caught error reporting the type instead of the failure, and a module's runtime
 error drawing its caret on the importing file. That is the argument for writing
-a specification, stated as a fact rather than as a hope.)
+a specification, stated as a fact rather than as a hope.
+
+After 1.0 a fifth turned up, of the same class as one of those four and missed
+for the same reason a test would have missed it. v1.0 stopped a self-referential
+*value* from aborting the process, and guarded comparing and printing to do it.
+Nobody asked whether the *parser* had the same problem. It did: deep enough
+source overflowed the Rust stack in the parser, the compiler, the formatter, or
+the destructor, with no message and nothing `try` could catch. Fixing one
+instance of a class is not fixing the class, and the way to find the rest is to
+ask which other code walks a structure by recursion.)
 
 ## How versions are cut
 
-Within a milestone, work lands as small, numbered commits (for example `v0.2.1`
-through the final `v0.2.x`). The last commit of a milestone marks it complete.
+Through 1.0 the road ran in milestones, and work landed as small numbered
+commits (for example `v0.2.1` through the final `v0.2.x`), with the last commit
+of a milestone marking it complete. Every commit before 1.0 carries that prefix.
+
+That convention ended with the road. A commit now carries no version prefix and
+changes no version. The version in `Cargo.toml` moves when something is
+released; until then a change is described under **Unreleased** in
+`CHANGELOG.md`, and semantic versioning decides what the next number is.
