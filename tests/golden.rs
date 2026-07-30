@@ -1462,43 +1462,61 @@ fn with_interpreter_stack<T: Send + 'static>(body: impl FnOnce() -> T + Send + '
 /// message, no caret, and nothing `try` could catch. Every one of these was
 /// reproduced as an abort before the parser started counting.
 ///
-/// The sources are generated rather than written out, and follow
-/// `Parser::MAX_NESTING`, so raising the limit does not quietly stop these from
-/// reaching it.
+/// The sources are generated rather than written out, and follow the two
+/// constants, so raising either limit does not quietly stop these from reaching
+/// it.
+///
+/// **The two halves get different messages, and the split is the point.**
+/// Nesting costs a parser frame per level and a chain costs none, so they have
+/// separate limits, and a chain that reported "nested too deeply" would send a
+/// reader looking for brackets that are not in their program.
 #[test]
 fn source_that_nests_too_deeply_is_an_error_rather_than_an_abort() {
     with_interpreter_stack(|| {
         let over = miruscriptx::parser::Parser::MAX_NESTING + 1;
-        // The composition case grows as the product of its two dimensions, so
-        // each side only needs to be the square root of the limit to pass it.
-        // Using `over` for both would build a source of several megabytes.
-        let side = (over as f64).sqrt() as usize + 2;
-        let cases: Vec<String> = vec![
-            // Nesting the parser descends through. These overflow on the way
-            // down, before there is a tree to measure.
+        // Nesting the parser descends through. These overflow on the way down,
+        // before there is a tree to measure.
+        let nested: Vec<String> = vec![
             format!("{}{}", "[".repeat(over), "]".repeat(over)),
             format!("({}1{})", "(".repeat(over), ")".repeat(over)),
             format!("{}1{}", "{\"a\": ".repeat(over), "}".repeat(over)),
             format!("{}1", "try ".repeat(over)),
             format!("{}1", "-".repeat(over)),
             format!("{}true", "!".repeat(over)),
-            // Spines. These are one Rust frame however long they run, so
-            // counting the parser's recursion sees nothing: the tree gets tall.
-            format!("1{}", " + 1".repeat(over)),
-            format!("a{}", "[0]".repeat(over)),
-            format!("a{}", ".b".repeat(over)),
-            format!("a{}", "(1)".repeat(over)),
-            // A spine at every level of nesting. The tree grows as the product
-            // of the two, so counting either alone lets this through.
-            (0..side).fold(String::from("1"), |inner, _| {
-                format!("({}{})", inner, " + 1".repeat(side))
-            }),
         ];
-        for source in &cases {
+        for source in &nested {
             let outcome = outcome(source);
             assert!(
                 outcome.starts_with("err the program is nested too deeply"),
                 "expected a nesting error, got: {outcome}\n  source begins: {:?}",
+                &source[..source.len().min(60)]
+            );
+        }
+
+        let tall = miruscriptx::parser::Parser::MAX_HEIGHT + 1;
+        // The composition case grows as the product of its two dimensions, so
+        // each side only needs to be the square root of the limit to pass it.
+        // Using `tall` for both would build a source of many megabytes.
+        let side = (tall as f64).sqrt() as usize + 2;
+        let long: Vec<String> = vec![
+            // Chains. These are one Rust frame however long they run, so
+            // counting the parser's recursion sees nothing: the tree gets tall.
+            format!("1{}", " + 1".repeat(tall)),
+            format!("a{}", "[0]".repeat(tall)),
+            format!("a{}", ".b".repeat(tall)),
+            format!("a{}", "(1)".repeat(tall)),
+            // A chain at every level of nesting. The tree grows as the product
+            // of the two, so counting either alone lets this through. Neither
+            // dimension on its own reaches either limit here.
+            (0..side).fold(String::from("1"), |inner, _| {
+                format!("({}{})", inner, " + 1".repeat(side))
+            }),
+        ];
+        for source in &long {
+            let outcome = outcome(source);
+            assert!(
+                outcome.starts_with("err the expression is too long"),
+                "expected a length error, got: {outcome}\n  source begins: {:?}",
                 &source[..source.len().min(60)]
             );
         }
@@ -1508,25 +1526,26 @@ fn source_that_nests_too_deeply_is_an_error_rather_than_an_abort() {
 #[test]
 fn nesting_well_within_the_limit_still_works() {
     with_interpreter_stack(|| {
-        // The limit must not interfere with ordinary programs. The deepest
+        // The limits must not interfere with ordinary programs. The deepest
         // bracket nesting anywhere in this repository's own examples is 4.
-        let deep = miruscriptx::parser::Parser::MAX_NESTING / 2;
         check_all(&[
             ("[[[[[[[[1]]]]]]]]", "ok [[[[[[[[1]]]]]]]]"),
             ("((((((((1))))))))", "ok 1"),
             ("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1", "ok 8"),
         ]);
-        // A spine half the length of the limit is fine, which is far more
+        // A chain half the length of its limit is fine, which is far more
         // arithmetic than anyone writes on one line.
-        let sum = format!("1{}", " + 1".repeat(deep - 1));
-        assert_eq!(outcome(&sum), format!("ok {deep}"));
-        // As is nesting to half the limit.
+        let long = miruscriptx::parser::Parser::MAX_HEIGHT / 2;
+        let sum = format!("1{}", " + 1".repeat(long - 1));
+        assert_eq!(outcome(&sum), format!("ok {long}"));
+        // As is nesting to half of its own, which is the smaller figure.
+        let deep = miruscriptx::parser::Parser::MAX_NESTING / 2;
         let nest = format!("{}1{}", "[".repeat(deep), "]".repeat(deep));
         assert!(outcome(&nest).starts_with("ok ["));
     });
 }
 
-/// The limit exists to keep a 1.0 program working, not only to stop an abort.
+/// The limits exist to keep a 1.0 program working, not only to stop an abort.
 ///
 /// 1.0 had no limit, so anything that fitted the stack parsed. The first attempt
 /// at this fix set the limit at 64, taken from a 2 MiB thread, which refused
@@ -1544,6 +1563,37 @@ fn depths_a_1_0_program_could_reach_still_parse() {
         // A long chain of field accesses, as a generated accessor path.
         let fields = format!("let m = {{}}\nm{}", ".a".repeat(300));
         assert!(outcome(&fields).starts_with("err no field"));
+    });
+}
+
+/// The exact ceilings 1.0.1 reached, so neither limit can drift back under them.
+///
+/// The second attempt broke 2.1 as well, more quietly than the first. One
+/// constant governed both nesting and chain length, and 1000 was right for
+/// nesting and far too strict for a chain: a sum of 2000 terms ran on *every*
+/// 1.0 build, the browser included, and became a syntax error. The two are
+/// separate constants now.
+///
+/// These numbers are measurements, not guesses. They come from running the
+/// released 1.0.1 binary under `ulimit -s 1024`, which is the 1 MiB shadow
+/// stack the playground had and so the least any 1.0 build could do. A program
+/// that cleared these worked everywhere 1.0 ran, and has to keep working.
+#[test]
+fn the_ceilings_1_0_reached_on_its_smallest_stack_still_parse() {
+    with_interpreter_stack(|| {
+        // 1.0.1 on a 1 MiB stack summed 4959 terms. It managed 40255 on an
+        // 8 MiB main thread, which is past `MAX_HEIGHT` and deliberately not
+        // covered: that band ran on a large native stack and never in a
+        // browser, so it was never a program 1.0 ran everywhere.
+        let sum = format!("1{}", " + 1".repeat(4958));
+        assert_eq!(outcome(&sum), "ok 4959");
+        // The one that actually regressed, and the reason this test exists.
+        let modest = format!("1{}", " + 1".repeat(1999));
+        assert_eq!(outcome(&modest), "ok 2000");
+        // 1.0.1 on the same 1 MiB stack reached 917 levels of bracket nesting.
+        // `MAX_NESTING` is 1000, so nesting never regressed; this pins that.
+        let nest = format!("{}1{}", "[".repeat(917), "]".repeat(917));
+        assert!(outcome(&nest).starts_with("ok ["));
     });
 }
 
@@ -1646,7 +1696,9 @@ fn nested_function_literals_are_bounded_by_the_statement_counter() {
         // Past the point where the statement counter adds up to the limit, it
         // reports rather than aborting. Each level costs more than one unit, so
         // this trips well below `MAX_NESTING` levels of function, which is the
-        // conservative direction.
+        // conservative direction. It is the nesting limit and not the length
+        // one, because `ExprKind::Function` is a leaf for height: every level
+        // here is a statement the parser descends into, not a taller tree.
         let outcome = outcome(&nest(miruscriptx::parser::Parser::MAX_NESTING));
         assert!(
             outcome.starts_with("err the program is nested too deeply"),

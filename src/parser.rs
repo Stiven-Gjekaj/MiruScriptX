@@ -22,19 +22,14 @@ impl Parser {
     /// Without a limit, deep source overflows the Rust stack and aborts the
     /// process: no message, no caret, and nothing `try` can catch.
     ///
-    /// Two different things have to stay below this, and one does not imply the
-    /// other:
+    /// This counts **how far the parser calls itself**. `[[[ .. ]]]` descends
+    /// one frame per bracket and overflows on the way down, before a tree
+    /// exists to measure. [`Parser::enter`] counts it.
     ///
-    /// 1. **How far the parser calls itself.** `[[[ .. ]]]` descends one frame
-    ///    per bracket, and overflows on the way down, before a tree exists to
-    ///    measure. [`Parser::enter`] counts this.
-    /// 2. **How tall the tree gets.** `1 + 1 + 1 ..` is one frame and one loop,
-    ///    however long it runs, and leaves a tree as tall as the sum is long.
-    ///    Nothing overflows until the compiler, the formatter, or the code that
-    ///    releases the tree walks it. [`Expr::height`] counts this, and the
-    ///    parser tests it as each level is added, because a tree too tall to
-    ///    walk is also too tall to release: rejecting it after it is built
-    ///    aborts in the same way, in the destructor.
+    /// A tall tree is the other half of the same defect and has its own limit,
+    /// [`Parser::MAX_HEIGHT`], because it costs a different amount of stack.
+    /// One does not imply the other: `1 + 1 + 1 ..` is one frame and one loop
+    /// however long it runs, and nesting builds no tall tree at all.
     ///
     /// The figure comes from the tightest configuration measured, not the
     /// roomiest, because the promise is that deep source reports rather than
@@ -52,9 +47,13 @@ impl Parser {
     /// | Debug, 64 MiB thread   | 3000   |
     /// | Release, 64 MiB thread | 12000+ |
     ///
-    /// 1000 leaves a margin of three on the tightest of those. The other
-    /// constructs all reach further: a chain of operators, an index chain, and
-    /// a field chain each cleared 12000 even in debug.
+    /// 1000 leaves a margin of three on the tightest of those.
+    ///
+    /// It also clears what 1.0 managed. 1.0 had no limit, so it simply aborted
+    /// wherever the stack ran out, and the release binary reached 917 levels of
+    /// bracket nesting on the 1 MiB shadow stack the playground had. 1000 is
+    /// above that, so no program that nested successfully anywhere in 1.0 is
+    /// refused here.
     ///
     /// **An embedder calling the library directly gets its own thread's stack**,
     /// which is 2 MiB by default and will not support this limit. The `miru`
@@ -68,6 +67,42 @@ impl Parser {
     /// comparing and printing, which is a different figure for a different
     /// thing: a loop can build a value far deeper than the source that made it.
     pub const MAX_NESTING: usize = 1000;
+
+    /// How tall the tree for one expression may get.
+    ///
+    /// `1 + 1 + 1 ..` is one parser frame and one loop however long it runs, so
+    /// [`Parser::MAX_NESTING`] never sees it, but it leaves a tree as tall as
+    /// the chain is long. Nothing overflows until something walks that tree:
+    /// the compiler, the formatter, or `miru disasm`. [`Expr::height`] carries
+    /// the figure and [`Parser::checked`] tests it as each level is added,
+    /// rather than on the finished expression, because a tree too tall to walk
+    /// was until 1.1 also too tall to release, and rejecting it after building
+    /// it aborted in the destructor instead.
+    ///
+    /// **This is ten times [`Parser::MAX_NESTING`] because height is ten times
+    /// cheaper.** Both were one figure at first, and 1000 was right for nesting
+    /// and much too strict for a chain. Measured on this project's own release
+    /// binary, with the height check lifted, on a 16 MiB stack, which is the
+    /// smallest of any build that ships:
+    ///
+    /// | Walk           | Height reached |
+    /// | -------------- | -------------- |
+    /// | `miru run`     | 80000          |
+    /// | `miru disasm`  | 80000          |
+    /// | `miru fmt`     | 61000          |
+    ///
+    /// The formatter is the binding one, so 10000 keeps a margin of six there.
+    /// Releasing the tree used to be a fourth walk and the tightest of them;
+    /// it is iterative as of 1.1 and no longer constrains this.
+    ///
+    /// The lower bound comes from 1.0 rather than from the stack. 1.0 had no
+    /// limit and its release binary summed 4959 terms on the 1 MiB stack the
+    /// playground had, and 40255 on an 8 MiB main thread. A program has to
+    /// clear the first of those to have worked everywhere 1.0 ran, and 10000
+    /// is twice it. Between 10000 and 40255 sits a band that 1.0 ran on a large
+    /// native stack and never in a browser; that is refused here, and a chain
+    /// of ten thousand terms is not something a person writes.
+    pub const MAX_HEIGHT: usize = 10_000;
 
     /// Parse a full program (a list of statements) from a token stream.
     pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, MiruError> {
@@ -105,12 +140,18 @@ impl Parser {
     /// Refuse an expression that is too tall to walk.
     ///
     /// Called on each level as it is added, never on the finished expression.
+    ///
+    /// The message is not the one [`Parser::enter`] gives, because this is not
+    /// the same fault. What trips this is a chain: a sum of thousands of terms,
+    /// or `a[0][0][0] ..`, where nothing is nested inside anything and telling
+    /// the reader it is would send them looking for brackets that are not
+    /// there.
     fn checked(&self, expr: Expr) -> Result<Expr, MiruError> {
-        if expr.height > Parser::MAX_NESTING {
+        if expr.height > Parser::MAX_HEIGHT {
             return Err(MiruError::with_column(
                 expr.line,
                 expr.column,
-                "the program is nested too deeply".to_string(),
+                "the expression is too long".to_string(),
             ));
         }
         Ok(expr)

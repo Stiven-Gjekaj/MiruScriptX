@@ -64,14 +64,23 @@ fn the_limits_the_specification_states_are_the_limits_that_apply() {
 
 #[test]
 fn the_source_nesting_limit_in_the_specification_is_the_one_the_parser_applies() {
-    // Read from the constant rather than written out, because this is the one
-    // limit set by how much stack the machine has rather than by a byte in the
-    // bytecode. It is expected to move, and when it does the document has to
-    // move with it.
+    // Read from the constants rather than written out, because these are the
+    // two limits set by how much stack the machine has rather than by a byte in
+    // the bytecode. They are expected to move, and when they do the document
+    // has to move with them.
+    //
+    // They are separate because they cost different amounts of stack: nesting
+    // spends a parser frame per level and a chain spends none. Holding them to
+    // one number refused chains that 1.0 ran everywhere.
     let text = specification();
-    let limit = miruscriptx::parser::Parser::MAX_NESTING;
+    let nesting = miruscriptx::parser::Parser::MAX_NESTING;
     assert!(
-        text.contains(&format!("| Nesting in the source text | {limit} |")),
-        "section 9 does not quote the source nesting limit of {limit}"
+        text.contains(&format!("| Nesting in the source text | {nesting} |")),
+        "section 9 does not quote the source nesting limit of {nesting}"
+    );
+    let height = miruscriptx::parser::Parser::MAX_HEIGHT;
+    assert!(
+        text.contains(&format!("| Length of one expression | {height} |")),
+        "section 9 does not quote the expression length limit of {height}"
     );
 }
