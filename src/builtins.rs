@@ -51,6 +51,7 @@ pub fn register(globals: &mut Globals) {
     define_system(globals, "read_file", read_file);
     define_system(globals, "write_file", write_file);
     define_system(globals, "file_exists", file_exists);
+    define_system(globals, "args", args);
     define_host(globals, "map", map);
     define_host(globals, "filter", filter);
     define_host(globals, "reduce", reduce);
@@ -729,6 +730,24 @@ fn float(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
             .map_err(|_| format!("cannot convert \"{s}\" to a float")),
         other => Err(format!("float cannot convert a {}", other.type_name())),
     }
+}
+
+/// `args()` gives the arguments the program was given, as an array of strings.
+///
+/// The program's own path is not among them. It is not an argument to the
+/// program, and a caller that wants it already knows it.
+///
+/// Empty rather than an error where there is no command line, because a program
+/// that was given no arguments and a program that could not have been given any
+/// both have none, and the loop over them is the same either way.
+fn args(system: &mut dyn System, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("args", &args, 0)?;
+    let items = system
+        .arguments()
+        .into_iter()
+        .map(|arg| Value::Str(Rc::new(arg)))
+        .collect();
+    Ok(Value::array(items))
 }
 
 /// `read_file(path)` gives the whole file as a string.
@@ -1572,7 +1591,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 40] = [
+pub const BUILTIN_NAMES: [&str; 41] = [
     "print",
     "len",
     "push",
@@ -1610,6 +1629,7 @@ pub const BUILTIN_NAMES: [&str; 40] = [
     "read_file",
     "write_file",
     "file_exists",
+    "args",
     "map",
     "filter",
     "reduce",

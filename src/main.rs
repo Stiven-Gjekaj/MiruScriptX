@@ -95,7 +95,10 @@ fn dispatch() -> ExitCode {
 /// program is standing. Section 8 of the specification states both rules
 /// together, because meeting the second one by surprise is the way to be
 /// confused by it.
-struct RealSystem;
+struct RealSystem {
+    /// What the program was given, which is everything after its own path.
+    arguments: Vec<String>,
+}
 
 impl miruscriptx::value::System for RealSystem {
     fn read_file(&mut self, path: &str) -> Result<String, String> {
@@ -111,18 +114,20 @@ impl miruscriptx::value::System for RealSystem {
     }
 
     fn arguments(&self) -> Vec<String> {
-        Vec::new()
+        self.arguments.clone()
     }
 }
 
 fn eval_source(args: &[String]) -> ExitCode {
-    let source = match args {
-        [source] => source,
-        [] => return usage_error("the '-e' command needs a program"),
-        _ => return usage_error("the '-e' command takes a single program"),
+    let Some((source, rest)) = args.split_first() else {
+        return usage_error("the '-e' command needs a program");
     };
+    // As with `run`, everything after the program is the program's own.
+    let system = Box::new(RealSystem {
+        arguments: rest.to_vec(),
+    });
 
-    match miruscriptx::run_source(source, Box::new(std::io::stdout()), Box::new(RealSystem)) {
+    match miruscriptx::run_source(source, Box::new(std::io::stdout()), system) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("miru: {}", err.render(source));
@@ -132,8 +137,22 @@ fn eval_source(args: &[String]) -> ExitCode {
 }
 
 fn run_file(args: &[String]) -> ExitCode {
+    // Everything up to the file path belongs to `miru`. Everything after it
+    // belongs to the program, verbatim, including anything that looks like an
+    // option: `miru run tool.miru --verbose` gives `--verbose` to `tool.miru`.
+    // That is the usual convention, and without it a program could never be
+    // given a flag of its own.
+    //
+    // Refusing an unknown option is therefore only possible before the path is
+    // seen. After it there is nothing to refuse, because nothing after it is
+    // addressed to `miru`.
     let mut path: Option<&str> = None;
+    let mut arguments: Vec<String> = Vec::new();
     for arg in args {
+        if path.is_some() {
+            arguments.push(arg.clone());
+            continue;
+        }
         match arg.as_str() {
             // Accepted and ignored: v0.4 offered --vm to opt into the bytecode
             // engine, which is now the only one, so commands written then keep
@@ -142,12 +161,7 @@ fn run_file(args: &[String]) -> ExitCode {
             other if other.starts_with("--") => {
                 return usage_error(&format!("unknown option '{other}' for 'run'"));
             }
-            other => {
-                if path.is_some() {
-                    return usage_error("the 'run' command takes a single file path");
-                }
-                path = Some(other);
-            }
+            other => path = Some(other),
         }
     }
 
@@ -164,7 +178,7 @@ fn run_file(args: &[String]) -> ExitCode {
     };
 
     let out = Box::new(std::io::stdout());
-    let system = Box::new(RealSystem);
+    let system = Box::new(RealSystem { arguments });
     match miruscriptx::run_source_from(&source, Some(std::path::Path::new(path)), out, system) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {

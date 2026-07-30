@@ -669,3 +669,65 @@ fn reading_a_missing_file_is_a_catchable_error() {
     assert!(caught.status.success());
     assert_eq!(caught.stdout, b"true\n");
 }
+
+/// Everything after the file path belongs to the program.
+#[test]
+fn a_program_sees_the_arguments_it_was_given() {
+    let dir = scratch("args");
+    std::fs::write(
+        dir.join("tool.miru"),
+        "let a = args()\nprint(len(a))\nprint(join(a, \"|\"))\n",
+    )
+    .expect("writable");
+
+    let output = miru()
+        .arg("run")
+        .arg("tool.miru")
+        // The second of these looks like an option. It is not one: it is after
+        // the path, so it belongs to the program, and `miru` must not try to
+        // interpret it.
+        .args(["alpha", "--verbose", "beta"])
+        .current_dir(&dir)
+        .output()
+        .expect("failed to launch miru");
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr was: {err}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "3\nalpha|--verbose|beta\n"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_program_given_no_arguments_sees_an_empty_array() {
+    let output = run_eval("-e", "print(len(args()))");
+    assert!(output.status.success(), "stderr was {:?}", output.stderr);
+    assert_eq!(output.stdout, b"0\n");
+}
+
+#[test]
+fn the_eval_option_passes_its_trailing_arguments_to_the_program() {
+    let output = miru()
+        .arg("-e")
+        .arg("print(join(args(), \",\"))")
+        .args(["one", "two"])
+        .output()
+        .expect("failed to launch miru");
+    assert!(output.status.success(), "stderr was {:?}", output.stderr);
+    assert_eq!(output.stdout, b"one,two\n");
+}
+
+/// An option before the path is still `miru`'s, and an unknown one is refused.
+#[test]
+fn an_unknown_option_before_the_path_is_still_refused() {
+    let output = miru()
+        .arg("run")
+        .arg("--nonsense")
+        .arg("whatever.miru")
+        .output()
+        .expect("failed to launch miru");
+    assert!(!output.status.success());
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert!(err.contains("unknown option '--nonsense'"), "stderr: {err}");
+}
