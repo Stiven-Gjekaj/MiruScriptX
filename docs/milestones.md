@@ -422,6 +422,46 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.2: a script that behaves like a program
+
+Shipped. 1.1 gave the language files and a command line, which aims it at shell
+pipelines, and then it could not participate in one. A script that found a
+problem could print a complaint into the middle of the output its caller was
+parsing, or raise an error and say nothing else. It could signal failure one
+way: by failing.
+
+- **Two output streams and a chosen exit code.** `eprint` is `print` to the
+  diagnostic stream. `exit(n)` stops the program with a code from 0 to 255.
+  `try` cannot catch an `exit`, which makes two things it cannot catch.
+
+- **A map can lose a key.** `remove(m, k)` gives back the value the key held.
+  Assigning `nil` never removed one: the key stayed and `len` still counted it,
+  so a program that built a map could not filter one without rebuilding it.
+  Arrays had `pop` from v0.2 and maps had nothing for ten releases.
+
+- **Output is no longer lost when a program fails.** The error path returned
+  without flushing, so a program that printed and then failed lost what it had
+  printed. Found while adding `exit`, which always leaves as an error, but
+  reachable long before it.
+
+Three things worth carrying forward:
+
+- **A green test can be a stale test.** `tests/specification.rs` reported four
+  passes against a specification two edits out of date, and stayed green through
+  a `touch` of the source and a delete of the test binary. Only
+  `cargo clean -p` showed the two real failures. A stale pass and a true pass
+  look identical, and the whole gate rests on believing a green run.
+
+- **Count before correcting.** Three comments said "thirty-seven builtins". Two
+  were right and one was wrong, and all three were lined up to be "corrected" to
+  forty-four. There is no single number any more: 37 take a `BuiltinFn`, 41
+  reach the caught-error guard, 44 exist. A test holds all three now.
+
+- **Rebase merge orphans a stacked branch.** Merging the first two of five
+  chained pull requests rewrote their commits, so the remaining three carried
+  copies git treated as unrelated. No content conflicted, and the fix was
+  `git rebase --onto` with the old base named, but it cost a rebase per merge.
+
 ## 1.1: files, and closing the abort class
 
 Shipped. Not a milestone on the road above, which ended at 1.0. This is what a
