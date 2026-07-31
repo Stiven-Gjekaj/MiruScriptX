@@ -41,7 +41,7 @@ The rules in section 5 of the specification are stable. This includes:
 
 ### 2.3 The builtins
 
-All 42 builtins keep their names, their arguments, and their results. Section 8
+All 44 builtins keep their names, their arguments, and their results. Section 8
 of the specification lists them.
 
 Four of them need something from the host: `read_file`, `write_file`,
@@ -59,7 +59,13 @@ what one does.
 These commands and options keep their behaviour: `run`, `-e` and its long form
 `--eval`, `fmt`, `fmt -w`, `disasm`, `repl`, `--version`, and `--help`.
 
-There are two exit codes, `0` and `1`, and they keep their meanings.
+`0` and `1` keep their meanings. `0` means the program did all its work. `1`
+means an error stopped it.
+
+Since 1.2 a program can choose its own code with `exit`, from 0 to 255. This
+does not change what `0` and `1` mean, and it does not change what a program
+that never calls `exit` gives back. Before 1.2 those were the only two codes,
+because there was no way to ask for another.
 
 ### 2.5 The shape of an error
 
