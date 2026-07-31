@@ -8,6 +8,87 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## Unreleased
+
+### Added
+
+- **A map can lose a key.** `remove(m, k)` takes the key out and gives back the
+  value it held, or `nil` when the map had no such key.
+
+  This closes a hole rather than adding a convenience. A map could gain a key
+  and never lose one, and the natural guess failed quietly:
+
+  ```
+  let m = {"a": 1}
+  m["a"] = nil
+  print(len(m))        // 1, not 0
+  print(has(m, "a"))   // true
+  ```
+
+  Assigning `nil` stores `nil`; the key stays, `len` still counts it, and `keys`
+  still lists it. Arrays have had `pop` since v0.2 and maps had nothing, so a
+  program that built a map from a file could not filter one without rebuilding
+  it by hand.
+
+  An absent key gives `nil` rather than an error, which is how reading one
+  already behaves, so "remove it if it is there" is one call. The cost is that a
+  key holding `nil` and a key that is not there give the same answer; `has`
+  before the removal is what tells them apart, and section 8.6 of the
+  specification says so.
+
+- **A program can write to the error stream and choose its exit code.**
+  `eprint(...)` is `print` to the other stream. `exit(n)` stops the program with
+  a code from 0 to 255.
+
+  ```
+  fn check(n) {
+    if n < 0 {
+      eprint("n must not be negative")
+      exit(2)
+    }
+    return n
+  }
+  ```
+
+  Until now a script that found a problem could print a complaint into the
+  middle of the output its caller was parsing, or raise an error and say nothing
+  else. It could signal failure one way: by failing. For a language that gained
+  files and a command line in 1.1, that was the next thing to hit.
+
+  `eprint` is deliberately identical to `print` in every way except the stream,
+  so there is one rule rather than two.
+
+  **`try` cannot catch an `exit`.** The program has stopped, and catching one
+  would let it run on with a code its caller will be told about but which no
+  longer describes what happened. That makes two things `try` cannot catch,
+  beside the call depth limit. A refused code never stops anything, so
+  `try exit(999)` stays an ordinary catchable error.
+
+  0 to 255 because that is what a process may return. 256 is not a smaller
+  number to an operating system, it is zero, and a program reporting success
+  because it asked for 256 is the worst answer available.
+
+  Both work in the browser playground rather than refusing. A page has no
+  process to end, but it can report what a program asked for, which is an honest
+  answer unlike reading a file.
+
+### Fixed
+
+- **Output is no longer lost when a program fails.** `run_source_from` ended
+  with `?`, so the error path returned without flushing and a program that
+  printed and then failed lost what it had printed.
+
+  This is the same class 1.1 closed for an abort, still open on a different
+  path, and it was reachable long before this release. `exit` made it matter
+  more, since an exit always leaves the dispatch loop as an error.
+
+### Changed
+
+- Three comments quoting the number of builtins now say which builtins they
+  count. There is no longer a single such number: 37 take a `BuiltinFn`, 41
+  reach the caught-error guard, and 44 exist. A test holds all three, because
+  two correct comments were nearly "corrected" into wrong ones.
+
 ## 1.1.0 (2026-07-30)
 
 ### Added
