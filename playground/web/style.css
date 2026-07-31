@@ -225,6 +225,17 @@ select:disabled {
   color: var(--error);
 }
 
+/* What `eprint` wrote. Distinct from the result stream, because the whole
+   point of a second stream is that a reader can tell them apart, and distinct
+   from an error report, because the program chose to say this. */
+#output .diagnostics {
+  color: var(--error);
+}
+
+#output .exit {
+  color: var(--muted);
+}
+
 footer {
   max-width: 76rem;
   margin: 1.25rem auto 0;
