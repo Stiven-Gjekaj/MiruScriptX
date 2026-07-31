@@ -597,6 +597,10 @@ print(r.trace)     // ["in half, called from line 2"]
 `try` cannot catch the call depth limit. Section 9 gives the limit. Recursion
 that does not stop is a defect in the program, not a condition to handle.
 
+`try` cannot catch an `exit`. A program that calls `exit` has stopped, and a
+`try` that caught one would let the program continue with a result its host
+will never be told about.
+
 ---
 
 ## 7. Modules
@@ -669,7 +673,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 42 builtins. A program can use each of them without an import.
+There are 44 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -680,7 +684,21 @@ find out that it holds one.
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
 | `print(...)` | Any number | Writes the values, separated by a space, then a newline. Gives `nil`. |
+| `eprint(...)` | Any number | The same as `print`, to the diagnostic stream. Gives `nil`. |
+| `exit(n)` | 1 | Stops the program. The program gives `n` to the host. Does not give a value. |
 | `input()` | 0 or 1 | Reads one line. With an argument, writes the argument first. Gives a string, or `nil` at the end of the input. |
+
+A program has two streams of output. `print` writes to the result stream.
+`eprint` writes to the diagnostic stream. A host that has only one stream can
+send both to the same place. A host must not discard the diagnostic stream.
+
+`exit` stops the program immediately. `try` cannot catch an `exit`. Section 6.6
+gives the list of what `try` cannot catch.
+
+`n` must be an integer from 0 to 255. Section 9 gives this limit. A value
+outside the range, or a value that is not an integer, gives an error, and that
+error is an ordinary error which `try` can catch, because the program did not
+stop.
 
 ### 8.2 Files
 
@@ -807,6 +825,7 @@ limit below was reached by a test program.
 | Nesting for comparing and printing | 256 | `value is nested too deeply to compare` |
 | Nesting in the source text | 1000 | `the program is nested too deeply` |
 | Length of one expression | 10000 | `the expression is too long` |
+| Exit code | 0 to 255 | `exit code must be from 0 to 255 but got <n>` |
 
 The value stack has no limit. Only the call depth stops recursion.
 
