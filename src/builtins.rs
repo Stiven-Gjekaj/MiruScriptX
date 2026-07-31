@@ -24,6 +24,7 @@ pub fn register(globals: &mut Globals) {
     define(globals, "keys", keys);
     define(globals, "values", values);
     define(globals, "has", has);
+    define(globals, "remove", remove);
     define(globals, "upper", upper);
     define(globals, "lower", lower);
     define(globals, "trim", trim);
@@ -256,6 +257,52 @@ fn has(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resul
     match &args[0] {
         Value::Map(entries) => Ok(Value::Bool(entries.borrow().contains_key(&key))),
         other => Err(format!("has expects a map but got a {}", other.type_name())),
+    }
+}
+
+/// `remove(map, key)` takes the key out of the map and gives the value it held,
+/// or `nil` when the map held no such key.
+///
+/// This is the inverse of assignment, which a map had no way to undo. Setting a
+/// key to `nil` does not remove it: the key stays, `len` still counts it, and
+/// `keys` still lists it. Arrays have had `pop` since v0.2 and maps had
+/// nothing, so a program that built a map could not filter one without
+/// rebuilding it by hand.
+///
+/// **An absent key gives `nil` rather than an error**, which is how reading one
+/// already behaves: `m["absent"]` is `nil` and not a failure. That makes
+/// "remove it if it is there" one call instead of a `has` and then a `remove`,
+/// which is the shape most programs want.
+///
+/// The cost is real and is written down in the specification: a key holding
+/// `nil` and a key that is not there give the same answer. `has(map, key)`
+/// tells them apart, and it has to be asked before the removal rather than
+/// after.
+///
+/// The key is borrowed rather than copied into a `String`. `BTreeMap` keyed by
+/// `String` accepts a `&str` through `Borrow`, which is the same allocation
+/// v1.1 removed from reading a map.
+fn remove(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    check_arity("remove", &args, 2)?;
+    let key = match &args[1] {
+        Value::Str(s) => s.as_str(),
+        other => {
+            return Err(format!(
+                "remove expects a string key but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    match &args[0] {
+        Value::Map(entries) => Ok(entries.borrow_mut().remove(key).unwrap_or(Value::Nil)),
+        other => Err(format!(
+            "remove expects a map but got a {}",
+            other.type_name()
+        )),
     }
 }
 
@@ -1591,7 +1638,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 41] = [
+pub const BUILTIN_NAMES: [&str; 42] = [
     "print",
     "len",
     "push",
@@ -1602,6 +1649,7 @@ pub const BUILTIN_NAMES: [&str; 41] = [
     "keys",
     "values",
     "has",
+    "remove",
     "upper",
     "lower",
     "trim",

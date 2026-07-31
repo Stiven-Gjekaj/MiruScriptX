@@ -669,7 +669,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 41 builtins. A program can use each of them without an import.
+There are 42 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -745,6 +745,17 @@ honest answer to the question is then no. `try` catches the error.
 | `keys(m)` | 1 | An array of the keys, in sorted order. |
 | `values(m)` | 1 | An array of the values, in the order of the keys. |
 | `has(m, k)` | 2 | `true` if the map holds the key. |
+| `remove(m, k)` | 2 | Removes the key and gives the value it held, or `nil`. Changes `m`. |
+
+`remove` is the only way to take a key out of a map. An assignment of `nil`
+does not do it: `m["a"] = nil` keeps the key, `len` still counts it, and `keys`
+still gives it.
+
+A key that is not in the map is not an error. `remove` gives `nil`, the same
+answer that reading an absent key gives.
+
+> **Note.** A key that holds `nil` and a key that is not there both make
+> `remove` give `nil`. Use `has` before the removal to tell one from the other.
 
 ### 8.7 Numbers
 
