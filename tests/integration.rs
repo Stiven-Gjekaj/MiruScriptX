@@ -731,3 +731,69 @@ fn an_unknown_option_before_the_path_is_still_refused() {
     let err = String::from_utf8_lossy(&output.stderr);
     assert!(err.contains("unknown option '--nonsense'"), "stderr: {err}");
 }
+
+/// An exit code is a property of the process, so these need the real binary.
+/// `run_capture` cannot see one and neither can a golden test.
+#[test]
+fn exit_sets_the_process_exit_code() {
+    for code in [0, 1, 2, 42, 255] {
+        let output = run_eval("-e", &format!("exit({code})"));
+        assert_eq!(
+            output.status.code(),
+            Some(code),
+            "exit({code}) gave {:?}",
+            output.status
+        );
+    }
+}
+
+/// A program that never asks still ends with 0, and one that fails still ends
+/// with 1. Those two were the whole set before `exit` existed, and the
+/// guarantee says they keep their meanings.
+#[test]
+fn the_two_original_exit_codes_still_mean_what_they_meant() {
+    assert_eq!(run_eval("-e", "print(1)").status.code(), Some(0));
+    assert_eq!(run_eval("-e", "undefined_name").status.code(), Some(1));
+}
+
+/// Stopping must not throw away what the program already said.
+///
+/// An exit leaves the dispatch loop as an error, and the error path did not
+/// flush before this release, so a program that printed and then exited lost
+/// its output. That is the same defect 1.1 fixed for an abort.
+#[test]
+fn output_survives_an_exit() {
+    let output = run_eval("-e", "print(\"kept\")\nexit(3)");
+    assert_eq!(output.status.code(), Some(3));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "kept\n");
+}
+
+/// The two streams are two streams, checked where it actually matters: at the
+/// file descriptors a shell would redirect.
+#[test]
+fn eprint_goes_to_standard_error_and_print_to_standard_output() {
+    let output = run_eval("-e", "print(\"result\")\neprint(\"diagnostic\")");
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "result\n");
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "diagnostic\n");
+}
+
+/// `miru run` carries a code the same way `miru -e` does. Two entry points,
+/// one behaviour, and nothing in between them that could differ.
+#[test]
+fn a_file_carries_an_exit_code_too() {
+    let dir = std::env::temp_dir().join("miru-exit-code-test");
+    std::fs::create_dir_all(&dir).expect("a temporary directory");
+    let path = dir.join("stop.miru");
+    std::fs::write(&path, "print(\"working\")\nexit(9)\n").expect("write the program");
+
+    let output = miru()
+        .arg("run")
+        .arg(&path)
+        .output()
+        .expect("failed to launch miru");
+
+    assert_eq!(output.status.code(), Some(9));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "working\n");
+    std::fs::remove_dir_all(&dir).ok();
+}
