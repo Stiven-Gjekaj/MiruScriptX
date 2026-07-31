@@ -106,7 +106,9 @@ indistinguishable from an error. Ask with `is_error`.
 
 ## What try cannot catch
 
-One error refuses to become a value: exceeding the call depth limit.
+Two things refuse to become a value.
+
+**The call depth limit.**
 
 ```
 fn boom(n) { return boom(n + 1) }
@@ -119,6 +121,26 @@ error (line 1, column 21): call depth limit of 10000 exceeded
 
 Runaway recursion is a bug in the program rather than a condition to recover
 from, and a `try` that swallowed it would hide the only thing worth knowing.
+
+**A call to `exit`.**
+
+```
+let r = try exit(3)
+print("never reached", r)
+```
+
+The program stops with code 3 and the second line never runs. A program that
+calls `exit` has finished, and a `try` that caught one would let it carry on
+with a code its caller is going to be told about but that no longer describes
+what happened.
+
+A refused code is different. `exit(999)` never stops anything, because the code
+is out of range, so it stays an ordinary error that `try` catches like any
+other:
+
+```
+print(is_error(try exit(999)))   // true
+```
 
 ## How much try covers
 
