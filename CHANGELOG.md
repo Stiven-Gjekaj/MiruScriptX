@@ -8,7 +8,7 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
-## Unreleased
+## 1.2.0 (2026-07-31)
 
 ### Added
 
