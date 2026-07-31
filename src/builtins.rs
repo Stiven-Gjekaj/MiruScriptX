@@ -968,9 +968,15 @@ impl Args {
     ///
     /// This is the last per-element heap allocation left in the engine, and it
     /// only happens when a *builtin* is the callback, as in `map(xs, abs)`.
-    /// Removing it means changing [`BuiltinFn`] for all thirty-seven builtins,
-    /// several of which move values out of the vector they are handed, which is
-    /// a larger change than it looks and is left for later.
+    /// Removing it means changing [`BuiltinFn`] for the thirty-seven builtins
+    /// registered with `define`, several of which move values out of the vector
+    /// they are handed, which is a larger change than it looks and is left for
+    /// later.
+    ///
+    /// Thirty-seven is the count of `define` calls, not the count of builtins.
+    /// The two were the same figure until 1.1 and are not any more: there are
+    /// forty-four builtins, of which four take a `SystemFn` and three take a
+    /// `HostFn` and would not be touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
             Args::One(a) => vec![a],
@@ -1750,6 +1756,69 @@ mod count {
             "register defines {} builtins but the list names {}",
             globals.builtin_count(),
             BUILTIN_NAMES.len()
+        );
+    }
+
+    /// Hold the three kind counts to the numbers written in prose about them.
+    ///
+    /// There is no single "number of builtins" that every sentence means. A
+    /// claim about `BuiltinFn` counts the `define` calls, a claim about the
+    /// caught-error guard counts everything reaching `call_native`, and a claim
+    /// about the language counts all of them. Those were one figure until 1.1
+    /// and are three now.
+    ///
+    /// This was nearly the cause of real damage: two comments saying
+    /// "thirty-seven" were read as stale and lined up to be "corrected" to
+    /// forty-four, which would have made two right sentences wrong. Counting
+    /// first is what caught it, so the count is a test now.
+    ///
+    /// **When this fails, go and read the comments named below.** One of them
+    /// has just become false. Changing the number here without reading them is
+    /// how the drift gets back in.
+    #[test]
+    fn builtin_kind_counts_match_the_comments_that_quote_them() {
+        let mut globals = Globals::new();
+        register(&mut globals);
+
+        let (mut plain, mut system, mut host) = (0, 0, 0);
+        for slot in 0..globals.builtin_count() {
+            match globals.get(slot as u16) {
+                Some(Value::Builtin(builtin)) => match builtin.func {
+                    NativeFn::Plain(_) => plain += 1,
+                    NativeFn::System(_) => system += 1,
+                },
+                Some(Value::HostBuiltin(_)) => host += 1,
+                Some(other) => {
+                    panic!(
+                        "slot {slot} holds a {} rather than a builtin",
+                        other.type_name()
+                    )
+                }
+                None => panic!("slot {slot} is empty but is inside the builtin range"),
+            }
+        }
+
+        assert_eq!(
+            plain, 37,
+            "{plain} builtins take a BuiltinFn, not 37. Quoted by `Args::into_vec` \
+             above and by the trampoline section of docs/architecture.md."
+        );
+        assert_eq!(
+            plain + system,
+            41,
+            "{} builtins reach `call_native`, not 41. Quoted by the caught-error \
+             guard in `Vm::call_native`.",
+            plain + system
+        );
+        assert_eq!(
+            host, 3,
+            "{host} builtins are higher-order, not 3. Quoted by the same two \
+             places, which say the other seven take a different signature."
+        );
+        assert_eq!(
+            plain + system + host,
+            BUILTIN_NAMES.len(),
+            "the three kinds do not add up to the pinned list"
         );
     }
 }

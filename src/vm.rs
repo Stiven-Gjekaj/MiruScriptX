@@ -1041,9 +1041,23 @@ impl Vm {
         column: usize,
     ) -> Result<Value, MiruError> {
         // No builtin is handed a caught error, bar the few that exist to
-        // inspect one. Checking here covers all thirty-seven at once, and it is
-        // what stops `print(r)` from turning an error the program never dealt
-        // with into a line of output that looks deliberate.
+        // inspect one. It is what stops `print(r)` from turning an error the
+        // program never dealt with into a line of output that looks
+        // deliberate.
+        //
+        // Checking here covers forty-one at once: every builtin that arrives
+        // as a `Value::Builtin`, which is the plain ones and the system ones.
+        // It does not cover the three higher-order builtins, because those
+        // become tasks in `call_at_stack` and never reach this function.
+        //
+        // Those three are still safe, by a different route rather than by this
+        // one: a caught error is not an array and is not callable, so they
+        // refuse it when they check the types of their arguments. The message
+        // names the type instead of naming the unhandled error, which is worth
+        // knowing before assuming this guard is what stopped it.
+        //
+        // `builtin_kind_counts_match_the_comments_that_quote_them` in
+        // `src/builtins.rs` holds that number to the registrations.
         let inspects = match &callee {
             Value::Builtin(builtin) => crate::builtins::accepts_error(builtin.name),
             _ => false,
