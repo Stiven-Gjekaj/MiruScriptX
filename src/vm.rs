@@ -163,10 +163,23 @@ pub struct Vm {
     /// that slot leaves the stack.
     open_upvalues: Vec<(usize, Rc<RefCell<Upvalue>>)>,
     out: Box<dyn Write>,
+    /// Where diagnostics go. Standard error in the binary, a buffer in tests.
+    ///
+    /// A separate sink rather than a flag on `out`, because the point of the
+    /// stream is that a caller can redirect one and not the other. A test that
+    /// cannot tell them apart is not testing anything.
+    err: Box<dyn Write>,
     input: Box<dyn Input>,
     /// The host's file system and command line, if it has one. Absent unless
     /// the embedder supplies it, so nothing gains file access by accident.
     system: Box<dyn System>,
+    /// The code a program asked to stop with, once it has asked.
+    ///
+    /// `None` until something calls [`Output::request_exit`]. Whoever runs the
+    /// program reads this **before** reporting the error that unwound it,
+    /// because a program that ended on purpose has not failed and must not be
+    /// reported as though it had.
+    exit: Option<i32>,
     /// The position of the instruction being executed, so a builtin can report
     /// an error where the call to it happened.
     line: usize,
@@ -188,6 +201,14 @@ impl Output for Vm {
     fn write(&mut self, text: &str) {
         let _ = self.out.write_all(text.as_bytes());
     }
+
+    fn write_error(&mut self, text: &str) {
+        let _ = self.err.write_all(text.as_bytes());
+    }
+
+    fn request_exit(&mut self, code: i32) {
+        self.exit = Some(code);
+    }
 }
 
 impl Vm {
@@ -206,8 +227,10 @@ impl Vm {
             frames: Vec::new(),
             open_upvalues: Vec::new(),
             out,
+            err: Box::new(std::io::stderr()),
             input: Box::new(EmptyInput),
             system: Box::new(NoSystem),
+            exit: None,
             line: 0,
             column: 0,
             tasks: Vec::new(),
@@ -219,6 +242,24 @@ impl Vm {
     /// Replace the input source that `input()` reads from.
     pub fn set_input(&mut self, input: Box<dyn Input>) {
         self.input = input;
+    }
+
+    /// Replace the sink that diagnostics go to. Standard error by default.
+    ///
+    /// Separate from [`Vm::with_output`] because most callers want the default
+    /// and only a test that reads back what a program complained about needs to
+    /// change it.
+    pub fn set_error_output(&mut self, err: Box<dyn Write>) {
+        self.err = err;
+    }
+
+    /// The code the program asked to stop with, or `None` if it never asked.
+    ///
+    /// Read this before reporting the error that ended a run. An exit unwinds
+    /// by raising one, so a program that stopped on purpose looks exactly like
+    /// a program that failed until this is consulted.
+    pub fn exit_code(&self) -> Option<i32> {
+        self.exit
     }
 
     /// Give this VM a file system and a command line.
@@ -233,6 +274,7 @@ impl Vm {
     /// Flush any buffered output.
     pub fn flush(&mut self) {
         let _ = self.out.flush();
+        let _ = self.err.flush();
     }
 
     /// Compile a program and run it, returning the value of its final
@@ -1869,5 +1911,54 @@ mod tests {
         assert_eq!(error.line, 7);
         assert_eq!(error.column, 9);
         assert_eq!(error.message, "division by zero");
+    }
+
+    /// The two streams reach two different places.
+    ///
+    /// This is the whole reason `err` is a separate sink rather than a flag on
+    /// `out`. A single buffer holding both would pass any test that only checks
+    /// the text is somewhere, and would still be useless to a caller trying to
+    /// redirect one and keep the other.
+    #[test]
+    fn output_and_diagnostics_go_to_different_sinks() {
+        let out = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let err = Rc::new(RefCell::new(Vec::<u8>::new()));
+        let mut vm = Vm::with_output(Box::new(SharedSink(Rc::clone(&out))));
+        vm.set_error_output(Box::new(SharedSink(Rc::clone(&err))));
+
+        vm.write("to stdout\n");
+        vm.write_error("to stderr\n");
+        vm.flush();
+
+        assert_eq!(String::from_utf8_lossy(&out.borrow()), "to stdout\n");
+        assert_eq!(String::from_utf8_lossy(&err.borrow()), "to stderr\n");
+    }
+
+    /// Nothing has asked to exit until something asks.
+    #[test]
+    fn an_exit_code_is_absent_until_it_is_requested() {
+        let mut vm = Vm::new();
+        assert_eq!(vm.exit_code(), None);
+        vm.request_exit(3);
+        assert_eq!(vm.exit_code(), Some(3));
+        // The last request wins rather than the first, which is what a caller
+        // would expect if two ever raced. Nothing calls this twice today.
+        vm.request_exit(0);
+        assert_eq!(vm.exit_code(), Some(0));
+    }
+
+    /// A `Write` sink over a shared buffer, so a test can read back what the VM
+    /// sent to each stream.
+    struct SharedSink(Rc<RefCell<Vec<u8>>>);
+
+    impl Write for SharedSink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.borrow_mut().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
     }
 }
