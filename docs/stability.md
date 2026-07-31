@@ -41,7 +41,7 @@ The rules in section 5 of the specification are stable. This includes:
 
 ### 2.3 The builtins
 
-All 41 builtins keep their names, their arguments, and their results. Section 8
+All 42 builtins keep their names, their arguments, and their results. Section 8
 of the specification lists them.
 
 Four of them need something from the host: `read_file`, `write_file`,

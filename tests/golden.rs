@@ -750,6 +750,9 @@ fn builtins_and_their_errors() {
         ("values({\"b\": 2, \"a\": 1})", "ok [1, 2]"),
         ("has({\"a\": 1}, \"a\")", "ok true"),
         ("has({\"a\": 1}, \"z\")", "ok false"),
+        ("remove({\"a\": 1, \"b\": 2}, \"a\")", "ok 1"),
+        ("remove({\"a\": 1}, \"z\")", "ok nil"),
+        ("remove({}, \"a\")", "ok nil"),
         (
             "len(1)",
             "err len expects a string, array, or map but got a int @ 1:1",
@@ -767,6 +770,18 @@ fn builtins_and_their_errors() {
         (
             "has([], \"a\")",
             "err has expects a map but got a array @ 1:1",
+        ),
+        (
+            "remove([], \"a\")",
+            "err remove expects a map but got a array @ 1:1",
+        ),
+        (
+            "remove({\"a\": 1}, 1)",
+            "err remove expects a string key but got a int @ 1:1",
+        ),
+        (
+            "remove({\"a\": 1})",
+            "err remove expects 2 argument(s) but got 1 @ 1:1",
         ),
         (
             "push(5, 1)",
@@ -931,6 +946,56 @@ fn a_multi_line_function_body_parses_inside_a_call_or_an_array() {
         // A brace inside a brace inside a group: a map literal holding a
         // multi-line function, as a call argument.
         ("len({\"f\": fn() {\n  let a = 1\n  return a\n}})", "ok 1"),
+    ]);
+}
+
+/// `remove` is the inverse of assignment, which a map had no way to undo.
+///
+/// Setting a key to `nil` does not remove it. That is the defect this closes,
+/// and the first case pins it so nobody "simplifies" `remove` into an
+/// assignment later.
+#[test]
+fn remove_takes_a_key_out_of_a_map() {
+    check_all(&[
+        // The old way, which does not work: the key stays and still counts.
+        (
+            "let m = {\"a\": 1, \"b\": 2}\nm[\"a\"] = nil\n[len(m), has(m, \"a\"), keys(m)]",
+            "ok [2, true, [\"a\", \"b\"]]",
+        ),
+        // The new way.
+        (
+            "let m = {\"a\": 1, \"b\": 2}\nlet gone = remove(m, \"a\")\n[gone, len(m), has(m, \"a\"), keys(m)]",
+            "ok [1, 1, false, [\"b\"]]",
+        ),
+        // An absent key is not an error, so "remove it if it is there" is one
+        // call. This is the decision that cannot change without a 2.0.
+        (
+            "let m = {\"b\": 2}\n[remove(m, \"zz\"), len(m)]",
+            "ok [nil, 1]",
+        ),
+        // The cost of that decision, stated as a test rather than left to be
+        // discovered: a stored nil and an absent key give the same answer.
+        // `has` before the removal is what tells them apart.
+        (
+            "let m = {\"a\": nil}\nlet before = has(m, \"a\")\nlet got = remove(m, \"a\")\n[before, got, has(m, \"a\"), len(m)]",
+            "ok [true, nil, false, 0]",
+        ),
+        // A map is a reference, so a removal is seen through every name for it.
+        (
+            "let m = {\"a\": 1, \"b\": 2}\nlet same = m\nremove(m, \"a\")\n[len(same), keys(same)]",
+            "ok [1, [\"b\"]]",
+        ),
+        // Removing every key leaves a map that still works.
+        (
+            "let m = {\"a\": 1}\nremove(m, \"a\")\nm[\"c\"] = 3\n[len(m), m[\"c\"]]",
+            "ok [1, 3]",
+        ),
+        // The value comes back whole, not a copy: mutating it after removal is
+        // visible through the reference the caller kept.
+        (
+            "let m = {\"a\": [1, 2]}\nlet taken = remove(m, \"a\")\npush(taken, 3)\n[len(m), taken]",
+            "ok [0, [1, 2, 3]]",
+        ),
     ]);
 }
 
