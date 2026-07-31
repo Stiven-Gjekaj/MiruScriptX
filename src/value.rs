@@ -6,11 +6,36 @@ use std::rc::Rc;
 
 use crate::chunk::Chunk;
 
-/// A sink that side-effecting builtins such as `print` write to. The virtual
-/// machine implements this, so the very same builtins can target real stdout
-/// in the binary or an in-memory buffer in tests.
+/// What the host gives a program to speak through, and to stop with. The
+/// virtual machine implements this, so the very same builtins can target real
+/// streams in the binary or in-memory buffers in tests.
+///
+/// This is not [`System`]. `System` is the capability trait, absent by default,
+/// which is why `read_file` refuses in a browser. These three are never absent:
+/// every host can take a program's output, and every host can be told that a
+/// program has finished and with what result. A browser answers "this program
+/// ended with code 2" as honestly as a shell does.
+///
+/// Widening this trait rather than [`BuiltinFn`] is deliberate. A plain builtin
+/// already receives `&mut dyn Output`, so `eprint` and `exit` are ordinary
+/// builtins and the other forty are untouched.
 pub trait Output {
+    /// The program's result. `print` writes here.
     fn write(&mut self, text: &str);
+
+    /// The program's diagnostics. `eprint` writes here.
+    ///
+    /// A host with one stream may send these to the same place as
+    /// [`Output::write`]. What a host may not do is discard them.
+    fn write_error(&mut self, text: &str);
+
+    /// Record that the program asked to stop, and with what code.
+    ///
+    /// This only records. Stopping is the caller's business: the builtin that
+    /// calls this then returns an error to unwind, and that error has to be
+    /// fatal or a `try` will swallow the exit and let the program run on with a
+    /// code already set.
+    fn request_exit(&mut self, code: i32);
 }
 
 /// A source of input lines that builtins such as `input` read from. Like
