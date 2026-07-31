@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-352_passing-427819?style=for-the-badge" alt="352 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-363_passing-427819?style=for-the-badge" alt="363 tests passing"/>
 </p>
 
 <p align="center">
@@ -206,15 +206,15 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | ----- | ----- | ----- | -------------- |
 | **Lexer** | token.rs, lexer.rs | 975 | Source text to tokens, with line, column, and span tracking |
 | **Parser** | ast.rs, parser.rs | 1383 | Recursive descent plus a Pratt expression parser |
-| **Runtime model** | value.rs, ops.rs, builtins.rs | 2807 | Values, operator and indexing rules, the builtin library |
-| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 3990 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
+| **Runtime model** | value.rs, ops.rs, builtins.rs | 2928 | Values, operator and indexing rules, the builtin library |
+| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4002 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Formatter** | formatter.rs | 676 | Reprints a program in canonical form (`miru fmt`) |
-| **CLI and REPL** | main.rs, repl.rs | 432 | File runner, `fmt` and `disasm` commands, and the REPL |
-| **Library** | lib.rs | 672 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **15 files** | **10935** | Written from scratch in Rust |
+| **CLI and REPL** | main.rs, repl.rs | 436 | File runner, `fmt` and `disasm` commands, and the REPL |
+| **Library** | lib.rs | 729 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
+| **Total** | **15 files** | **11129** | Written from scratch in Rust |
 
-The playground is a separate crate: 474 lines of Rust binding the language to
-WebAssembly, and 567 of hand-written HTML, CSS, and JavaScript. It is counted
+The playground is a separate crate: 515 lines of Rust binding the language to
+WebAssembly, and 602 of hand-written HTML, CSS, and JavaScript. It is counted
 apart because it is not the language, and neither its code nor its dependencies
 are involved in running a `.miru` file.
 

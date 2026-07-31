@@ -949,6 +949,41 @@ fn a_multi_line_function_body_parses_inside_a_call_or_an_array() {
     ]);
 }
 
+/// `try` cannot catch an exit, and that is the whole correctness of `exit`.
+///
+/// An exit stops the program by raising an error, so without the fatal marking
+/// in `call_native` a `try` would turn it into a value and the program would
+/// carry on with an exit code already recorded. Its caller would then be told a
+/// result the program never reached, which is a lie no test of the exit code
+/// alone would catch.
+///
+/// The error surfaces here because `eval_source` has no exit code to consult.
+/// Through `miru run` the same program prints nothing and exits with the code;
+/// `tests/integration.rs` pins that half.
+#[test]
+fn an_exit_is_not_catchable() {
+    check_all(&[
+        // Caught, the value would be an error and the program would continue.
+        // Uncaught, it reaches the top as a failure.
+        ("try exit(4)", "err the program called exit @ 1:5"),
+        (
+            "let r = try exit(0)\nprint(r)",
+            "err the program called exit @ 1:13",
+        ),
+        // Inside a function inside a try, which is the shape that would most
+        // plausibly slip past a guard placed at only one depth.
+        (
+            "fn stop() {\n  exit(7)\n}\ntry stop()",
+            "err the program called exit @ 2:3",
+        ),
+        // A refused code never records one, so it stays an ordinary catchable
+        // error. This is the case that proves the guard keys on the recorded
+        // code and not on the name of the builtin.
+        ("is_error(try exit(999))", "ok true"),
+        ("is_error(try exit(\"x\"))", "ok true"),
+    ]);
+}
+
 /// `remove` is the inverse of assignment, which a map had no way to undo.
 ///
 /// Setting a key to `nil` does not remove it. That is the defect this closes,
