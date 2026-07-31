@@ -592,6 +592,40 @@ scores["ken"] = 12
 print(scores)   // {"ken": 12}
 ```
 
+## Removing
+
+Use `remove` to take a key out. It gives back the value that was there:
+
+```
+let scores = {"ken": 12, "mia": 9}
+print(remove(scores, "ken"))   // 12
+print(scores)                  // {"mia": 9}
+```
+
+Removing a key that is not there is not an error. You get `nil`:
+
+```
+print(remove(scores, "nobody"))   // nil
+```
+
+**Assigning `nil` does not remove a key.** It stores `nil` under it, and the key
+stays:
+
+```
+let m = {"a": 1}
+m["a"] = nil
+print(len(m))        // 1, not 0
+print(has(m, "a"))   // true
+print(keys(m))       // ["a"]
+```
+
+This is worth knowing because assigning `nil` is the natural guess and it fails
+quietly. Use `remove`.
+
+One consequence: since removing an absent key also gives `nil`, a key holding
+`nil` and a key that was never there give the same answer. Ask `has` before the
+removal if you need to tell them apart.
+
 ## Checking and counting
 
 Use `has` to test for a key and `len` for the number of entries:
@@ -737,6 +771,50 @@ Writes its arguments separated by single spaces, then a newline. Returns `nil`.
 print("x is", 10, "and done")   // x is 10 and done
 ```
 
+## eprint(...)
+
+The same as `print`, to the error stream instead of the output stream.
+
+```
+print("the result")             // the result
+eprint("something to note")     // something to note
+```
+
+Both appear on your screen, so the two look identical when you run a program
+yourself. They are different when somebody redirects one:
+
+```
+miru run report.miru > results.txt
+```
+
+`print` goes into the file. `eprint` still reaches the terminal. That is the
+point of having two: a program can say what it produced and separately say what
+went oddly, without the second landing in the middle of the first.
+
+## exit(code)
+
+Stops the program and gives the code to whoever ran it. `0` means everything
+worked and any other number means it did not. The code must be from 0 to 255.
+
+```
+fn check(n) {
+  if n < 0 {
+    eprint("n must not be negative")
+    exit(2)
+  }
+  return n
+}
+
+print(check(5))    // 5
+print(check(-1))   // stops here with code 2
+```
+
+A program that never calls `exit` gives `0` when it finishes and `1` if an error
+stopped it, which is what it always did.
+
+`try` cannot catch an `exit`. The program has stopped. See
+[Handling errors](#handling-errors).
+
 ## len(value)
 
 Returns the number of items in an array, or the number of characters in a
@@ -820,6 +898,22 @@ let m = {"a": 1}
 print(has(m, "a"))   // true
 print(has(m, "z"))   // false
 ```
+
+## remove(map, key)
+
+Takes the key out of the map and gives back the value it held. A key that is
+not there is not an error: you get `nil`.
+
+```
+let stock = {"apple": 3, "pear": 1}
+print(remove(stock, "pear"))   // 1
+print(stock)                   // {"apple": 3}
+print(remove(stock, "plum"))   // nil
+```
+
+Because an absent key gives `nil` too, a key holding `nil` and a key that was
+never there look the same afterwards. Ask with `has` first if you need to tell
+them apart.
 
 ## String functions
 
@@ -1331,7 +1425,9 @@ indistinguishable from an error. Ask with `is_error`.
 
 ## What try cannot catch
 
-One error refuses to become a value: exceeding the call depth limit.
+Two things refuse to become a value.
+
+**The call depth limit.**
 
 ```
 fn boom(n) { return boom(n + 1) }
@@ -1344,6 +1440,26 @@ error (line 1, column 21): call depth limit of 10000 exceeded
 
 Runaway recursion is a bug in the program rather than a condition to recover
 from, and a `try` that swallowed it would hide the only thing worth knowing.
+
+**A call to `exit`.**
+
+```
+let r = try exit(3)
+print("never reached", r)
+```
+
+The program stops with code 3 and the second line never runs. A program that
+calls `exit` has finished, and a `try` that caught one would let it carry on
+with a code its caller is going to be told about but that no longer describes
+what happened.
+
+A refused code is different. `exit(999)` never stops anything, because the code
+is out of range, so it stays an ordinary error that `try` catches like any
+other:
+
+```
+print(is_error(try exit(999)))   // true
+```
 
 ## How much try covers
 
@@ -1389,6 +1505,11 @@ system to give it: `import`, `read_file`, and `write_file` all report there
 rather than pretending. `file_exists` answers `false` and `args` gives an empty
 array, since those are the honest answers when there is no file system and no
 command line. `input` reads nothing, because there is no keyboard to read from.
+
+`eprint` and `exit` do work there. A page has no process to end, but it can say
+what a program asked for, so `eprint` output appears marked as its own stream
+and a non-zero code is reported under the output. That is an honest answer,
+unlike reading a file, where the honest answer is that it cannot.
 
 ## Practice
 

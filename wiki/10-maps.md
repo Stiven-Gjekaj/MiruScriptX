@@ -28,6 +28,40 @@ scores["ken"] = 12
 print(scores)   // {"ken": 12}
 ```
 
+## Removing
+
+Use `remove` to take a key out. It gives back the value that was there:
+
+```
+let scores = {"ken": 12, "mia": 9}
+print(remove(scores, "ken"))   // 12
+print(scores)                  // {"mia": 9}
+```
+
+Removing a key that is not there is not an error. You get `nil`:
+
+```
+print(remove(scores, "nobody"))   // nil
+```
+
+**Assigning `nil` does not remove a key.** It stores `nil` under it, and the key
+stays:
+
+```
+let m = {"a": 1}
+m["a"] = nil
+print(len(m))        // 1, not 0
+print(has(m, "a"))   // true
+print(keys(m))       // ["a"]
+```
+
+This is worth knowing because assigning `nil` is the natural guess and it fails
+quietly. Use `remove`.
+
+One consequence: since removing an absent key also gives `nil`, a key holding
+`nil` and a key that was never there give the same answer. Ask `has` before the
+removal if you need to tell them apart.
+
 ## Checking and counting
 
 Use `has` to test for a key and `len` for the number of entries:

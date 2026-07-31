@@ -79,6 +79,7 @@ for name in people {
 - Reading input with `input`
 - Reading and writing files, and reading the command line, with `read_file`,
   `write_file`, `file_exists`, and `args`
+- Two output streams, `print` and `eprint`, and an exit code chosen with `exit`
 - Arithmetic, comparison, and short-circuit logic
 
 </td>

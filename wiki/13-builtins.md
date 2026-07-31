@@ -11,6 +11,50 @@ Writes its arguments separated by single spaces, then a newline. Returns `nil`.
 print("x is", 10, "and done")   // x is 10 and done
 ```
 
+## eprint(...)
+
+The same as `print`, to the error stream instead of the output stream.
+
+```
+print("the result")             // the result
+eprint("something to note")     // something to note
+```
+
+Both appear on your screen, so the two look identical when you run a program
+yourself. They are different when somebody redirects one:
+
+```
+miru run report.miru > results.txt
+```
+
+`print` goes into the file. `eprint` still reaches the terminal. That is the
+point of having two: a program can say what it produced and separately say what
+went oddly, without the second landing in the middle of the first.
+
+## exit(code)
+
+Stops the program and gives the code to whoever ran it. `0` means everything
+worked and any other number means it did not. The code must be from 0 to 255.
+
+```
+fn check(n) {
+  if n < 0 {
+    eprint("n must not be negative")
+    exit(2)
+  }
+  return n
+}
+
+print(check(5))    // 5
+print(check(-1))   // stops here with code 2
+```
+
+A program that never calls `exit` gives `0` when it finishes and `1` if an error
+stopped it, which is what it always did.
+
+`try` cannot catch an `exit`. The program has stopped. See
+[Handling errors](16-handling-errors.md).
+
 ## len(value)
 
 Returns the number of items in an array, or the number of characters in a
@@ -94,6 +138,22 @@ let m = {"a": 1}
 print(has(m, "a"))   // true
 print(has(m, "z"))   // false
 ```
+
+## remove(map, key)
+
+Takes the key out of the map and gives back the value it held. A key that is
+not there is not an error: you get `nil`.
+
+```
+let stock = {"apple": 3, "pear": 1}
+print(remove(stock, "pear"))   // 1
+print(stock)                   // {"apple": 3}
+print(remove(stock, "plum"))   // nil
+```
+
+Because an absent key gives `nil` too, a key holding `nil` and a key that was
+never there look the same afterwards. Ask with `has` first if you need to tell
+them apart.
 
 ## String functions
 

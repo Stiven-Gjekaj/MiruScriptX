@@ -16,6 +16,11 @@ rather than pretending. `file_exists` answers `false` and `args` gives an empty
 array, since those are the honest answers when there is no file system and no
 command line. `input` reads nothing, because there is no keyboard to read from.
 
+`eprint` and `exit` do work there. A page has no process to end, but it can say
+what a program asked for, so `eprint` output appears marked as its own stream
+and a non-zero code is reported under the output. That is an honest answer,
+unlike reading a file, where the honest answer is that it cannot.
+
 ## Practice
 
 Try writing a few small programs:
