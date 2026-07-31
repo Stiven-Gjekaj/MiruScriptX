@@ -78,10 +78,34 @@ function syncScroll() {
   pre.scrollLeft = source.scrollLeft;
 }
 
-/** Show an outcome, marking failure so the styling can distinguish it. */
+/**
+ * Show an outcome, marking failure so the styling can distinguish it.
+ *
+ * A program has two streams and may stop with a code. `failed` means an error
+ * ended the run, not that the code was non-zero: a program that exits 2 has
+ * produced real output and should not be painted as a crash.
+ */
 function show(outcome) {
-  output.textContent = outcome.text;
+  output.textContent = "";
   output.classList.toggle("failed", !outcome.ok);
+
+  if (outcome.text) {
+    output.append(outcome.text);
+  }
+  const notes = outcome.diagnostics ?? "";
+  if (notes) {
+    const stream = document.createElement("span");
+    stream.className = "diagnostics";
+    stream.textContent = notes;
+    output.append(stream);
+  }
+  const code = outcome.exit_code ?? 0;
+  if (code !== 0) {
+    const note = document.createElement("span");
+    note.className = "exit";
+    note.textContent = `\nthe program stopped with code ${code}\n`;
+    output.append(note);
+  }
 }
 
 /** Run or disassemble the current program, depending on the visible tab. */

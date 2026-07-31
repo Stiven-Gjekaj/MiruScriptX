@@ -32,10 +32,18 @@ use wasm_bindgen::prelude::*;
 pub struct Outcome {
     ok: bool,
     text: String,
+    diagnostics: String,
+    code: i32,
 }
 
 #[wasm_bindgen]
 impl Outcome {
+    /// Whether the program ran without an error.
+    ///
+    /// **Not the same as "the exit code was zero."** A program that calls
+    /// `exit(2)` has run: it produced whatever it produced and then stopped on
+    /// purpose. Reporting that as a failure would style its output as a crash
+    /// report. Read `exit_code` for what the program said about itself.
     #[wasm_bindgen(getter)]
     pub fn ok(&self) -> bool {
         self.ok
@@ -45,17 +53,50 @@ impl Outcome {
     pub fn text(&self) -> String {
         self.text.clone()
     }
+
+    /// What `eprint` wrote. Empty unless the program complained about
+    /// something.
+    #[wasm_bindgen(getter)]
+    pub fn diagnostics(&self) -> String {
+        self.diagnostics.clone()
+    }
+
+    /// The code the program stopped with. Zero unless it called `exit`.
+    ///
+    /// A browser has no process to end, which is why this is reported rather
+    /// than acted on. That is still an honest answer to what the program asked
+    /// for, unlike reading a file, which the page genuinely cannot do.
+    #[wasm_bindgen(getter)]
+    pub fn exit_code(&self) -> i32 {
+        self.code
+    }
 }
 
 impl Outcome {
     fn succeeded(text: String) -> Outcome {
-        Outcome { ok: true, text }
+        Outcome {
+            ok: true,
+            text,
+            diagnostics: String::new(),
+            code: 0,
+        }
+    }
+
+    fn ran(captured: miruscriptx::Capture) -> Outcome {
+        Outcome {
+            ok: true,
+            text: captured.out,
+            diagnostics: captured.err,
+            code: captured.code,
+        }
     }
 
     fn failed(error: &MiruError, source: &str) -> Outcome {
         Outcome {
             ok: false,
             text: error.render(source),
+            diagnostics: String::new(),
+            code: 1,
         }
     }
 }
@@ -63,8 +104,8 @@ impl Outcome {
 /// Run a program and return everything it printed.
 #[wasm_bindgen]
 pub fn run(source: &str) -> Outcome {
-    match miruscriptx::run_capture(source) {
-        Ok(output) => Outcome::succeeded(output),
+    match miruscriptx::run_capture_all(source) {
+        Ok(captured) => Outcome::ran(captured),
         Err(error) => Outcome::failed(&error, source),
     }
 }
