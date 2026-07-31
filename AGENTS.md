@@ -28,6 +28,22 @@ sounded good at the time, and `main` was red for five runs. The library compiles
 for `wasm32-unknown-unknown`, where a pointer is four bytes rather than eight,
 and code that assumes otherwise builds fine natively.
 
+**A green test can be a stale test.** `tests/specification.rs` once reported
+four passes against a specification that was two edits out of date, and stayed
+green through a `touch` of the source and a delete of the test binary. Only
+`cargo clean -p miruscriptx` showed the two real failures.
+
+This matters more than an ordinary flake, because a stale pass and a true pass
+look exactly alike, and the whole gate is built on believing a green run. If a
+test passes when you have just made a change that should have broken it, that is
+the symptom. Clean the package and run it again before you conclude the change
+was fine.
+
+The general form is the habit at the bottom of this file: **when you add or
+change a test, break the thing it covers on purpose and watch it fail.** That
+catches a stale binary, a test that asserts nothing, and a test that asserts the
+wrong thing, all in one step and without needing to know which you have.
+
 ## Things that are generated or pinned
 
 - **`docs/language-reference.md` is generated.** Edit `wiki/*.md`, then run
