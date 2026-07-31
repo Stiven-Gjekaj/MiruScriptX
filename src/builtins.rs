@@ -15,6 +15,8 @@ use crate::value::{
 /// Register every builtin into a program's globals.
 pub fn register(globals: &mut Globals) {
     define(globals, "print", print);
+    define(globals, "eprint", eprint);
+    define(globals, "exit", exit);
     define(globals, "len", len);
     define(globals, "push", push);
     define(globals, "str", to_str);
@@ -115,6 +117,61 @@ fn print(out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resu
     out.write(&parts.join(" "));
     out.write("\n");
     Ok(Value::Nil)
+}
+
+/// `eprint(...)` is `print` to the diagnostic stream instead of the result
+/// stream.
+///
+/// Deliberately the same in every other way: same separator, same trailing
+/// newline, same acceptance of any number of arguments. A program that changes
+/// `print` to `eprint` should change where the text goes and nothing else, so
+/// there is one rule to learn rather than two.
+///
+/// This is what lets a script say something went wrong without putting it in
+/// the output a caller is parsing. Until now the choice was to print a
+/// complaint into the middle of the result, or to raise an error and say
+/// nothing else at all.
+fn eprint(out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
+    let parts: Vec<String> = args.iter().map(Value::display).collect();
+    out.write_error(&parts.join(" "));
+    out.write_error("\n");
+    Ok(Value::Nil)
+}
+
+/// `exit(code)` stops the program and gives the code to whoever ran it.
+///
+/// This only asks. Stopping is done by returning an error, which unwinds the
+/// way any other error does, and the virtual machine marks that error **fatal**
+/// once a code has been recorded so a `try` cannot swallow it. Without that a
+/// program would carry on running with an exit code already set, and the caller
+/// would be told a lie about a program that never stopped.
+///
+/// The message below is not normally seen: whoever runs the program reads the
+/// code first and reports nothing. It is written to be honest for the one case
+/// where it does surface, an embedder calling [`crate::vm::Vm::run`] directly
+/// and never asking for the code.
+///
+/// **0 through 255.** That is what a process may return on the platforms this
+/// runs on; 256 is not a smaller number than 255 to an operating system, it is
+/// zero, and a program silently reporting success because it asked for 256 is
+/// the worst answer available. So it is refused, and the range is in section 9
+/// of the specification with the other limits.
+fn exit(out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("exit", &args, 1)?;
+    let code = match &args[0] {
+        Value::Int(n) => *n,
+        other => {
+            return Err(format!(
+                "exit expects an int but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    if !(0..=255).contains(&code) {
+        return Err(format!("exit code must be from 0 to 255 but got {code}"));
+    }
+    out.request_exit(code as i32);
+    Err("the program called exit".to_string())
 }
 
 /// `len(value)` returns the length of a string, array, or map.
@@ -1285,6 +1342,68 @@ mod tests {
             .message
     }
 
+    /// `eprint` writes to the diagnostic stream and not to the result stream.
+    ///
+    /// Asserting on both is the point. A capture that merged them, or a builtin
+    /// that quietly called `write` instead of `write_error`, would pass a test
+    /// that only checked the text had appeared somewhere.
+    #[test]
+    fn eprint_writes_to_the_diagnostic_stream() {
+        let captured =
+            crate::run_capture_all("print(\"result\")\neprint(\"warning\")").expect("it runs");
+        assert_eq!(captured.out, "result\n");
+        assert_eq!(captured.err, "warning\n");
+        assert_eq!(captured.code, 0);
+    }
+
+    /// Whatever `print` does with its arguments, `eprint` does too. One rule.
+    #[test]
+    fn eprint_formats_exactly_as_print_does() {
+        for source in [
+            "eprint()",
+            "eprint(1)",
+            "eprint(1, \"a\", true, nil)",
+            "eprint([1, 2], {\"k\": 1})",
+        ] {
+            let printed = crate::run_capture_all(&source.replace("eprint", "print")).expect("runs");
+            let complained = crate::run_capture_all(source).expect("runs");
+            assert_eq!(
+                complained.err, printed.out,
+                "eprint and print disagree on {source}"
+            );
+        }
+    }
+
+    /// A program that stops on purpose keeps the output it already produced,
+    /// and reports the code rather than an error.
+    #[test]
+    fn exit_carries_a_code_and_keeps_what_was_printed() {
+        let captured =
+            crate::run_capture_all("print(\"done\")\neprint(\"why\")\nexit(2)").expect("it runs");
+        assert_eq!(captured.code, 2);
+        assert_eq!(captured.out, "done\n");
+        assert_eq!(captured.err, "why\n");
+    }
+
+    /// An ordinary end is code 0 without anybody asking.
+    #[test]
+    fn a_program_that_never_calls_exit_reports_zero() {
+        assert_eq!(crate::run_capture_all("print(1)").expect("runs").code, 0);
+    }
+
+    #[test]
+    fn exit_refuses_a_code_an_operating_system_cannot_carry() {
+        assert_eq!(
+            err("exit(256)"),
+            "exit code must be from 0 to 255 but got 256"
+        );
+        assert_eq!(
+            err("exit(-1)"),
+            "exit code must be from 0 to 255 but got -1"
+        );
+        assert_eq!(err("exit(1.5)"), "exit expects an int but got a float");
+    }
+
     #[test]
     fn upper_and_lower() {
         assert_eq!(out("print(upper(\"aBc\"), lower(\"aBc\"))"), "ABC abc\n");
@@ -1638,8 +1757,10 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 42] = [
+pub const BUILTIN_NAMES: [&str; 44] = [
     "print",
+    "eprint",
+    "exit",
     "len",
     "push",
     "str",

@@ -128,7 +128,11 @@ fn eval_source(args: &[String]) -> ExitCode {
     });
 
     match miruscriptx::run_source(source, Box::new(std::io::stdout()), system) {
-        Ok(()) => ExitCode::SUCCESS,
+        // `ExitCode` rather than `std::process::exit`, so the code still
+        // travels back through the join from the interpreter's own thread and
+        // every destructor on the way still runs. The cast is exact: `exit`
+        // refuses anything outside 0 through 255.
+        Ok(code) => ExitCode::from(code as u8),
         Err(err) => {
             eprintln!("miru: {}", err.render(source));
             ExitCode::FAILURE
@@ -180,7 +184,7 @@ fn run_file(args: &[String]) -> ExitCode {
     let out = Box::new(std::io::stdout());
     let system = Box::new(RealSystem { arguments });
     match miruscriptx::run_source_from(&source, Some(std::path::Path::new(path)), out, system) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => ExitCode::from(code as u8),
         Err(err) => {
             eprintln!("miru: {}", err.render(&source));
             ExitCode::FAILURE

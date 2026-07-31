@@ -1091,6 +1091,18 @@ impl Vm {
         };
         self.line = saved_line;
         self.column = saved_column;
+        // An error raised after the program asked to exit is the unwinding of
+        // that exit, and `try` must not catch it. The condition is the recorded
+        // code rather than the message, so this needs no agreement with what
+        // `exit` happens to say and cannot be defeated by a program raising the
+        // same words.
+        //
+        // Getting this wrong is silent rather than loud: the program keeps
+        // running with an exit code already set, and its caller is told a
+        // result the program never reached.
+        if self.exit.is_some() {
+            return result.map_err(MiruError::as_fatal);
+        }
         result
     }
 

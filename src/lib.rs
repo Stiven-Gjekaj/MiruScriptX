@@ -72,11 +72,15 @@ pub fn format_source(source: &str) -> Result<String, MiruError> {
 
 /// Lex, parse, compile, and run a source string, sending `print` output to
 /// `out` and reading `input()` from standard input.
+///
+/// Gives the code the program stopped with: `0` unless it called `exit`.
+/// Diagnostics go to standard error unless the caller redirects them with
+/// [`vm::Vm::set_error_output`].
 pub fn run_source(
     source: &str,
     out: Box<dyn Write>,
     system: Box<dyn value::System>,
-) -> Result<(), MiruError> {
+) -> Result<i32, MiruError> {
     run_source_from(source, None, out, system)
 }
 
@@ -96,14 +100,26 @@ pub fn run_source_from(
     path: Option<&std::path::Path>,
     out: Box<dyn Write>,
     system: Box<dyn value::System>,
-) -> Result<(), MiruError> {
+) -> Result<i32, MiruError> {
     let program = parse_program(source)?;
     let mut vm = vm::Vm::with_output(out);
     vm.set_input(Box::new(StdinInput));
     vm.set_system(system);
-    vm.run_from(&program, path)?;
+    let result = vm.run_from(&program, path);
+    // Flushed on both arms, not only on success. A program that failed still
+    // printed whatever it printed before it failed, and this used to drop that
+    // because the run was followed by `?`. An exit makes it matter more, since
+    // an exit leaves the loop as an error and would otherwise lose the output
+    // it was reporting.
     vm.flush();
-    Ok(())
+    match (result, vm.exit_code()) {
+        // A program that asked to stop has not failed, whatever error carried
+        // it out of the dispatch loop. The code is read before the error, or a
+        // plain `exit(0)` would be reported as a failure.
+        (_, Some(code)) => Ok(code),
+        (Ok(_), None) => Ok(0),
+        (Err(error), None) => Err(error),
+    }
 }
 
 /// An interactive session: a virtual machine whose globals persist from one
@@ -157,22 +173,63 @@ impl Session {
     }
 }
 
+/// Everything a captured run produced.
+///
+/// Separate fields rather than one string, because the whole reason a program
+/// has two streams is that they can be told apart. A capture that merged them
+/// would make a test of `eprint` pass whether or not the builtin worked.
+pub struct Capture {
+    /// What `print` wrote.
+    pub out: String,
+    /// What `eprint` wrote.
+    pub err: String,
+    /// What the program stopped with: `0` unless it called `exit`.
+    pub code: i32,
+}
+
 /// Run a source string and capture everything it printed. Handy for tests and
 /// tooling that needs the output as a string rather than on a stream.
+///
+/// Gives standard output only. Use [`run_capture_all`] for the diagnostics and
+/// the exit code as well. This spelling is kept because most callers want the
+/// one string, and changing it would have churned every one of them for the
+/// benefit of two.
 pub fn run_capture(source: &str) -> Result<String, MiruError> {
     run_capture_with_input(source, &[])
 }
 
 /// Like [`run_capture`], but feeds the given lines to `input()` in order.
 pub fn run_capture_with_input(source: &str, input: &[&str]) -> Result<String, MiruError> {
+    run_capture_all_with_input(source, input).map(|captured| captured.out)
+}
+
+/// Run a source string and capture both streams and the exit code.
+pub fn run_capture_all(source: &str) -> Result<Capture, MiruError> {
+    run_capture_all_with_input(source, &[])
+}
+
+/// Like [`run_capture_all`], but feeds the given lines to `input()` in order.
+pub fn run_capture_all_with_input(source: &str, input: &[&str]) -> Result<Capture, MiruError> {
     let program = parse_program(source)?;
-    let buffer = Rc::new(RefCell::new(Vec::<u8>::new()));
-    let mut vm = vm::Vm::with_output(Box::new(SharedBuffer(Rc::clone(&buffer))));
+    let out = Rc::new(RefCell::new(Vec::<u8>::new()));
+    let err = Rc::new(RefCell::new(Vec::<u8>::new()));
+    let mut vm = vm::Vm::with_output(Box::new(SharedBuffer(Rc::clone(&out))));
+    vm.set_error_output(Box::new(SharedBuffer(Rc::clone(&err))));
     vm.set_input(Box::new(ScriptedInput::new(input)));
-    vm.run(&program)?;
+    let result = vm.run(&program);
+    // Flushed before either arm returns, and the code read before the error is
+    // reported, for the same reasons as `run_source_from`.
     vm.flush();
-    let bytes = buffer.borrow();
-    Ok(String::from_utf8_lossy(bytes.as_slice()).into_owned())
+    let captured = |code: i32| Capture {
+        out: String::from_utf8_lossy(out.borrow().as_slice()).into_owned(),
+        err: String::from_utf8_lossy(err.borrow().as_slice()).into_owned(),
+        code,
+    };
+    match (result, vm.exit_code()) {
+        (_, Some(code)) => Ok(captured(code)),
+        (Ok(_), None) => Ok(captured(0)),
+        (Err(error), None) => Err(error),
+    }
 }
 
 /// A `Write` sink backed by a shared byte buffer, used by [`run_capture`].
