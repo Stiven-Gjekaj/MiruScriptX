@@ -172,6 +172,7 @@ Runnable programs live in [examples/](examples):
 | [fib.miru](examples/fib.miru) | Recursion |
 | [fizzbuzz.miru](examples/fizzbuzz.miru) | Control flow and the modulo operator |
 | [contacts.miru](examples/contacts.miru) | Maps, lookups, and iteration |
+| [greeter.miru](examples/greeter.miru) | Reading a line with `input`, and handling the end of it |
 | [transform.miru](examples/transform.miru) | Higher-order functions: map, filter, reduce |
 | [shop.miru](examples/shop.miru) + [prices.miru](examples/prices.miru) | Two files: `import`, and names that belong to a file |
 | [recover.miru](examples/recover.miru) | `try`: surviving an error instead of stopping at it |
