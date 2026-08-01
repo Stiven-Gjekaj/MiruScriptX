@@ -930,6 +930,31 @@ mod tests {
     }
 
     #[test]
+    fn a_unicode_escape_takes_at_most_six_digits() {
+        // Six is the width of the largest character, so nothing is lost, and a
+        // seventh digit is refused before it is added rather than after. That
+        // is what keeps the accumulator inside a u32 with ordinary arithmetic:
+        // without the bound, `"\u{FFFFFFFFFFFF}"` overflows it.
+        assert_eq!(string("\"\\u{000041}\""), "A");
+        let too_many = format!("\"\\u{{{}}}\"", "0".repeat(MAX_UNICODE_ESCAPE_DIGITS + 1));
+        assert_eq!(
+            error(&too_many),
+            format!(
+                "escape sequence '\\u{{...}}' takes at most \
+                 {MAX_UNICODE_ESCAPE_DIGITS} hexadecimal digits"
+            )
+        );
+        assert_eq!(
+            error("\"\\u{FFFFFFFFFFFF}\""),
+            "escape sequence '\\u{...}' takes at most 6 hexadecimal digits"
+        );
+
+        // The two bounds are separate. Six digits is a bound on the source, and
+        // a value that fits in six digits still has to be a character.
+        assert_eq!(error("\"\\u{FFFFFF}\""), "'\\u{FFFFFF}' is not a character");
+    }
+
+    #[test]
     fn skips_line_comments() {
         assert_eq!(
             kinds("1 // this is ignored\n2"),
