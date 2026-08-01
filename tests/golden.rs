@@ -1513,6 +1513,39 @@ fn a_value_that_contains_itself_is_survivable() {
 }
 
 #[test]
+fn a_misspelled_name_is_offered_the_one_it_is_nearest() {
+    // The unit tests for the rule use three or four candidates. These run it
+    // against the real table, where every one of the 44 builtins is a
+    // candidate, which is the only place a threshold that is too generous
+    // shows itself.
+    check_all(&[
+        // The example the issue was opened with.
+        (
+            "prnt(\"abc\")",
+            "err undefined variable 'prnt'. Did you mean 'print'? @ 1:1",
+        ),
+        // A swap of two letters, which plain Levenshtein charges two edits for
+        // and this length allows only one of.
+        (
+            "pirnt(\"abc\")",
+            "err undefined variable 'pirnt'. Did you mean 'print'? @ 1:1",
+        ),
+        // Case is not part of the comparison.
+        (
+            "LEN(\"abc\")",
+            "err undefined variable 'LEN'. Did you mean 'len'? @ 1:1",
+        ),
+        // Nothing is near this, and guessing anyway would send the reader off
+        // before they had started looking.
+        ("xyzzy", "err undefined variable 'xyzzy' @ 1:1"),
+        // Three edits from `len`, because the builtin is not called `length`.
+        // Declining is the right answer, and it is the case the threshold was
+        // checked against before it was kept.
+        ("lenght(\"abc\")", "err undefined variable 'lenght' @ 1:1"),
+    ]);
+}
+
+#[test]
 fn assignment_never_introduces_a_name() {
     check_all(&[
         // One rule for both: `let` introduces a name, assignment does not.
