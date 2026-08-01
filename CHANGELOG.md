@@ -8,6 +8,46 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## Unreleased
+
+### Changed
+
+- **An error suggests the name you meant.** Four messages now offer the nearest
+  name back when a program misspells one:
+
+  ```
+  $ miru -e 'prnt("abc")'
+  miru: error (line 1, column 1): undefined variable 'prnt'. Did you mean 'print'?
+      prnt("abc")
+      ^^^^
+  ```
+
+  The other three are `cannot assign to undefined variable`, `no field`, and
+  `an error has no field`. Each searches a different set: the names in scope,
+  that map's own keys, and the five fields of an error.
+
+  At most one name, and only when it is close. A message that guesses wildly is
+  worse than one that does not guess, so `xyzzy` gets nothing, and neither does
+  `lenght`, which is three edits from `len` because the builtin is not called
+  `length`.
+
+  The distance counts a swap of two neighbouring letters as one edit rather
+  than two. Plain Levenshtein was measured against the real builtin list first
+  and had nothing to say about `pirnt`, `puhs`, `tpye`, `kesy`, `exti`,
+  `spilt`, or `jion`, which are the most ordinary typing mistakes there are.
+  Against the five field names of an error it was worse than silent: it
+  answered `flie` with `line` where counting the swap gives `file`.
+
+  Assigning to a builtin gets no suggestion. `print = 1` is refused because
+  assignment does not introduce a name, not because `print` is misspelled, and
+  `eprint` is one edit away.
+
+  Section 3.1 of the stability guarantee is what permits this: the shape of an
+  error report is fixed and the words are not. The suggestion is part of the
+  message rather than a new line in the report.
+
+  Closes #11.
+
 ## 1.2.0 (2026-07-31)
 
 ### Added
