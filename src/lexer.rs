@@ -635,6 +635,33 @@ mod tests {
     }
 
     #[test]
+    fn a_unicode_escape_keeps_its_source_width_in_its_span() {
+        // The widest gap there is between what a token says and what it came
+        // from. The literal below is eleven source characters, its value is one
+        // character, and that character is four bytes. A span taken from the
+        // value would colour ten characters of whatever follows.
+        let source = "let e = \"\\u{1F600}\"";
+        let (tokens, spans) = Lexer::tokenize_with_spans(source).expect("lexes");
+        assert_eq!(tokens.len(), spans.tokens.len());
+        let text: Vec<String> = spans.tokens.iter().map(|s| slice(source, *s)).collect();
+        assert!(text.contains(&"\"\\u{1F600}\"".to_string()), "{text:?}");
+    }
+
+    #[test]
+    fn spans_stay_aligned_after_a_character_outside_the_basic_plane() {
+        // `Spans` says a consumer counting UTF-16 units has to iterate code
+        // points instead. An emoji is where that bites, being one char here,
+        // four bytes, and two UTF-16 units, and `\u{...}` is what makes one
+        // easy to put in a file.
+        let source = "// \u{1F600}\nlet x = 1";
+        let (_, spans) = Lexer::tokenize_with_spans(source).expect("lexes");
+        let text: Vec<String> = spans.tokens.iter().map(|s| slice(source, *s)).collect();
+        assert!(text.contains(&"let".to_string()), "{text:?}");
+        assert!(text.contains(&"x".to_string()), "{text:?}");
+        assert_eq!(slice(source, spans.comments[0]), "// \u{1F600}");
+    }
+
+    #[test]
     fn every_span_slices_back_to_something_and_none_overlap() {
         let source = "fn f(a) {\n  // add one\n  return a + 1\n}\nf(2)\n";
         let (tokens, spans) = Lexer::tokenize_with_spans(source).expect("lexes");
