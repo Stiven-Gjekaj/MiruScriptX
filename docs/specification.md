@@ -480,6 +480,16 @@ A `let` statement makes a name. An assignment does not make a name. An
 assignment to a name that no `let` made gives the error `cannot assign to
 undefined variable '<name>'`.
 
+If a name that the program can use is near to the name that was written, the
+message adds `Did you mean '<name>'?`. Near means a small number of changes to
+letters: an addition, a removal, a replacement, or a swap of two letters that
+touch. Upper case and lower case are the same for this comparison. The message
+gives one name, or no name.
+
+The number of changes that is permitted can change in a later 1.x release, and
+so can the words of the message. Section 3.1 of the
+[stability guarantee](stability.md) gives the rule.
+
 A `let` at the top level can use the name of a builtin. The file then has its
 own name, and every other file keeps the builtin.
 
@@ -583,7 +593,8 @@ the same as an error if an error were false.
 | `trace` | `array` | The calls, as strings |
 
 A name that is not one of these five gives the error `an error has no field
-'<name>'`.
+'<name>'`. If one of the five is near to the name that was written, the message
+adds `Did you mean '<name>'?`. Section 5.8 gives the rule.
 
 ```
 fn half(n) { return n / 0 }
