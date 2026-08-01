@@ -907,6 +907,29 @@ mod tests {
     }
 
     #[test]
+    fn a_unicode_escape_needs_its_braces_and_hexadecimal_digits() {
+        // The braces are not decoration. Without them the escape would have to
+        // guess where the digits stop, and `"\u41z"` would be a question with
+        // no right answer.
+        assert_eq!(error("\"\\u41\""), "escape sequence '\\u' needs a '{'");
+        assert_eq!(
+            error("\"\\u{4G}\""),
+            "escape sequence '\\u{...}' takes hexadecimal digits, found 'G'"
+        );
+        assert_eq!(
+            error("\"\\u{4 1}\""),
+            "escape sequence '\\u{...}' takes hexadecimal digits, found ' '"
+        );
+        // A digit that is not ASCII is not a digit here. Devanagari four reads
+        // as a four and does not convert, which is what `to_digit` already
+        // decides, so this pins the decision rather than adding one.
+        assert_eq!(
+            error("\"\\u{\u{096a}}\""),
+            "escape sequence '\\u{...}' takes hexadecimal digits, found '\u{096a}'"
+        );
+    }
+
+    #[test]
     fn skips_line_comments() {
         assert_eq!(
             kinds("1 // this is ignored\n2"),
