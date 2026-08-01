@@ -442,6 +442,55 @@ fn fmt_write_rewrites_the_file_and_is_idempotent() {
 }
 
 #[test]
+fn a_program_that_holds_a_unicode_escape_runs_and_formats() {
+    // The whole path for `\u{...}`, end to end: it runs, it formats, and what
+    // it prints is the same before and after. The escape is a way to write a
+    // character, so formatting writes the character and the spelling is not
+    // what survives. The value is.
+    let path = std::env::temp_dir().join("miru_integration_unicode.miru");
+    std::fs::write(&path, "let e = \"\\u{1F600}\"\nprint(e)\nprint(len(e))\n").expect("write");
+
+    let before = miru().arg("run").arg(&path).output().expect("runs");
+    assert!(before.status.success());
+    assert_eq!(
+        String::from_utf8(before.stdout).expect("utf-8"),
+        "\u{1F600}\n1\n"
+    );
+
+    let first = miru()
+        .arg("fmt")
+        .arg("-w")
+        .arg(&path)
+        .output()
+        .expect("runs");
+    assert!(first.status.success());
+    let after_first = std::fs::read_to_string(&path).expect("read back");
+    assert!(
+        after_first.contains("let e = \"\u{1F600}\""),
+        "file was: {after_first}"
+    );
+
+    // Formatting again changes nothing, and running the formatted file prints
+    // what the original printed.
+    let second = miru()
+        .arg("fmt")
+        .arg("-w")
+        .arg(&path)
+        .output()
+        .expect("runs");
+    assert!(second.status.success());
+    assert_eq!(after_first, std::fs::read_to_string(&path).expect("read"));
+
+    let after = miru().arg("run").arg(&path).output().expect("runs");
+    let _ = std::fs::remove_file(&path);
+    assert!(after.status.success());
+    assert_eq!(
+        String::from_utf8(after.stdout).expect("utf-8"),
+        "\u{1F600}\n1\n"
+    );
+}
+
+#[test]
 fn fmt_reports_a_syntax_error_and_fails() {
     let path = std::env::temp_dir().join("miru_integration_fmt_bad.miru");
     std::fs::write(&path, "let = 1\n").expect("write temp file");
