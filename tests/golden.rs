@@ -1513,9 +1513,19 @@ fn assignment_never_introduces_a_name() {
         // Until v1.0 assigning to a builtin's name succeeded and wrote over it
         // for every module in the program, while assigning to any other
         // undeclared name was already this error.
+        //
+        // No suggestion here, and that is the point of this case now as well:
+        // `print` is spelled correctly, and `eprint` is one edit away, so a
+        // message that guessed would answer a question nobody asked.
         (
             "print = 1",
             "err cannot assign to undefined variable 'print' @ 1:1",
+        ),
+        // A misspelled target is the other half. The name is genuinely not
+        // there, so the near one is worth offering.
+        (
+            "let total = 1\ntotl = 2",
+            "err cannot assign to undefined variable 'totl'. Did you mean 'total'? @ 2:1",
         ),
         ("x = 1", "err cannot assign to undefined variable 'x' @ 1:1"),
         // Declaring it first makes it the module's own name, and a name the

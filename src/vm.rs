@@ -657,11 +657,21 @@ impl Vm {
                         let value = self.pop();
                         if !self.globals.assign(slot, value) {
                             let name = self.globals.name(slot);
-                            return Err(runtime_error(
-                                chunk,
-                                op_ip,
-                                format!("cannot assign to undefined variable '{name}'"),
-                            ));
+                            let refusal = format!("cannot assign to undefined variable '{name}'");
+                            // A builtin's slot refuses as well, and there the
+                            // name is spelled correctly and is right there. A
+                            // suggestion would answer a question nobody asked,
+                            // and `eprint` is one edit from `print`.
+                            let message = if self.globals.is_builtin_slot(slot) {
+                                refusal
+                            } else {
+                                with_suggestion(
+                                    refusal,
+                                    name,
+                                    self.globals.names_visible_from(slot),
+                                )
+                            };
+                            return Err(runtime_error(chunk, op_ip, message));
                         }
                     }
                     OpCode::Jump => {
