@@ -691,6 +691,13 @@ mod tests {
         }
     }
 
+    /// The message a source that does not lex reports.
+    fn error(source: &str) -> String {
+        Lexer::tokenize(source)
+            .expect_err("source should not tokenize")
+            .message
+    }
+
     #[test]
     fn tokenizes_integers_and_floats() {
         assert_eq!(
@@ -843,6 +850,18 @@ mod tests {
     #[test]
     fn a_unicode_escape_sits_beside_the_older_escapes() {
         assert_eq!(string("\"a\\n\\u{42}\\tc\""), "a\nB\tc");
+    }
+
+    #[test]
+    fn a_unicode_escape_with_no_digits_is_refused() {
+        // Empty braces are the one malformed escape that has a plausible
+        // reading: zero digits could mean the value zero. It does not, because
+        // then `\u{}` and `\u{0}` would be two spellings of one character and
+        // the first would look like a mistake either way.
+        assert_eq!(
+            error("\"\\u{}\""),
+            "escape sequence '\\u{}' needs at least one hexadecimal digit"
+        );
     }
 
     #[test]
