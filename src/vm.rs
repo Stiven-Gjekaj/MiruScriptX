@@ -21,6 +21,7 @@ use crate::ast::{BinaryOp, UnaryOp};
 use crate::builtins::{Args, HostTask, Step};
 use crate::chunk::{Chunk, OpCode};
 use crate::globals::{Globals, ModuleId, ROOT_MODULE};
+use crate::suggest::with_suggestion;
 use crate::value::{
     Closure, CompiledFunction, EmptyInput, Input, NativeFn, NoSystem, Output, System, Upvalue,
     Value,
@@ -641,11 +642,12 @@ impl Vm {
                             Some(value) => self.stack.push(value.clone()),
                             None => {
                                 let name = self.globals.name(slot);
-                                return Err(runtime_error(
-                                    chunk,
-                                    op_ip,
+                                let message = with_suggestion(
                                     format!("undefined variable '{name}'"),
-                                ));
+                                    name,
+                                    self.globals.names_visible_from(slot),
+                                );
+                                return Err(runtime_error(chunk, op_ip, message));
                             }
                         }
                     }

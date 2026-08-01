@@ -187,7 +187,7 @@ fn errors_underline_the_token_they_blame() {
     check_rendered(&[
         (
             "let total = 1\nprint(totl)",
-            "error (line 2, column 7): undefined variable 'totl'\n    print(totl)\n          ^^^^",
+            "error (line 2, column 7): undefined variable 'totl'. Did you mean 'total'?\n    print(totl)\n          ^^^^",
         ),
         (
             "user_count = 1",
