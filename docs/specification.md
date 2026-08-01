@@ -157,7 +157,7 @@ A string literal cannot contain a newline character. A string literal that
 reaches the end of a line, or the end of the source, gives the error
 `unterminated string literal`.
 
-These six escape sequences are permitted:
+These seven escape sequences are permitted:
 
 | Escape | Character |
 | ------ | --------- |
@@ -167,9 +167,33 @@ These six escape sequences are permitted:
 | `\\` | Backslash |
 | `\"` | Quotation mark |
 | `\0` | Null |
+| `\u{...}` | The character with the given value |
+
+In `\u{...}`, the `...` is one to six hexadecimal digits. The digits can be
+upper case or lower case. The digits give the value of one character.
+
+The largest character is `10FFFF`. The values from `D800` to `DFFF` are not
+characters. A value that is not a character is an error.
+
+`"\u{41}"` is the same as `"A"`. `"\u{1F600}"` is one character, and `len` of
+it is 1, because `len` counts characters.
+
+These are the errors:
+
+| Source | Error |
+| ------ | ----- |
+| `"\u41"` | `escape sequence '\u' needs a '{'` |
+| `"\u{}"` | `escape sequence '\u{}' needs at least one hexadecimal digit` |
+| `"\u{4G}"` | `escape sequence '\u{...}' takes hexadecimal digits, found 'G'` |
+| `"\u{0000041}"` | `escape sequence '\u{...}' takes at most 6 hexadecimal digits` |
+| `"\u{41"` | `escape sequence '\u{...}' needs a '}'` |
+| `"\u{D800}"` | `'\u{D800}' is not a character` |
+
+An escape sequence that reaches the end of a line, or the end of the source,
+gives the error `unterminated string literal`.
 
 Another escape sequence gives the error `unknown escape sequence '\<c>'`. There
-is no `\u` escape and no `\x` escape.
+is no `\x` escape.
 
 ### 2.9 Operators and punctuation
 
@@ -836,6 +860,7 @@ limit below was reached by a test program.
 | Nesting for comparing and printing | 256 | `value is nested too deeply to compare` |
 | Nesting in the source text | 1000 | `the program is nested too deeply` |
 | Length of one expression | 10000 | `the expression is too long` |
+| Hexadecimal digits in `\u{...}` | 6 | `escape sequence '\u{...}' takes at most 6 hexadecimal digits` |
 | Exit code | 0 to 255 | `exit code must be from 0 to 255 but got <n>` |
 
 The value stack has no limit. Only the call depth stops recursion.
