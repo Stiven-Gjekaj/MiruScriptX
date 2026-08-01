@@ -29,6 +29,14 @@ the difference.
 Every program that parses with 1.0 parses with each later 1.x, and has the same
 meaning. Sections 2 and 3 of the specification define this.
 
+A later 1.x can add syntax. From the release that adds it, the new syntax has
+the same promise as the rest: a later 1.x cannot remove it, and cannot change
+what it means. This is the rule section 2.3 states for a builtin.
+
+1.3 is the first release to use this. It adds the `\u{...}` escape sequence in
+a string literal. No 1.0 program changes meaning, because `\u` was an error
+before.
+
 ### 2.2 Semantics
 
 The rules in section 5 of the specification are stable. This includes:
