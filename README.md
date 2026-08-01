@@ -209,12 +209,12 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | **Lexer** | token.rs, lexer.rs | 975 | Source text to tokens, with line, column, and span tracking |
 | **Parser** | ast.rs, parser.rs | 1383 | Recursive descent plus a Pratt expression parser |
 | **Runtime model** | value.rs, ops.rs, builtins.rs | 2997 | Values, operator and indexing rules, the builtin library |
-| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4107 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
+| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4116 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Diagnostics** | suggest.rs | 220 | Chooses the name an error offers back when a program misspells one |
 | **Formatter** | formatter.rs | 676 | Reprints a program in canonical form (`miru fmt`) |
 | **CLI and REPL** | main.rs, repl.rs | 436 | File runner, `fmt` and `disasm` commands, and the REPL |
 | **Library** | lib.rs | 730 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **16 files** | **11524** | Written from scratch in Rust |
+| **Total** | **16 files** | **11533** | Written from scratch in Rust |
 
 The playground is a separate crate: 515 lines of Rust binding the language to
 WebAssembly, and 602 of hand-written HTML, CSS, and JavaScript. It is counted

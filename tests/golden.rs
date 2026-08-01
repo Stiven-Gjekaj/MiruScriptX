@@ -1044,7 +1044,13 @@ fn a_field_reads_a_map_entry_and_insists_it_exists() {
         // The difference from indexing, in one program: a missing key reads as
         // nil, a missing field does not get that far.
         ("let m = {\"a\": 1}\nm[\"nope\"]", "ok nil"),
+        // The candidates are that map's own keys, so a near one is offered and
+        // a name nowhere near any of them is not.
         ("let m = {\"a\": 1}\nm.nope", "err no field 'nope' @ 2:3"),
+        (
+            "let m = {\"name\": 1}\nm.nmae",
+            "err no field 'nmae'. Did you mean 'name'? @ 2:3",
+        ),
         // The target is blamed when it has no fields at all, so the two errors
         // point at different halves of the same expression.
         (
@@ -1065,7 +1071,7 @@ fn a_missing_field_underlines_the_name() {
     check_rendered(&[
         (
             "let cfg = {\"timeout\": 30}\ncfg.tiemout",
-            "error (line 2, column 5): no field 'tiemout'\n    cfg.tiemout\n        ^^^^^^^",
+            "error (line 2, column 5): no field 'tiemout'. Did you mean 'timeout'?\n    cfg.tiemout\n        ^^^^^^^",
         ),
         (
             "let n = 5\nn.field",
