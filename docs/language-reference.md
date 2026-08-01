@@ -311,6 +311,23 @@ Text in double quotes. Strings support escape sequences such as `\n` (newline),
 print("line one\nline two")
 ```
 
+For a character you cannot type, write `\u{...}` with its value in hexadecimal:
+
+```
+print("\u{41}")       // A
+print("\u{1F600}")    // an emoji
+print(len("\u{1F600}"))   // 1, because len counts characters
+```
+
+One to six digits, in either case. The value has to be a real character: the
+largest is `10FFFF`, and `D800` to `DFFF` are reserved and are not characters,
+so an escape naming one of those is an error rather than a stray value in your
+string.
+
+Note that `miru fmt` writes the character rather than the escape you typed, in
+the same way it writes `1.5` for `1.50`. What a string holds is characters, and
+`\u{...}` is one way to write them down.
+
 Join strings with `+`:
 
 ```
