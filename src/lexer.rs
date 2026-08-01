@@ -865,6 +865,23 @@ mod tests {
     }
 
     #[test]
+    fn a_unicode_escape_whose_value_is_not_a_character_is_refused() {
+        // Two different reasons and one code path. `char::from_u32` refuses a
+        // value above the largest character, and it refuses a surrogate, which
+        // is not a character either. Neither is checked here, so both report
+        // the same way.
+        assert_eq!(error("\"\\u{110000}\""), "'\\u{110000}' is not a character");
+        assert_eq!(error("\"\\u{D800}\""), "'\\u{D800}' is not a character");
+        assert_eq!(error("\"\\u{DFFF}\""), "'\\u{DFFF}' is not a character");
+
+        // Both boundaries, from the accepted side. Without these the refusals
+        // above would still pass if the escape refused far too much.
+        assert_eq!(string("\"\\u{10FFFF}\"").chars().count(), 1);
+        assert_eq!(string("\"\\u{D7FF}\"").chars().count(), 1);
+        assert_eq!(string("\"\\u{E000}\"").chars().count(), 1);
+    }
+
+    #[test]
     fn skips_line_comments() {
         assert_eq!(
             kinds("1 // this is ignored\n2"),
