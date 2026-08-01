@@ -506,8 +506,14 @@ impl Lexer {
         self.advance(); // consume 'u'
         let fail = |message: String| MiruError::with_column(line, column, message);
 
-        if !self.match_char('{') {
-            return Err(fail("escape sequence '\\u' needs a '{'".to_string()));
+        match self.peek() {
+            // The string ran out before the escape even opened. What is wrong
+            // is the string, not the escape, so it reports as the string.
+            None | Some('\n') => return Err(fail("unterminated string literal".to_string())),
+            Some('{') => {
+                self.advance();
+            }
+            Some(_) => return Err(fail("escape sequence '\\u' needs a '{'".to_string())),
         }
 
         let mut value: u32 = 0;
@@ -879,6 +885,25 @@ mod tests {
         assert_eq!(string("\"\\u{10FFFF}\"").chars().count(), 1);
         assert_eq!(string("\"\\u{D7FF}\"").chars().count(), 1);
         assert_eq!(string("\"\\u{E000}\"").chars().count(), 1);
+    }
+
+    #[test]
+    fn a_unicode_escape_that_does_not_end_is_refused_rather_than_panicking() {
+        // What this test is for is the panic that is not there. Every source
+        // below runs off the end of something while the escape is open, which
+        // is where a reader that indexes ahead without looking first falls
+        // over.
+        assert_eq!(error("\"\\u{41"), "unterminated string literal");
+        assert_eq!(error("\"\\u{"), "unterminated string literal");
+        assert_eq!(error("\"\\u"), "unterminated string literal");
+        assert_eq!(error("\"\\u{41\nx\""), "unterminated string literal");
+
+        // Here the source is not short of anything: the string closes while
+        // the escape is still open, so the string is not what is wrong.
+        assert_eq!(
+            error("\"\\u{41\""),
+            "escape sequence '\\u{...}' needs a '}'"
+        );
     }
 
     #[test]
