@@ -727,6 +727,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_character_that_is_not_ascii_prints_as_itself() {
+        // A string inside an array is shown with quotation marks and escapes,
+        // and the escapes are the five `escape_string` writes. An emoji is not
+        // one of them and comes out whole, which is what `print` already does
+        // with the same string on its own.
+        let emoji = Value::Str(Rc::new("\u{1F600}".to_string()));
+        assert_eq!(emoji.display(), "\u{1F600}");
+        assert_eq!(emoji.repr(), "\"\u{1F600}\"");
+        assert_eq!(Value::array(vec![emoji.clone()]).repr(), "[\"\u{1F600}\"]");
+        // A key is escaped by the same function, so it answers the same way.
+        assert_eq!(
+            map(&[("\u{1F600}", Value::Int(1))]).repr(),
+            "{\"\u{1F600}\": 1}"
+        );
+    }
+
     fn map(pairs: &[(&str, Value)]) -> Value {
         let mut entries = BTreeMap::new();
         for (key, value) in pairs {

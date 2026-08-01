@@ -491,6 +491,24 @@ mod tests {
     }
 
     #[test]
+    fn a_character_that_is_not_ascii_is_written_as_itself() {
+        // `\u{...}` is a way to write a character, not a second kind of string.
+        // A token carries its value and not the text it came from, so the
+        // formatter has nothing to write the escape back from, and writes the
+        // character. What has to survive is the value, and it does.
+        assert_eq!(fmt("let e = \"\\u{1F600}\"\n"), "let e = \"\u{1F600}\"\n");
+
+        // The result formats to itself, so `miru fmt` is still a fixed point on
+        // its own output. This is the same normalizing the formatter already
+        // does to a number, where `1.50` comes back as `1.5`.
+        let once = fmt("let e = \"\\u{1F600}\"\n");
+        assert_eq!(fmt(&once), once);
+
+        // The escapes the formatter does write are unaffected.
+        assert_eq!(fmt("let s = \"a\\nb\"\n"), "let s = \"a\\nb\"\n");
+    }
+
+    #[test]
     fn prints_arithmetic_with_minimal_parentheses() {
         assert_eq!(fmt("1 + 2 * 3"), "1 + 2 * 3\n");
         assert_eq!(fmt("(1 + 2) * 3"), "(1 + 2) * 3\n");
