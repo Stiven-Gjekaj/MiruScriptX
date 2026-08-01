@@ -192,6 +192,47 @@ impl Globals {
         self.builtins.contains_key(name) || self.modules[ROOT_MODULE].contains_key(name)
     }
 
+    /// Whether a slot belongs to a builtin.
+    ///
+    /// [`Globals::assign`] refuses two different things the same way, and this
+    /// tells them apart. A caller that wants to explain the refusal needs to
+    /// know which: an empty slot is a name nothing declared, where a
+    /// misspelling is likely, and a builtin's slot is a name that is present
+    /// and spelled correctly.
+    pub fn is_builtin_slot(&self, slot: u16) -> bool {
+        self.builtin_slots[slot as usize]
+    }
+
+    /// The names a program can use where `slot` was resolved: the builtins, and
+    /// the names of the module that slot belongs to.
+    ///
+    /// A slot rather than a [`ModuleId`], because the virtual machine holds
+    /// slots and does not track which module it is running. Finding the module
+    /// is a scan of the name maps, which is affordable because the only caller
+    /// is an error that has already stopped the program. A builtin's slot is in
+    /// no module's map, and falls back to the root, which is the right answer
+    /// for the single-file program that is the only way to reach that case.
+    ///
+    /// A name whose slot holds no value is left out. The compiler makes a slot
+    /// as soon as a program mentions a name, so a program with two misspellings
+    /// has slots for both, and offering one undefined name as the answer to
+    /// another helps nobody.
+    pub fn names_visible_from(&self, slot: u16) -> Vec<&str> {
+        let module = self
+            .modules
+            .iter()
+            .position(|names| names.values().any(|owned| *owned == slot))
+            .unwrap_or(ROOT_MODULE);
+        let mut names: Vec<&str> = self.builtins.keys().map(String::as_str).collect();
+        names.extend(
+            self.modules[module]
+                .iter()
+                .filter(|(_, slot)| self.values[**slot as usize].is_some())
+                .map(|(name, _)| name.as_str()),
+        );
+        names
+    }
+
     /// A module's top-level names and their values.
     ///
     /// Everything the module defined is visible to whoever imports it. A name
@@ -283,6 +324,44 @@ mod tests {
         // Asking does not invent a slot, which is what separates this from
         // slot_for.
         assert!(!globals.contains("definitely_not_a_builtin"));
+    }
+
+    #[test]
+    fn the_visible_names_are_the_builtins_and_the_slots_own_module() {
+        let mut globals = Globals::new();
+        crate::builtins::register(&mut globals);
+        let other = globals.new_module();
+
+        let mine = globals.slot_for(ROOT_MODULE, "total").expect("a slot");
+        globals.define(mine, Value::Int(1));
+        let theirs = globals.slot_for(other, "secret").expect("a slot");
+        globals.define(theirs, Value::Int(2));
+
+        let visible = globals.names_visible_from(mine);
+        assert!(visible.contains(&"print"), "{visible:?}");
+        assert!(visible.contains(&"total"), "{visible:?}");
+        // A name belonging to another module is not in scope here, so it must
+        // not be offered as though it were.
+        assert!(!visible.contains(&"secret"), "{visible:?}");
+        assert!(globals.names_visible_from(theirs).contains(&"secret"));
+
+        // A name that was mentioned and never defined has a slot and no value.
+        // It is no use as an answer, because it is undefined itself.
+        let mentioned = globals.slot_for(ROOT_MODULE, "typo").expect("a slot");
+        assert!(!globals.names_visible_from(mentioned).contains(&"typo"));
+    }
+
+    #[test]
+    fn a_builtin_slot_is_distinguishable_from_an_empty_one() {
+        // `assign` refuses both, and the two refusals have different causes.
+        let mut globals = Globals::new();
+        crate::builtins::register(&mut globals);
+        let builtin = globals.slot_for(ROOT_MODULE, "print").expect("a slot");
+        let empty = globals.slot_for(ROOT_MODULE, "x").expect("a slot");
+        assert!(!globals.assign(builtin, Value::Int(1)));
+        assert!(!globals.assign(empty, Value::Int(1)));
+        assert!(globals.is_builtin_slot(builtin));
+        assert!(!globals.is_builtin_slot(empty));
     }
 
     #[test]
