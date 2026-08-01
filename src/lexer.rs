@@ -12,6 +12,13 @@ use crate::formatter::{Comment, Trivia};
 use crate::token::{Token, TokenKind};
 use crate::MiruError;
 
+/// The largest number of hexadecimal digits a `\u{...}` escape takes.
+///
+/// Six is enough for every character, because the largest one is `10FFFF`. It
+/// is also what lets `read_unicode_escape` accumulate with ordinary
+/// arithmetic: six hexadecimal digits cannot overflow a `u32`.
+const MAX_UNICODE_ESCAPE_DIGITS: usize = 6;
+
 /// Where each token and comment sits in the source, in **char** offsets.
 ///
 /// Char offsets rather than byte offsets, because that is the lexer's own model
@@ -453,6 +460,13 @@ impl Lexer {
                         Some('\\') => value.push('\\'),
                         Some('"') => value.push('"'),
                         Some('0') => value.push('\0'),
+                        // Each escape above is one character, which the advance
+                        // below steps over. This one is not, and consumes its
+                        // own text, so it goes straight back round the loop.
+                        Some('u') => {
+                            value.push(self.read_unicode_escape(line, column)?);
+                            continue;
+                        }
                         Some(other) => {
                             return Err(MiruError::with_column(
                                 line,
@@ -477,6 +491,71 @@ impl Lexer {
             }
         }
         Ok(Token::new(TokenKind::Str(value), line, column))
+    }
+
+    /// Read a `\u{...}` escape, with the position on the `u`, and give back the
+    /// character it names.
+    ///
+    /// `char::from_u32` decides what is a character. It refuses a value above
+    /// `10FFFF`, and it refuses a surrogate, which together are the whole rule.
+    /// So no range is checked here.
+    ///
+    /// The line and the column are those of the opening quotation mark, which
+    /// is where every other error in `read_string` is reported.
+    fn read_unicode_escape(&mut self, line: usize, column: usize) -> Result<char, MiruError> {
+        self.advance(); // consume 'u'
+        let fail = |message: String| MiruError::with_column(line, column, message);
+
+        if !self.match_char('{') {
+            return Err(fail("escape sequence '\\u' needs a '{'".to_string()));
+        }
+
+        let mut value: u32 = 0;
+        let mut digits = String::new();
+        loop {
+            match self.peek() {
+                // The string itself ran out before the escape did. That is the
+                // error the rest of `read_string` already reports here.
+                None | Some('\n') => {
+                    return Err(fail("unterminated string literal".to_string()));
+                }
+                // The string is closed, so the source is complete but the
+                // escape is not.
+                Some('"') => {
+                    return Err(fail("escape sequence '\\u{...}' needs a '}'".to_string()));
+                }
+                Some('}') => {
+                    self.advance();
+                    break;
+                }
+                Some(c) => match c.to_digit(16) {
+                    None => {
+                        return Err(fail(format!(
+                            "escape sequence '\\u{{...}}' takes hexadecimal digits, found '{c}'"
+                        )));
+                    }
+                    Some(digit) => {
+                        if digits.len() == MAX_UNICODE_ESCAPE_DIGITS {
+                            return Err(fail(format!(
+                                "escape sequence '\\u{{...}}' takes at most \
+                                 {MAX_UNICODE_ESCAPE_DIGITS} hexadecimal digits"
+                            )));
+                        }
+                        value = value * 16 + digit;
+                        digits.push(c);
+                        self.advance();
+                    }
+                },
+            }
+        }
+
+        if digits.is_empty() {
+            return Err(fail(
+                "escape sequence '\\u{}' needs at least one hexadecimal digit".to_string(),
+            ));
+        }
+
+        char::from_u32(value).ok_or_else(|| fail(format!("'\\u{{{digits}}}' is not a character")))
     }
 
     fn peek(&self) -> Option<char> {
@@ -604,6 +683,14 @@ mod tests {
             .collect()
     }
 
+    /// The value of a source that is one string literal.
+    fn string(source: &str) -> String {
+        match &kinds(source)[0] {
+            TokenKind::Str(value) => value.clone(),
+            other => panic!("expected a string token, got {other:?}"),
+        }
+    }
+
     #[test]
     fn tokenizes_integers_and_floats() {
         assert_eq!(
@@ -724,6 +811,38 @@ mod tests {
             kinds("\"a\\nb\\t\\\"c\""),
             vec![TokenKind::Str("a\nb\t\"c".to_string()), TokenKind::Eof]
         );
+    }
+
+    #[test]
+    fn a_unicode_escape_names_a_character_by_its_value() {
+        assert_eq!(string("\"\\u{41}\""), "A");
+        assert_eq!(string("\"\\u{1F600}\""), "\u{1F600}");
+        // Either case of digit gives the same character.
+        assert_eq!(string("\"\\u{1f600}\""), string("\"\\u{1F600}\""));
+    }
+
+    #[test]
+    fn a_unicode_escape_holds_one_character_however_wide_it_is() {
+        // This is what lets the escape stop at the lexer. The emoji below is
+        // ten source characters, four bytes, and one character, and every
+        // builtin that measures a string counts characters.
+        let value = string("\"\\u{1F600}\"");
+        assert_eq!(value.chars().count(), 1);
+        assert_eq!(value.len(), 4);
+    }
+
+    #[test]
+    fn a_unicode_escape_reaches_both_ends_of_the_range() {
+        assert_eq!(string("\"\\u{0}\""), "\0");
+        assert_eq!(string("\"\\u{10FFFF}\""), "\u{10ffff}");
+        // A leading zero is a digit like any other, up to the six the escape
+        // takes.
+        assert_eq!(string("\"\\u{000041}\""), "A");
+    }
+
+    #[test]
+    fn a_unicode_escape_sits_beside_the_older_escapes() {
+        assert_eq!(string("\"a\\n\\u{42}\\tc\""), "a\nB\tc");
     }
 
     #[test]
