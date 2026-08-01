@@ -10,6 +10,31 @@ semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- **A string can name a character by its value.** `\u{...}` takes one to six
+  hexadecimal digits and gives the character with that value, beside the six
+  escapes that were already there.
+
+  ```
+  print("\u{41}")           // A
+  print("\u{1F600}")        // an emoji
+  print(len("\u{1F600}"))   // 1, because len counts characters
+  ```
+
+  Nothing below the lexer changed. Strings were already UTF-8 and every builtin
+  that measures a string already counted characters, so the escape is a way to
+  write a character down and not a new kind of value. `miru fmt` writes the
+  character rather than the escape, in the same way it writes `1.5` for `1.50`.
+
+  A value that is not a character is refused, which covers a value above
+  `10FFFF` and a surrogate from `D800` to `DFFF`. Six digits is the limit on
+  the source text, and it is what keeps the escape from running past the end of
+  a `u32` while it reads: without it, `"\u{FFFFFFFFFFFF}"` stopped the process
+  in a debug build and would have given some other character in a release one.
+
+  Closes #3.
+
 ### Changed
 
 - **An error suggests the name you meant.** Four messages now offer the nearest
