@@ -1491,6 +1491,13 @@ fn field_get(
     }
 }
 
+/// The fields an error has, in the order the specification lists them.
+///
+/// Named here so a message can offer one back. The match below is still what
+/// reads them, and `an_error_answers_for_every_field_this_list_names` holds the
+/// two together.
+const ERROR_FIELDS: [&str; 5] = ["message", "line", "column", "file", "trace"];
+
 /// Read one of an error's fields.
 ///
 /// A closed set rather than a map, so a misspelling fails the way `m.nope`
@@ -1530,11 +1537,12 @@ fn error_field(
             Value::array(entries)
         }
         other => {
-            return Err(runtime_error(
-                chunk,
-                access_ip,
+            let message = with_suggestion(
                 format!("an error has no field '{other}'"),
-            ))
+                other,
+                ERROR_FIELDS,
+            );
+            return Err(runtime_error(chunk, access_ip, message));
         }
     };
     Ok(value)
@@ -1740,6 +1748,22 @@ mod tests {
     }
 
     #[test]
+    fn an_error_answers_for_every_field_this_list_names() {
+        // `ERROR_FIELDS` is what a message offers back, and the match in
+        // `error_field` is what actually reads one. Nothing makes them agree,
+        // so a field added to one and not the other would suggest a name that
+        // then fails, or fail on a name it never offers.
+        for field in ERROR_FIELDS {
+            run(|chunk| {
+                constant(chunk, caught_error());
+                get_field(chunk, field);
+            })
+            .unwrap_or_else(|error| panic!("'{field}' is listed but not read: {}", error.message));
+        }
+        assert_eq!(ERROR_FIELDS.len(), 5, "the guarantee promises five fields");
+    }
+
+    #[test]
     fn an_error_answers_for_its_own_fields_and_nothing_else() {
         // Reading is not using. A program has to be able to ask what went
         // wrong, so this is the one door the guard leaves open, and it opens
@@ -1761,7 +1785,10 @@ mod tests {
         })
         .err()
         .expect("an unknown field must be refused");
-        assert_eq!(error.message, "an error has no field 'mesage'");
+        assert_eq!(
+            error.message,
+            "an error has no field 'mesage'. Did you mean 'message'?"
+        );
 
         // Indexing is not reading a field, and stays refused: `r["message"]`
         // would answer nil for a name that is not there, which is the whole
