@@ -1464,11 +1464,20 @@ fn field_get(
         }
     };
     match target {
-        Value::Map(entries) => entries
-            .borrow()
-            .get(key.as_str())
-            .cloned()
-            .ok_or_else(|| runtime_error(chunk, access_ip, format!("no field '{key}'"))),
+        Value::Map(entries) => {
+            let entries = entries.borrow();
+            match entries.get(key.as_str()) {
+                Some(value) => Ok(value.clone()),
+                None => {
+                    let message = with_suggestion(
+                        format!("no field '{key}'"),
+                        key,
+                        entries.keys().map(String::as_str),
+                    );
+                    Err(runtime_error(chunk, access_ip, message))
+                }
+            }
+        }
         // The one thing a program may do with an error besides ask its type.
         // Reading is not using: it is how a program decides what to do, so it
         // has to be allowed or the guard would forbid the very thing it exists
