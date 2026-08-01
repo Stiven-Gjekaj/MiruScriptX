@@ -422,6 +422,48 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.3: characters you cannot type, and errors that help
+
+Shipped. Two changes, both about the person at the keyboard rather than about
+what the language can compute.
+
+- **`\u{...}` in a string literal.** One to six hexadecimal digits give the
+  character with that value, so a character you cannot type finally has a
+  spelling. Nothing below the lexer changed: strings were already UTF-8 and
+  every builtin that measures one already counted characters. `miru fmt` writes
+  the character rather than the escape, in the same way it writes `1.5` for
+  `1.50`.
+
+- **An error suggests the name you meant.** `undefined variable 'prnt'. Did you
+  mean 'print'?`, and the same for an assignment, a map field, and a field of a
+  caught error. At most one name, and only when it is close, because a message
+  that guesses wildly sends the reader off before they have started looking.
+
+This is also the first release to add syntax under the guarantee, which turned
+out to have nothing to say about syntax added after 1.0. Section 2.1 says it
+now, in the words section 2.3 already used for a builtin.
+
+Three things worth carrying forward:
+
+- **A bound can be load-bearing without looking it.** Six hexadecimal digits is
+  enough for every character, so the limit reads like tidiness. Removing it and
+  running `print("\u{FFFFFFFFFFFF}")` stops the process on `attempt to multiply
+  with overflow`, and the release profile has overflow checks off, so there it
+  would wrap and give some other character in silence.
+
+- **Measure the rule before keeping it.** The suggestion threshold came from
+  the issue and held up. The distance did not: plain Levenshtein charges two
+  edits for a swap of two neighbouring letters, which is the commonest typing
+  mistake there is, so it had nothing to say about `pirnt`, `puhs`, `tpye`,
+  `kesy`, `exti`, `spilt`, or `jion`. On the five field names of an error it
+  was worse than silent and answered `flie` with `line`. Counting the swap as
+  one edit costs five lines.
+
+- **A near miss is not the same as a missing name.** `print = 1` is refused
+  because assignment does not introduce a name, not because `print` is
+  misspelled, and `eprint` is one edit away. Without a guard the message would
+  have told a correct spelling to try a different builtin.
+
 ## 1.2: a script that behaves like a program
 
 Shipped. 1.1 gave the language files and a command line, which aims it at shell
