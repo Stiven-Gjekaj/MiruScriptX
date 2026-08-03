@@ -491,6 +491,57 @@ fn a_program_that_holds_a_unicode_escape_runs_and_formats() {
 }
 
 #[test]
+fn fmt_never_writes_a_control_character_into_the_source() {
+    // The defect this closes, checked on the bytes rather than on the text.
+    // `miru fmt` used to write the character itself, so a file holding one
+    // came back holding a byte no editor shows and a copy and paste loses.
+    let path = std::env::temp_dir().join("miru_integration_control.miru");
+    std::fs::write(
+        &path,
+        "let bell = \"\\u{7}\"\nlet nul = \"\\0\"\nprint(len(bell) + len(nul))\n",
+    )
+    .expect("write temp file");
+
+    let first = miru()
+        .arg("fmt")
+        .arg("-w")
+        .arg(&path)
+        .output()
+        .expect("runs");
+    assert!(first.status.success());
+
+    let bytes = std::fs::read(&path).expect("read back");
+    let stray: Vec<u8> = bytes
+        .iter()
+        .copied()
+        .filter(|b| (*b < 0x20 && *b != b'\n') || *b == 0x7F)
+        .collect();
+    assert!(
+        stray.is_empty(),
+        "the formatted file holds control bytes {stray:?}: {}",
+        String::from_utf8_lossy(&bytes)
+    );
+
+    // Formatting again changes nothing, which says the escapes it writes are
+    // ones it also reads back.
+    let after_first = std::fs::read_to_string(&path).expect("read back");
+    let second = miru()
+        .arg("fmt")
+        .arg("-w")
+        .arg(&path)
+        .output()
+        .expect("runs");
+    assert!(second.status.success());
+    assert_eq!(after_first, std::fs::read_to_string(&path).expect("read"));
+
+    // And the program still does what it did, so nothing was lost on the way.
+    let run = miru().arg("run").arg(&path).output().expect("runs");
+    let _ = std::fs::remove_file(&path);
+    assert!(run.status.success());
+    assert_eq!(String::from_utf8(run.stdout).expect("utf-8"), "2\n");
+}
+
+#[test]
 fn fmt_reports_a_syntax_error_and_fails() {
     let path = std::env::temp_dir().join("miru_integration_fmt_bad.miru");
     std::fs::write(&path, "let = 1\n").expect("write temp file");
