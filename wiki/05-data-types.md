@@ -25,6 +25,18 @@ let ratio = 2.5
 When you mix them in arithmetic, the result is a float. See
 [Operators](06-operators.md) for the details.
 
+A long number is easier to read in groups, so `_` is allowed between digits:
+
+```
+let budget = 1_000_000
+let rate = 1.000_5
+```
+
+The underscore is only a mark for you. `1_000` and `1000` are the same number,
+and `miru fmt` writes the shorter one, in the same way it writes `1.5` for
+`1.50`. It has to sit between two digits, so `1_` and `1__0` are errors. A
+name can still start with one: `_1` is a variable, not a number.
+
 ## Booleans
 
 Just `true` and `false`.
