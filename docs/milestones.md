@@ -422,6 +422,49 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.4: a standard library that reaches further, and a map for a newcomer
+
+Shipped. Four builtins, one defect closed, and the answer to the question a
+first-time contributor actually asks.
+
+- **`starts_with` and `ends_with`.** Asking about a prefix or a suffix meant
+  arithmetic with `slice` and `len`.
+
+- **`sum` and `product`.** Adding an array meant a `reduce` with a closure.
+  `sum([])` is 0 and `product([])` is 1, which are the identity values and are
+  what let the two compose.
+
+- **A number can group its digits.** `1_000_000` reads. The separator has to
+  sit between two digits, which is stricter than Rust and is one sentence in
+  the specification instead of three.
+
+- **`miru fmt` no longer writes a control character into your source.** A file
+  holding `"\0"` came back holding a real NUL byte. True since v0.3 and
+  reachable only through `\0` until 1.3 added `\u{...}`, which is both why
+  nobody hit it and what fixed it.
+
+- **`CONTRIBUTING.md` says where each kind of change lives**, which was
+  findable only by reading commits.
+
+Three things worth carrying forward:
+
+- **A stale build can give a false red.** The golden tests failed against a
+  library that had not been rebuilt while the lexer's own unit tests passed on
+  the same change. `cargo clean -p miruscriptx` fixed it. The trap this project
+  already recorded runs in both directions, and a stale red looks exactly like
+  a real regression.
+
+- **Count before correcting, again.** Adding four builtins moved three
+  different numbers, and a fourth sentence turned out to have been wrong
+  already: a doc comment said "the other forty are untouched", a figure that
+  matches no count that can be reconstructed. It now states the fact without a
+  number. A number nobody checks is a number that is wrong eventually.
+
+- **A string comparison is the wrong instrument for a byte defect.** What hid
+  the control character fault for four releases was that every test compared
+  text, where the whole problem was a byte. The test that closes it reads the
+  file back and inspects the bytes.
+
 ## 1.3: characters you cannot type, and errors that help
 
 Shipped. Two changes, both about the person at the keyboard rather than about
