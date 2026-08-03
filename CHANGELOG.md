@@ -8,6 +8,33 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## Unreleased
+
+### Added
+
+- **A number can group its digits.** `_` is permitted between two digits, in
+  the whole part and in the fractional part.
+
+  ```
+  let budget = 1_000_000
+  let rate = 1.000_5
+  ```
+
+  The separator is a mark for a reader and no part of the value, so `1_000` and
+  `1000` are one number and `miru fmt` writes the shorter one, in the same way
+  it writes `1.5` for `1.50`.
+
+  It has to sit between two digits, so `1_`, `1__0`, and `1_.5` are refused
+  with `a digit separator must be between two digits`. This is stricter than
+  Rust, which permits the first two. The strict rule is one sentence in the
+  specification rather than three, and nothing that was valid becomes invalid:
+  each of those was already an error, reported by the parser as an identifier
+  the writer never wrote.
+
+  A name can still start with an underscore. `_1` is a variable.
+
+  Closes #2.
+
 ## 1.3.0 (2026-08-01)
 
 ### Added
