@@ -281,6 +281,13 @@ fn literals_and_their_inspect_forms() {
         ("\"tab\\there\"", "ok \"tab\\there\""),
         ("\"quote\\\"inside\"", "ok \"quote\\\"inside\""),
         ("9223372036854775807", "ok 9223372036854775807"),
+        // A digit separator groups the digits and is no part of the value, so
+        // each of these is the same number written two ways.
+        ("1_000", "ok 1000"),
+        ("1_000_000", "ok 1000000"),
+        ("1_000.5", "ok 1000.5"),
+        ("1.000_5", "ok 1.0005"),
+        ("9_223_372_036_854_775_807", "ok 9223372036854775807"),
     ]);
 }
 

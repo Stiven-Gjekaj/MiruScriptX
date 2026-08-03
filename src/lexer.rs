@@ -351,32 +351,56 @@ impl Lexer {
         Ok(Token::new(kind, line, column))
     }
 
-    fn read_number(&mut self, line: usize, column: usize) -> Result<Token, MiruError> {
-        let start = self.pos;
+    /// Read a run of decimal digits, permitting `_` between two of them.
+    ///
+    /// The digit *before* a separator needs no check here. Both callers start
+    /// on a digit: `read_number` is only entered when the current character is
+    /// one, and the fractional part only begins after a `.` that was consumed
+    /// because a digit followed it. So a `_` can never be the first character
+    /// this sees, and the rule reduces to the half below.
+    ///
+    /// The line and the column are those of the start of the number, which is
+    /// where the other errors in `read_number` are reported.
+    fn read_digits(&mut self, line: usize, column: usize) -> Result<(), MiruError> {
         while let Some(c) = self.peek() {
             if c.is_ascii_digit() {
                 self.advance();
+            } else if c == '_' {
+                if !self.peek_at(1).is_some_and(|next| next.is_ascii_digit()) {
+                    return Err(MiruError::with_column(
+                        line,
+                        column,
+                        "a digit separator must be between two digits",
+                    ));
+                }
+                self.advance(); // the separator
+                self.advance(); // the digit that made it one
             } else {
                 break;
             }
         }
+        Ok(())
+    }
+
+    fn read_number(&mut self, line: usize, column: usize) -> Result<Token, MiruError> {
+        let start = self.pos;
+        self.read_digits(line, column)?;
 
         let mut is_float = false;
         if self.peek() == Some('.') && self.peek_at(1).is_some_and(|c| c.is_ascii_digit()) {
             is_float = true;
             self.advance(); // consume '.'
-            while let Some(c) = self.peek() {
-                if c.is_ascii_digit() {
-                    self.advance();
-                } else {
-                    break;
-                }
-            }
+            self.read_digits(line, column)?;
         }
 
+        // The text is kept as written, because the two errors below quote it
+        // and a reader needs to see what they typed. The value is parsed from
+        // the digits alone: a separator is a mark for a reader and is not part
+        // of the number.
         let text: String = self.chars[start..self.pos].iter().collect();
+        let digits: String = text.chars().filter(|c| *c != '_').collect();
         if is_float {
-            match text.parse::<f64>() {
+            match digits.parse::<f64>() {
                 Ok(value) => Ok(Token::new(TokenKind::Float(value), line, column)),
                 Err(_) => Err(MiruError::with_column(
                     line,
@@ -385,7 +409,7 @@ impl Lexer {
                 )),
             }
         } else {
-            match text.parse::<i64>() {
+            match digits.parse::<i64>() {
                 Ok(value) => Ok(Token::new(TokenKind::Int(value), line, column)),
                 Err(_) => Err(MiruError::with_column(
                     line,
@@ -742,6 +766,31 @@ mod tests {
                 TokenKind::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn a_digit_separator_groups_a_number_without_changing_it() {
+        assert_eq!(kinds("1_000"), vec![TokenKind::Int(1000), TokenKind::Eof]);
+        assert_eq!(
+            kinds("1_000_000"),
+            vec![TokenKind::Int(1000000), TokenKind::Eof]
+        );
+        // The separator is a mark for a reader and no part of the value, so
+        // both spellings give one number.
+        assert_eq!(kinds("1_000"), kinds("1000"));
+    }
+
+    #[test]
+    fn a_digit_separator_works_in_both_parts_of_a_float() {
+        assert_eq!(
+            kinds("1_000.5"),
+            vec![TokenKind::Float(1000.5), TokenKind::Eof]
+        );
+        assert_eq!(
+            kinds("1.000_5"),
+            vec![TokenKind::Float(1.0005), TokenKind::Eof]
+        );
+        assert_eq!(kinds("1_0.0_5"), kinds("10.05"));
     }
 
     #[test]
