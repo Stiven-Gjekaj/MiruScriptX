@@ -358,6 +358,14 @@ print(keys({"c": 1, "a": 2, "b": 3}))   // ["a", "b", "c"]
 The `print` builtin writes a string without quotation marks. Inside an array or
 a map, a string has quotation marks and escapes.
 
+These are the escapes it writes: `\"`, `\\`, `\n`, `\t`, `\r`, and `\0`. Each
+other character that the Unicode standard puts in the category `Cc` is written
+as `\u{...}`. This category has the values `00` to `1F`, `7F`, and `80` to
+`9F`. Each other character is written as itself.
+
+`miru fmt` uses the same rule for a string literal. Section 2.8 gives the
+escapes the lexer reads, and each escape here is one of them.
+
 | Value | `print` writes | Inside an array |
 | ----- | -------------- | --------------- |
 | `1` | `1` | `1` |
