@@ -1057,7 +1057,7 @@ impl Vm {
         // program never dealt with into a line of output that looks
         // deliberate.
         //
-        // Checking here covers forty-three at once: every builtin that arrives
+        // Checking here covers forty-five at once: every builtin that arrives
         // as a `Value::Builtin`, which is the plain ones and the system ones.
         // It does not cover the three higher-order builtins, because those
         // become tasks in `call_at_stack` and never reach this function.

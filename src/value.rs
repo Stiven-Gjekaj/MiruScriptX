@@ -18,7 +18,7 @@ use crate::chunk::Chunk;
 ///
 /// Widening this trait rather than [`BuiltinFn`] is deliberate. A plain builtin
 /// already receives `&mut dyn Output`, so `eprint` and `exit` are ordinary
-/// builtins and the other forty are untouched.
+/// builtins and every other builtin is untouched.
 pub trait Output {
     /// The program's result. `print` writes here.
     fn write(&mut self, text: &str);

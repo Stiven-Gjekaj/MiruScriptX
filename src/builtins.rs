@@ -50,6 +50,8 @@ pub fn register(globals: &mut Globals) {
     define(globals, "round", round);
     define(globals, "sqrt", sqrt);
     define(globals, "pow", pow);
+    define(globals, "sum", sum);
+    define(globals, "product", product);
     define(globals, "int", int);
     define(globals, "float", float);
     define(globals, "input", input);
@@ -760,6 +762,79 @@ fn max(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resul
     extreme("max", args, Ordering::Greater)
 }
 
+/// Shared implementation of `sum` and `product`: fold an array of numbers.
+///
+/// `identity` is the answer for an empty array, 0 for a sum and 1 for a
+/// product. Those are the values that let the builtins compose: summing the
+/// halves of a split array gives the sum of the whole however the split fell,
+/// including when one half is empty.
+///
+/// The fold holds an integer until a float arrives and a float afterwards,
+/// which is section 5.2's promotion rule applied one element at a time. The
+/// integer step is checked, because every integer operation in this language is
+/// checked and none of them wraps.
+///
+/// `NaN` is not refused, unlike in `min` and `max`. Those compare, and there is
+/// no answer to a comparison with `NaN`. This only adds or multiplies, where
+/// `NaN` propagates and is a value the language already holds.
+fn fold_numbers(
+    name: &str,
+    args: Vec<Value>,
+    identity: i64,
+    step_int: fn(i64, i64) -> Option<i64>,
+    step_float: fn(f64, f64) -> f64,
+) -> Result<Value, String> {
+    check_arity(name, &args, 1)?;
+    let items = match &args[0] {
+        Value::Array(items) => items,
+        other => {
+            return Err(format!(
+                "{name} expects an array but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+
+    let mut whole = identity;
+    let mut fraction: Option<f64> = None;
+    let items = items.borrow();
+    for item in items.iter() {
+        match (item, fraction) {
+            (Value::Int(n), None) => {
+                whole = step_int(whole, *n).ok_or_else(|| format!("integer overflow in {name}"))?;
+            }
+            (Value::Int(n), Some(f)) => fraction = Some(step_float(f, *n as f64)),
+            (Value::Float(x), None) => fraction = Some(step_float(whole as f64, *x)),
+            (Value::Float(x), Some(f)) => fraction = Some(step_float(f, *x)),
+            (other, _) => {
+                return Err(format!(
+                    "{name} expects an array of numbers but got a {}",
+                    other.type_name()
+                ))
+            }
+        }
+    }
+
+    Ok(match fraction {
+        Some(f) => Value::Float(f),
+        None => Value::Int(whole),
+    })
+}
+
+/// `sum(a)` adds the numbers in an array. An empty array gives `0`.
+fn sum(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
+    fold_numbers("sum", args, 0, i64::checked_add, |a, b| a + b)
+}
+
+/// `product(a)` multiplies the numbers in an array. An empty array gives `1`.
+fn product(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    fold_numbers("product", args, 1, i64::checked_mul, |a, b| a * b)
+}
+
 /// Shared implementation of `floor`, `ceil`, and `round`. Ints pass through
 /// unchanged; a float is rounded by `apply` and returned as an int.
 fn round_like(name: &str, args: Vec<Value>, apply: fn(f64) -> f64) -> Result<Value, String> {
@@ -1007,14 +1082,14 @@ impl Args {
     ///
     /// This is the last per-element heap allocation left in the engine, and it
     /// only happens when a *builtin* is the callback, as in `map(xs, abs)`.
-    /// Removing it means changing [`BuiltinFn`] for the thirty-nine builtins
+    /// Removing it means changing [`BuiltinFn`] for the forty-one builtins
     /// registered with `define`, several of which move values out of the vector
     /// they are handed, which is a larger change than it looks and is left for
     /// later.
     ///
-    /// Thirty-seven is the count of `define` calls, not the count of builtins.
+    /// Forty-one is the count of `define` calls, not the count of builtins.
     /// The two were the same figure until 1.1 and are not any more: there are
-    /// forty-four builtins, of which four take a `SystemFn` and three take a
+    /// forty-eight builtins, of which four take a `SystemFn` and three take a
     /// `HostFn` and would not be touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
@@ -1496,6 +1571,51 @@ mod tests {
     }
 
     #[test]
+    fn sum_and_product_fold_an_array_of_numbers() {
+        assert_eq!(out("print(sum([1, 2, 3]), product([2, 3, 4]))"), "6 24\n");
+        // The identity values, which are what make the two compose: the sum of
+        // the halves of a split array is the sum of the whole, whichever way it
+        // was split.
+        assert_eq!(out("print(sum([]), product([]))"), "0 1\n");
+        assert_eq!(out("print(sum([7]), product([7]))"), "7 7\n");
+    }
+
+    #[test]
+    fn sum_and_product_promote_to_a_float_when_one_element_is_one() {
+        assert_eq!(out("print(sum([1, 2.5]), product([2, 1.5]))"), "3.5 3.0\n");
+        // The float can arrive first, last, or alone, and the answer is a float
+        // in each. The identity has to carry across the change of type, which
+        // is where a fold like this usually goes wrong.
+        assert_eq!(out("print(sum([2.5, 1]), sum([2.0]))"), "3.5 2.0\n");
+        assert_eq!(out("print(product([2.0]), product([1.5, 2]))"), "2.0 3.0\n");
+    }
+
+    #[test]
+    fn sum_and_product_refuse_overflow_rather_than_wrapping() {
+        // Every integer operation in this language is checked, and these are no
+        // different from `+` and `*` written out.
+        assert!(err("print(sum([9223372036854775807, 1]))").contains("integer overflow in sum"));
+        assert!(
+            err("print(product([4294967296, 4294967296]))").contains("integer overflow in product")
+        );
+    }
+
+    #[test]
+    fn sum_and_product_refuse_what_is_not_an_array_of_numbers() {
+        assert!(err("print(sum([1, \"two\"]))").contains("an array of numbers"));
+        assert!(err("print(product(5))").contains("expects an array"));
+    }
+
+    #[test]
+    fn sum_does_not_refuse_nan_the_way_min_and_max_do() {
+        // `min` and `max` refuse it because there is no answer to a comparison
+        // with NaN. These do not compare, so NaN propagates as it does through
+        // `+` written out, and the language already holds the value.
+        assert_eq!(out("print(sum([float(\"nan\"), 1.0]))"), "nan\n");
+        assert!(err("print(min(float(\"nan\"), 1.0))").contains("NaN"));
+    }
+
+    #[test]
     fn starts_with_and_ends_with_answer_about_a_prefix_and_a_suffix() {
         assert_eq!(
             out("print(starts_with(\"hello.miru\", \"hello\"), ends_with(\"hello.miru\", \".miru\"))"),
@@ -1884,14 +2004,14 @@ mod count {
         }
 
         assert_eq!(
-            plain, 39,
-            "{plain} builtins take a BuiltinFn, not 39. Quoted by `Args::into_vec` \
+            plain, 41,
+            "{plain} builtins take a BuiltinFn, not 41. Quoted by `Args::into_vec` \
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
             plain + system,
-            43,
-            "{} builtins reach `call_native`, not 43. Quoted by the caught-error \
+            45,
+            "{} builtins reach `call_native`, not 45. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system
         );
@@ -1911,7 +2031,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 46] = [
+pub const BUILTIN_NAMES: [&str; 48] = [
     "print",
     "eprint",
     "exit",
@@ -1948,6 +2068,8 @@ pub const BUILTIN_NAMES: [&str; 46] = [
     "round",
     "sqrt",
     "pow",
+    "sum",
+    "product",
     "int",
     "float",
     "input",

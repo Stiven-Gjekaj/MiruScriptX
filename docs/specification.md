@@ -728,7 +728,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 46 builtins. A program can use each of them without an import.
+There are 48 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -849,6 +849,13 @@ answer that reading an absent key gives.
 | `pow(b, e)` | 2 | `b` to the power `e`. Gives an `int` for two integers with `e` not negative. Gives a `float` in each other condition. |
 | `int(v)` | 1 | A string or a number as an `int`. A float goes towards zero. |
 | `float(v)` | 1 | A string or a number as a `float`. |
+| `sum(a)` | 1 array | The numbers in the array, added. An empty array gives `0`. |
+| `product(a)` | 1 array | The numbers in the array, multiplied. An empty array gives `1`. |
+
+`sum` and `product` give an `int` for an array of integers, and a `float` for
+an array that has one or more floats. Section 5.2 gives the promotion rule.
+Overflow of the integer form is an error, as it is for each other integer
+operation. An element that is not a number is an error.
 
 ### 8.8 Higher-order
 

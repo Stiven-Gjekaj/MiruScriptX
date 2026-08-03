@@ -749,6 +749,15 @@ fn builtins_and_their_errors() {
         // Characters, not bytes: `é` is two bytes and the emoji is four.
         ("starts_with(\"héllo\", \"hé\")", "ok true"),
         ("ends_with(\"a\\u{1F600}\", \"\\u{1F600}\")", "ok true"),
+        ("sum([1, 2, 3])", "ok 6"),
+        ("product([2, 3, 4])", "ok 24"),
+        // The identity values, which are what let the two compose.
+        ("sum([])", "ok 0"),
+        ("product([])", "ok 1"),
+        // One float anywhere makes the answer a float.
+        ("sum([1, 2.5])", "ok 3.5"),
+        ("product([2, 1.5])", "ok 3.0"),
+        ("sum([2.0])", "ok 2.0"),
         ("pop([1, 2, 3])", "ok 3"),
         ("index_of([10, 20], 20)", "ok 1"),
         ("index_of([1], 9)", "ok -1"),
