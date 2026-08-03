@@ -166,6 +166,9 @@ them apart.
 - `contains(seq, value)` reports whether a string holds a substring, or an array
   holds an element.
 - `find(s, sub)` returns the character index of the first `sub`, or -1.
+- `starts_with(s, prefix)` and `ends_with(s, suffix)` report whether a string
+  begins or ends with another. An empty needle gives `true`, and one longer
+  than the string gives `false`.
 
 ```
 print(upper("hi"), lower("HI"))     // HI hi
@@ -175,6 +178,8 @@ print(split("a,b,c", ","))          // ["a", "b", "c"]
 print(join(["a", "b", "c"], "-"))   // a-b-c
 print(contains("hello", "ell"))     // true
 print(find("hello", "l"))           // 2
+print(starts_with("hello.miru", "hello"))   // true
+print(ends_with("hello.miru", ".miru"))     // true
 ```
 
 ## Array functions
