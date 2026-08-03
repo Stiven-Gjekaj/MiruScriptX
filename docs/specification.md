@@ -128,11 +128,19 @@ print(m.if)      // Error: expected a field name after '.'
 
 ### 2.6 Integer literals
 
-An integer literal is a sequence of decimal digits.
+An integer literal is a sequence of decimal digits. A `_` between two digits is
+permitted, and groups the digits for a reader. `1_000` and `1000` are the same
+number.
 
-There is no exponent form. There is no hexadecimal, octal, or binary form.
-There is no digit separator. A literal cannot start with a minus sign: `-5` is
-the negation operator and the literal `5`.
+A `_` must have a digit before it and a digit after it. A `_` in another
+position gives the error `a digit separator must be between two digits`. This
+includes `1_`, `1__0`, and `1_.5`.
+
+A name can start with `_`. `_1` is an identifier, not a number.
+
+There is no exponent form. There is no hexadecimal, octal, or binary form. A
+literal cannot start with a minus sign: `-5` is the negation operator and the
+literal `5`.
 
 An integer literal must be in the range of a 64-bit signed integer. A literal
 that is too large gives the error `integer literal '<text>' is out of range`.
@@ -146,8 +154,12 @@ that is too large gives the error `integer literal '<text>' is out of range`.
 A float literal is a sequence of decimal digits, then `.`, then one or more
 decimal digits.
 
+A `_` between two digits is permitted in each part. Section 2.6 gives the rule.
+`1_000.5` and `1.000_5` are permitted.
+
 A digit after the point is necessary. The text `1.` is the integer literal `1`
-and then the `.` operator.
+and then the `.` operator. For the same reason, `1._5` is the integer literal
+`1`, then the `.` operator, then the identifier `_5`.
 
 ### 2.8 String literals
 
