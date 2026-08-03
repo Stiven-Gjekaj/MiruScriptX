@@ -35,6 +35,39 @@ semantic versioning.
 
   Closes #2.
 
+### Fixed
+
+- **`miru fmt` no longer writes a control character into your source.** A file
+  holding `"\0"` came back holding a real NUL byte, which no editor shows
+  faithfully and a copy and paste loses.
+
+  ```
+  $ printf 'let bell = "\\u{7}"\n' > ctrl.miru
+  $ miru fmt ctrl.miru | od -c | head -1
+  0000000   l   e   t       b   e   l   l       =       "   \   u   {   7
+  ```
+
+  The value always survived, so nothing was lost; what was produced was a
+  source file that is no longer clean text. True since the formatter shipped in
+  v0.3 and reachable only through `\0` until 1.3 added `\u{...}`, which is both
+  why nobody hit it and what now fixes it.
+
+  The rule is `\0` for a null, `\u{...}` for every other character in the
+  Unicode category `Cc`, and everything else unchanged. **An emoji still writes
+  as itself.**
+
+  This also changes what a program prints for a string **inside an array or a
+  map**, where `print(["\u{7}"])` now gives `["\u{7}"]`. `print` on the string
+  itself is untouched: that is the program's own output, and a program that
+  means to ring a bell still rings it. Section 4.4 of the specification said
+  such a string "has quotation marks and escapes" without listing which, and
+  now lists them.
+
+  The two functions that wrote these were two copies of one list, and the list
+  was wrong in both. They are one function now.
+
+  Closes #29.
+
 ## 1.3.0 (2026-08-01)
 
 ### Added
