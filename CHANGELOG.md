@@ -12,6 +12,19 @@ semantic versioning.
 
 ### Added
 
+- **`starts_with` and `ends_with`.** Asking about a prefix or a suffix meant
+  arithmetic with `slice` and `len`.
+
+  ```
+  print(starts_with("hello.miru", "hello"))   // true
+  print(ends_with("hello.miru", ".miru"))     // true
+  ```
+
+  An empty needle gives `true` and one longer than the string gives `false`.
+  Both count characters, as every string builtin here does.
+
+  Closes #1.
+
 - **A number can group its digits.** `_` is permitted between two digits, in
   the whole part and in the fractional part.
 
