@@ -770,6 +770,27 @@ mod tests {
     }
 
     #[test]
+    fn the_boundary_of_what_is_spelled_is_the_control_category() {
+        // Each pair is a character inside the category beside its neighbour
+        // outside it. Without a boundary from the accepted side, spelling
+        // every character above ASCII would satisfy the test before this one
+        // and would ruin every emoji.
+        for (control, ordinary) in [
+            ('\u{1F}', '\u{20}'),
+            ('\u{7F}', '\u{7E}'),
+            ('\u{9F}', '\u{A0}'),
+        ] {
+            assert!(control.is_control(), "{control:?} should be a control");
+            assert!(!ordinary.is_control(), "{ordinary:?} should not be");
+            let value = Value::Str(Rc::new(format!("{control}{ordinary}")));
+            assert_eq!(
+                value.repr(),
+                format!("\"\\u{{{:X}}}{ordinary}\"", control as u32)
+            );
+        }
+    }
+
+    #[test]
     fn a_character_that_is_not_ascii_prints_as_itself() {
         // A string inside an array is shown with quotation marks and escapes,
         // and the escapes are what `quoted_string` writes. An emoji is not one
