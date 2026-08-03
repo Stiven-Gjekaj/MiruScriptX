@@ -633,7 +633,7 @@ mod tests {
         // Each of these is a case where the token's value does not determine its
         // source text, which is the whole reason spans have to be recorded
         // rather than reconstructed.
-        let source = "let s = \"a\\nb\"\nlet f = 1.50\n";
+        let source = "let s = \"a\\nb\"\nlet f = 1.50\nlet n = 1_000\n";
         let (tokens, spans) = Lexer::tokenize_with_spans(source).expect("lexes");
         assert_eq!(tokens.len(), spans.tokens.len());
 
@@ -643,6 +643,9 @@ mod tests {
         assert!(text.contains(&"\"a\\nb\"".to_string()), "{text:?}");
         // The float keeps the trailing zero that its value does not remember.
         assert!(text.contains(&"1.50".to_string()), "{text:?}");
+        // The integer keeps the separator, five source characters for a value
+        // that remembers four digits.
+        assert!(text.contains(&"1_000".to_string()), "{text:?}");
     }
 
     #[test]
