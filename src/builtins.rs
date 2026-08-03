@@ -35,6 +35,8 @@ pub fn register(globals: &mut Globals) {
     define(globals, "join", join);
     define(globals, "contains", contains);
     define(globals, "find", find);
+    define(globals, "starts_with", starts_with);
+    define(globals, "ends_with", ends_with);
     define(globals, "pop", pop);
     define(globals, "index_of", index_of);
     define(globals, "slice", slice);
@@ -496,6 +498,43 @@ fn find(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resu
             Ok(Value::Int(index))
         }
         _ => Err("find expects two string arguments".to_string()),
+    }
+}
+
+/// `starts_with(s, prefix)` reports whether `s` begins with `prefix`.
+///
+/// The comparison is by byte, which is not a way around the rule that every
+/// string builtin here counts characters. UTF-8 is self synchronising and both
+/// arguments are whole strings, so a needle that matches the leading bytes
+/// matches the leading characters as well: a byte prefix cannot stop part way
+/// through one. `find` counts because it gives back an index. This gives back
+/// yes or no, and there the two measures agree.
+fn starts_with(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    check_arity("starts_with", &args, 2)?;
+    match (&args[0], &args[1]) {
+        (Value::Str(s), Value::Str(prefix)) => Ok(Value::Bool(s.starts_with(prefix.as_str()))),
+        _ => Err("starts_with expects two string arguments".to_string()),
+    }
+}
+
+/// `ends_with(s, suffix)` reports whether `s` ends with `suffix`.
+///
+/// [`starts_with`] gives the reason a byte comparison answers a question about
+/// characters. It holds at the end of a string for the same reason it holds at
+/// the start.
+fn ends_with(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    check_arity("ends_with", &args, 2)?;
+    match (&args[0], &args[1]) {
+        (Value::Str(s), Value::Str(suffix)) => Ok(Value::Bool(s.ends_with(suffix.as_str()))),
+        _ => Err("ends_with expects two string arguments".to_string()),
     }
 }
 
@@ -968,7 +1007,7 @@ impl Args {
     ///
     /// This is the last per-element heap allocation left in the engine, and it
     /// only happens when a *builtin* is the callback, as in `map(xs, abs)`.
-    /// Removing it means changing [`BuiltinFn`] for the thirty-seven builtins
+    /// Removing it means changing [`BuiltinFn`] for the thirty-nine builtins
     /// registered with `define`, several of which move values out of the vector
     /// they are handed, which is a larger change than it looks and is left for
     /// later.
@@ -1457,6 +1496,52 @@ mod tests {
     }
 
     #[test]
+    fn starts_with_and_ends_with_answer_about_a_prefix_and_a_suffix() {
+        assert_eq!(
+            out("print(starts_with(\"hello.miru\", \"hello\"), ends_with(\"hello.miru\", \".miru\"))"),
+            "true true\n"
+        );
+        assert_eq!(
+            out("print(starts_with(\"hello\", \"jelly\"), ends_with(\"hello\", \"jelly\"))"),
+            "false false\n"
+        );
+
+        // The dull cases, which are the ones a caller trips over. An empty
+        // needle is a prefix and a suffix of everything, including of nothing.
+        assert_eq!(
+            out("print(starts_with(\"a\", \"\"), ends_with(\"a\", \"\"), starts_with(\"\", \"\"))"),
+            "true true true\n"
+        );
+        // A needle longer than the string cannot be either.
+        assert_eq!(
+            out("print(starts_with(\"ab\", \"abc\"), ends_with(\"ab\", \"zab\"))"),
+            "false false\n"
+        );
+    }
+
+    #[test]
+    fn a_prefix_of_a_multi_byte_string_is_measured_the_same_as_a_character_one() {
+        // The claim in the doc comment, checked rather than asserted in prose.
+        // Both of these split inside what would be a byte prefix if the
+        // comparison could stop part way through a character. `é` is two bytes
+        // and the emoji is four.
+        assert_eq!(
+            out("print(starts_with(\"héllo\", \"hé\"), ends_with(\"héllo\", \"llo\"))"),
+            "true true\n"
+        );
+        assert_eq!(
+            out("print(starts_with(\"héllo\", \"h\\u{e8}\"), ends_with(\"a\\u{1F600}\", \"\\u{1F600}\"))"),
+            "false true\n"
+        );
+    }
+
+    #[test]
+    fn starts_with_and_ends_with_refuse_an_argument_that_is_not_a_string() {
+        assert!(err("print(starts_with(\"a\", 1))").contains("two string arguments"));
+        assert!(err("print(ends_with(1, \"a\"))").contains("two string arguments"));
+    }
+
+    #[test]
     fn find_returns_char_index_or_negative_one() {
         assert_eq!(
             out("print(find(\"hello\", \"l\"), find(\"hello\", \"z\"))"),
@@ -1799,14 +1884,14 @@ mod count {
         }
 
         assert_eq!(
-            plain, 37,
-            "{plain} builtins take a BuiltinFn, not 37. Quoted by `Args::into_vec` \
+            plain, 39,
+            "{plain} builtins take a BuiltinFn, not 39. Quoted by `Args::into_vec` \
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
             plain + system,
-            41,
-            "{} builtins reach `call_native`, not 41. Quoted by the caught-error \
+            43,
+            "{} builtins reach `call_native`, not 43. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system
         );
@@ -1826,7 +1911,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 44] = [
+pub const BUILTIN_NAMES: [&str; 46] = [
     "print",
     "eprint",
     "exit",
@@ -1848,6 +1933,8 @@ pub const BUILTIN_NAMES: [&str; 44] = [
     "join",
     "contains",
     "find",
+    "starts_with",
+    "ends_with",
     "pop",
     "index_of",
     "slice",

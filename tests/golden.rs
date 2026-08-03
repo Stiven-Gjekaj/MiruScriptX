@@ -737,6 +737,18 @@ fn builtins_and_their_errors() {
         ("contains([1, 2], 9)", "ok false"),
         ("find(\"hello\", \"l\")", "ok 2"),
         ("find(\"hello\", \"z\")", "ok -1"),
+        ("starts_with(\"hello.miru\", \"hello\")", "ok true"),
+        ("ends_with(\"hello.miru\", \".miru\")", "ok true"),
+        ("starts_with(\"hello\", \"jelly\")", "ok false"),
+        ("ends_with(\"hello\", \"jelly\")", "ok false"),
+        // An empty needle is a prefix and a suffix of everything, and a needle
+        // longer than the string is neither.
+        ("starts_with(\"a\", \"\")", "ok true"),
+        ("ends_with(\"a\", \"\")", "ok true"),
+        ("starts_with(\"ab\", \"abc\")", "ok false"),
+        // Characters, not bytes: `é` is two bytes and the emoji is four.
+        ("starts_with(\"héllo\", \"hé\")", "ok true"),
+        ("ends_with(\"a\\u{1F600}\", \"\\u{1F600}\")", "ok true"),
         ("pop([1, 2, 3])", "ok 3"),
         ("index_of([10, 20], 20)", "ok 1"),
         ("index_of([1], 9)", "ok -1"),
