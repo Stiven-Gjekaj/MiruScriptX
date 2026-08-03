@@ -67,6 +67,18 @@ semantic versioning.
 
   Closes #2.
 
+- **`CONTRIBUTING.md` says where each kind of change lives.** A map from the
+  change you want to make to the files it touches, which was previously
+  findable only by reading commits.
+
+  It also records the parts that catch nearly everybody: that
+  `docs/language-reference.md` is generated, that `cargo test --workspace` is
+  the build check rather than `cargo build`, that the WebAssembly clippy run is
+  part of the gate, and that adding a builtin moves three counts which are
+  three different numbers.
+
+  Closes #7.
+
 ### Fixed
 
 - **`miru fmt` no longer writes a control character into your source.** A file
