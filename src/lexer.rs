@@ -794,6 +794,25 @@ mod tests {
     }
 
     #[test]
+    fn a_digit_separator_that_is_not_between_two_digits_is_refused() {
+        // One rule and one message. A trailing separator, a doubled one, and
+        // one before the decimal point are the same mistake seen three ways:
+        // nothing that is a digit follows it.
+        //
+        // Stricter than Rust, which permits `1_` and `1__0`. Nothing valid
+        // becomes invalid, because each of these was already an error; what
+        // changes is that the lexer says why instead of the parser reporting
+        // an identifier the writer never wrote.
+        for source in ["1_", "1__0", "1_.5", "1_x", "1.0_", "1.0__5", "1_ 000"] {
+            assert_eq!(
+                error(source),
+                "a digit separator must be between two digits",
+                "{source} should be refused"
+            );
+        }
+    }
+
+    #[test]
     fn a_dot_is_a_token_unless_a_number_is_taking_it() {
         // `read_number` consumes a '.' only when a digit follows it, so the two
         // uses do not collide. These pin that boundary from both sides, since

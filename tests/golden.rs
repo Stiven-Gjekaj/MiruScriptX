@@ -175,6 +175,14 @@ fn syntax_errors_render_with_a_caret() {
             "1 & 2",
             "error (line 1, column 3): unexpected '&' (did you mean '&&'?)\n    1 & 2\n      ^",
         ),
+        // The caret sits at the start of the number rather than at the
+        // separator, which is where every other error about a number sits. One
+        // character wide, because a lexer error has no token to underline, the
+        // same as the unterminated string above.
+        (
+            "let x = 1_",
+            "error (line 1, column 9): a digit separator must be between two digits\n    let x = 1_\n            ^",
+        ),
     ]);
 }
 
