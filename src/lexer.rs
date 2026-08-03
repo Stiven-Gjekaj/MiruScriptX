@@ -813,6 +813,38 @@ mod tests {
     }
 
     #[test]
+    fn a_leading_underscore_is_still_a_name_and_not_a_number() {
+        // The one thing this change could have broken. A separator is only
+        // read inside a number, and `read_number` is only entered when the
+        // current character is a digit, so a leading `_` never reaches it.
+        assert_eq!(
+            kinds("_1"),
+            vec![TokenKind::Ident("_1".to_string()), TokenKind::Eof]
+        );
+        assert_eq!(
+            kinds("_"),
+            vec![TokenKind::Ident("_".to_string()), TokenKind::Eof]
+        );
+        assert_eq!(
+            kinds("_1_000"),
+            vec![TokenKind::Ident("_1_000".to_string()), TokenKind::Eof]
+        );
+
+        // The other place a `_` follows a number, and the reason `1_.5` had to
+        // be decided rather than left to fall out. A point with no digit after
+        // it is still the operator, so this is a field access and not a float.
+        assert_eq!(
+            kinds("1._5"),
+            vec![
+                TokenKind::Int(1),
+                TokenKind::Dot,
+                TokenKind::Ident("_5".to_string()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
     fn a_dot_is_a_token_unless_a_number_is_taking_it() {
         // `read_number` consumes a '.' only when a digit follows it, so the two
         // uses do not collide. These pin that boundary from both sides, since

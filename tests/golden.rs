@@ -296,6 +296,11 @@ fn literals_and_their_inspect_forms() {
         ("1_000.5", "ok 1000.5"),
         ("1.000_5", "ok 1.0005"),
         ("9_223_372_036_854_775_807", "ok 9223372036854775807"),
+        // A name that starts with an underscore is a name, not a number with a
+        // separator in front of it. This is the one thing the separator could
+        // have taken away.
+        ("let _1 = 5\n_1", "ok 5"),
+        ("let _ = 7\n_", "ok 7"),
     ]);
 }
 
