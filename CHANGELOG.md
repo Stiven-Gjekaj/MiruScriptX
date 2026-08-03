@@ -25,6 +25,25 @@ semantic versioning.
 
   Closes #1.
 
+- **`sum` and `product`.** Adding an array of numbers meant
+  `reduce(xs, fn(acc, n) { return acc + n }, 0)`.
+
+  ```
+  print(sum([1, 2, 3]))       // 6
+  print(product([2, 3, 4]))   // 24
+  ```
+
+  `sum([])` is `0` and `product([])` is `1`. Those are the identity values, and
+  they are what let the two compose: the sum of the halves of a split array is
+  the sum of the whole however the split fell.
+
+  An array of integers gives an integer and an array holding any float gives a
+  float. Integer overflow is an error rather than a wrap, as it is for every
+  other integer operation here. Unlike `min` and `max`, neither refuses `NaN`,
+  because neither compares.
+
+  Closes #8.
+
 - **A number can group its digits.** `_` is permitted between two digits, in
   the whole part and in the fractional part.
 
