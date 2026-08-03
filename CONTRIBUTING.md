@@ -34,6 +34,70 @@ Start the REPL:
 
     cargo run
 
+## Where a change lives
+
+For the change you want to make, these are the files to open. This is a map and
+not a lesson: `wiki/` teaches the language, `docs/architecture.md` explains the
+internals, and [`AGENTS.md`](AGENTS.md) lists the checks and the traps this
+project has hit.
+
+| Change | Files |
+| ------ | ----- |
+| A builtin | `src/builtins.rs` (the function, `register`, `BUILTIN_NAMES`), `docs/specification.md` section 8, `docs/stability.md` section 2.3, `wiki/13-builtins.md` |
+| Syntax | `src/lexer.rs` or `src/parser.rs`, `src/ast.rs`, `src/compiler.rs`, `src/formatter.rs`, `docs/specification.md` sections 2 and 3 |
+| A new opcode | `src/chunk.rs` (the enum, the `OPCODES` table, the disassembler), `src/compiler.rs`, `src/vm.rs` |
+| An error message | wherever it is raised, and `docs/specification.md` **only if that message is quoted there**. Section 3.1 of `docs/stability.md` leaves the words of a message free |
+| How a value prints | `quoted_string` in `src/value.rs`, which both the formatter and printing use, and `docs/specification.md` section 4.4 |
+| A command line option | `src/main.rs`, `docs/specification.md` section 10, `docs/stability.md` section 2.4, `wiki/02-getting-started.md`, `tests/integration.rs`, `README.md` |
+| An example | `examples/`, `tests/integration.rs`, `README.md`, and `EXAMPLES` in `playground/src/lib.rs` unless it needs input, a file, or an import |
+| A wiki lesson | `wiki/`, then `./scripts/build_reference.sh` |
+
+### And for nearly every change
+
+- **A change in behaviour needs a golden case** in `tests/golden.rs`, which
+  holds source against output.
+- **Add your entry to `CHANGELOG.md` under `## Unreleased`.** A commit carries
+  no version prefix and changes no version. The version in `Cargo.toml` moves
+  only when something is released.
+- **Adding a test moves the badge in `README.md`.** `tests/documentation.rs`
+  checks it, along with the line counts, the file count, and the playground's
+  size. Its failure message gives the number to use.
+- **Code and its tests go in one commit. Documentation goes in its own.**
+
+### Three builtins, not one kind
+
+`define` is the ordinary kind, and almost certainly the one you want.
+`define_system` is for a builtin that needs the file system, and it is refused
+by default so that the browser playground and any embedder get a sentence
+rather than file access. `define_host` is for one that calls back into user
+code, such as `map`. Copying the wrong one is a mistake you find out about
+late.
+
+Adding one also moves **three different counts, which are three different
+numbers**: how many take a `BuiltinFn`, how many reach `call_native`, and how
+many exist. `builtin_kind_counts_match_the_comments_that_quote_them` in
+`src/builtins.rs` holds all three, and the prose that quotes each of them is
+named in its failure message. Do not assume they move together. Two correct
+sentences were once lined up to be "corrected" into wrong ones.
+
+`tests/specification.rs` checks `BUILTIN_NAMES` against the specification in
+both directions, so it names the builtin whose documentation you missed.
+
+### Four rules that have caught somebody
+
+- **`docs/language-reference.md` is generated.** Edit `wiki/` and run
+  `./scripts/build_reference.sh`. Never edit it by hand.
+- **`cargo test --workspace` is the build check, never `cargo build`.** `build`
+  does not compile a `#[cfg(test)]` module, so a broken test helper passes it
+  and fails later under clippy.
+- **The WebAssembly check is part of the gate**, not an extra:
+  `cargo clippy --target wasm32-unknown-unknown -p miruscriptx-playground -- -D warnings`.
+  A pointer is four bytes there and eight natively, so code that assumes
+  otherwise passes every native check and breaks the playground.
+- **[`docs/stability.md`](docs/stability.md) says what is promised.** A 1.x
+  release can add a builtin or add syntax. It cannot remove either, and it
+  cannot change what one means.
+
 ## Before you open a pull request
 
 Every change must keep the project green. Run these locally, exactly as CI does:
@@ -73,9 +137,9 @@ five percent is unmeasured rather than small.
 
 ## Where things live
 
-See `docs/architecture.md` for a tour of the pipeline (lexer, parser, compiler,
-virtual machine, builtins) and notes on how to add a builtin, an operator, a
-statement, or an opcode.
+`docs/architecture.md` is the tour of the pipeline: lexer, parser, compiler,
+virtual machine, builtins. Read it when you want to know how something works.
+The section above answers the other question, which is where to start looking.
 
 ## Commit messages and pull requests
 
