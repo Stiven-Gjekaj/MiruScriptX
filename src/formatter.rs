@@ -440,21 +440,12 @@ fn fmt_float(f: f64) -> String {
 }
 
 /// Render a string literal with quotes and the escapes the lexer understands.
+///
+/// The same function that decides what a program prints for a string inside an
+/// array, because the two answers have to agree. They were two copies of one
+/// list until 1.4, and the list was wrong in both.
 fn fmt_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\r' => out.push_str("\\r"),
-            other => out.push(other),
-        }
-    }
-    out.push('"');
-    out
+    crate::value::quoted_string(s)
 }
 
 #[cfg(test)]
@@ -487,6 +478,22 @@ mod tests {
         // And formatting is idempotent, which is what says the parentheses it
         // adds are ones it also accepts.
         let once = fmt("let n = (try f()) + 1\n");
+        assert_eq!(fmt(&once), once);
+    }
+
+    #[test]
+    fn a_control_character_is_spelled_rather_than_written() {
+        // The defect this closes: `miru fmt` used to write the character
+        // itself, so formatting a file that held one put a byte into the
+        // source that no editor shows.
+        assert_eq!(fmt("let s = \"\\u{7}\"\n"), "let s = \"\\u{7}\"\n");
+        assert_eq!(fmt("let s = \"\\u{1B}\"\n"), "let s = \"\\u{1B}\"\n");
+        // `\0` keeps its own spelling rather than becoming `\u{0}`.
+        assert_eq!(fmt("let s = \"\\0\"\n"), "let s = \"\\0\"\n");
+
+        // Which makes the formatter a fixed point on its own output, where
+        // before it produced a file it could not have written twice the same.
+        let once = fmt("let s = \"\\u{1B}\"\n");
         assert_eq!(fmt(&once), once);
     }
 

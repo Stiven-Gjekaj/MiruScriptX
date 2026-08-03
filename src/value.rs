@@ -506,7 +506,7 @@ impl Value {
             Value::Float(f) => format_float(*f),
             Value::Bool(b) => b.to_string(),
             Value::Nil => "nil".to_string(),
-            Value::Str(s) => format!("\"{}\"", escape_string(s)),
+            Value::Str(s) => quoted_string(s),
             Value::Array(items) => {
                 let parts: Vec<String> = items
                     .borrow()
@@ -520,11 +520,7 @@ impl Value {
                     .borrow()
                     .iter()
                     .map(|(key, value)| {
-                        format!(
-                            "\"{}\": {}",
-                            escape_string(key),
-                            value.repr_within(depth, open)
-                        )
+                        format!("{}: {}", quoted_string(key), value.repr_within(depth, open))
                     })
                     .collect();
                 format!("{{{}}}", parts.join(", "))
@@ -637,8 +633,20 @@ fn format_float(f: f64) -> String {
     }
 }
 
-fn escape_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
+/// A string with quotation marks around it and the escapes the lexer reads.
+///
+/// One function for two jobs that must not drift: what `miru fmt` writes into a
+/// source file, and what a program prints for a string inside an array or a
+/// map. Both are text for a person to read, so both spell a character a person
+/// cannot read rather than writing it.
+///
+/// What counts as unreadable is [`char::is_control`], which is the Unicode
+/// category rather than a range written out here. That covers `00` to `1F`,
+/// `7F`, and `80` to `9F`. The four with a short spelling are matched first and
+/// keep it.
+pub fn quoted_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
     for c in s.chars() {
         match c {
             '"' => out.push_str("\\\""),
@@ -646,9 +654,15 @@ fn escape_string(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\t' => out.push_str("\\t"),
             '\r' => out.push_str("\\r"),
+            '\0' => out.push_str("\\0"),
+            // Written raw before 1.4, which made `miru fmt` put a byte into a
+            // source file that no editor shows and a copy and paste loses.
+            // `\u{...}`, added in 1.3, is what makes writing it back possible.
+            c if c.is_control() => out.push_str(&format!("\\u{{{:X}}}", c as u32)),
             other => out.push(other),
         }
     }
+    out.push('"');
     out
 }
 
@@ -728,11 +742,39 @@ mod tests {
     }
 
     #[test]
+    fn a_control_character_is_spelled_rather_than_written() {
+        // Written raw before 1.4, which put a byte into whatever read this
+        // that no editor shows and a copy and paste loses.
+        let bell = Value::Str(Rc::new("\u{7}".to_string()));
+        assert_eq!(bell.repr(), "\"\\u{7}\"");
+
+        // The five with a short spelling keep it.
+        assert_eq!(
+            Value::Str(Rc::new("a\nb\tc\rd\0e\"f".to_string())).repr(),
+            "\"a\\nb\\tc\\rd\\0e\\\"f\""
+        );
+
+        // `is_control` is the Unicode category rather than a range written out
+        // by hand, so the C1 block counts as well as the C0 block and DEL.
+        assert_eq!(
+            Value::Str(Rc::new("\u{1B}\u{7F}\u{85}".to_string())).repr(),
+            "\"\\u{1B}\\u{7F}\\u{85}\""
+        );
+
+        // A key goes through the same function and answers the same way.
+        assert_eq!(map(&[("\u{7}", Value::Int(1))]).repr(), "{\"\\u{7}\": 1}");
+
+        // `print` is unchanged. That is the program's own output rather than
+        // text about a value, and a program that means to ring a bell rings it.
+        assert_eq!(bell.display(), "\u{7}");
+    }
+
+    #[test]
     fn a_character_that_is_not_ascii_prints_as_itself() {
         // A string inside an array is shown with quotation marks and escapes,
-        // and the escapes are the five `escape_string` writes. An emoji is not
-        // one of them and comes out whole, which is what `print` already does
-        // with the same string on its own.
+        // and the escapes are what `quoted_string` writes. An emoji is not one
+        // of them and comes out whole, which is what `print` already does with
+        // the same string on its own.
         let emoji = Value::Str(Rc::new("\u{1F600}".to_string()));
         assert_eq!(emoji.display(), "\u{1F600}");
         assert_eq!(emoji.repr(), "\"\u{1F600}\"");
