@@ -204,11 +204,16 @@ print(index_of([10, 20], 20))  // 1
 - `min(...)` and `max(...)` take any number of numeric arguments.
 - `floor(x)`, `ceil(x)`, and `round(x)` return integers.
 - `sqrt(x)` is the square root (a float); `pow(base, exp)` raises to a power.
+- `sum(array)` adds the numbers in an array and `product(array)` multiplies
+  them. An empty array gives `0` and `1`, so that adding up the pieces of a
+  split array still gives the total.
 
 ```
 print(abs(-3), min(3, 1, 2), max(3, 1, 2))   // 3 1 3
 print(floor(2.7), ceil(2.1), round(2.5))     // 2 3 3
 print(sqrt(9), pow(2, 10))                    // 3.0 1024
+print(sum([1, 2, 3]), product([2, 3, 4]))     // 6 24
+print(sum([]), product([]))                   // 0 1
 ```
 
 ## Conversion
