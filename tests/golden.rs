@@ -2008,6 +2008,37 @@ fn random_int_stays_inside_its_range() {
     ]);
 }
 
+/// A seed makes the numbers repeat, and that is the only thing about them a
+/// program may depend on.
+///
+/// Each case here asserts a comparison rather than a number, so all of them
+/// stay true across a change of generator, which section 3 of the guarantee
+/// allows. The one case that pins actual output lives in `src/random.rs` and
+/// says there that it is a change detector.
+#[test]
+fn a_seed_makes_a_run_repeat() {
+    check_all(&[
+        (
+            "seed(1)\nlet a = random()\nseed(1)\na == random()",
+            "ok true",
+        ),
+        (
+            "seed(7)\nlet a = [random_int(1, 1000), random_int(1, 1000)]\n\
+             seed(7)\na == [random_int(1, 1000), random_int(1, 1000)]",
+            "ok true",
+        ),
+        // A seed set part way through a program takes effect from there, so
+        // this is not the same as seeding at the start.
+        (
+            "seed(1)\nlet a = random()\nlet b = random()\nseed(1)\nrandom() == b",
+            "ok false",
+        ),
+        ("seed(3)", "ok nil"),
+        ("seed(1.5)", "err seed expects an int but got a float @ 1:1"),
+        ("seed()", "err seed expects 1 argument(s) but got 0 @ 1:1"),
+    ]);
+}
+
 /// Argument checking happens before the host is consulted, so a program gets
 /// the same complaint about a wrong type whether or not files are available.
 #[test]

@@ -728,7 +728,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 51 builtins. A program can use each of them without an import.
+There are 52 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -900,12 +900,18 @@ sections gives the same answer each time it is called with the same arguments.
 | ------- | --------- | ------ |
 | `random()` | 0 | A float from 0 up to but not including 1. |
 | `random_int(low, high)` | 2 ints | An integer from `low` to `high`. Both are in the range. |
+| `seed(n)` | 1 int | Starts the generator again from `n`. Gives `nil`. |
 
 `random_int` gives an error if `low` is above `high`. `random_int(n, n)` gives
 `n`. An argument that is not an integer is an error, including a float.
 
 The generator is started from the host's clock the first time a program asks
 for a number, so two runs of the same program give different numbers.
+
+`seed(n)` starts it again from `n` instead. **Two runs that start from the same
+seed give the same numbers.** This is how a program that uses chance is tested:
+it can be asserted against exact output and still be about chance. Every integer
+is a seed.
 
 Where the host has no clock, the generator starts from a fixed value, and the
 program gives the same numbers each time it runs. `random` does not refuse in
