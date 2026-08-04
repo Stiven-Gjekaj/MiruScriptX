@@ -203,6 +203,25 @@ The functions the playground uses are not stable.
 
 Speed is not part of the promise. A later 1.x can be faster or slower.
 
+### 3.8 The numbers a seed produces
+
+`random` gives a float from 0 up to but not including 1. `random_int(a, b)`
+gives an integer from `a` to `b`. Those ranges are stable, and so is the rule
+that two runs from the same seed give the same numbers.
+
+**Which numbers is not stable.** A later 1.x can change the generator, and then
+a seed gives a different sequence. A program that stores a seed and expects to
+reproduce a result later needs the same release of MiruScriptX, and not only the
+same seed.
+
+This is a decision and not an omission. A promise about the sequence would fix
+the algorithm for the whole of version 1, including any defect found in it.
+
+It is last in this section rather than beside 3.1, which it sits closest to in
+subject. The changelog refers to these subsections by number, so inserting one
+in the middle would make a record of an earlier release point at the wrong
+thing.
+
 ---
 
 ## 4. What a 1.x release can do

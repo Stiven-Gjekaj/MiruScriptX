@@ -1955,7 +1955,7 @@ fn now_refuses_where_there_is_no_clock() {
 /// `random` is asserted by its properties, never by its value.
 ///
 /// A golden case that pinned a number would be pinning something the guarantee
-/// deliberately leaves free: section 3 of `docs/stability.md` says a later 1.x
+/// deliberately leaves free: section 3.8 of `docs/stability.md` says a later 1.x
 /// can change the generator. What a program can depend on is the range, and
 /// these cases hold exactly that. The exact sequence is pinned once, as a unit
 /// test in `src/random.rs`, where it is labelled a change detector.
@@ -2012,7 +2012,7 @@ fn random_int_stays_inside_its_range() {
 /// program may depend on.
 ///
 /// Each case here asserts a comparison rather than a number, so all of them
-/// stay true across a change of generator, which section 3 of the guarantee
+/// stay true across a change of generator, which section 3.8 of the guarantee
 /// allows. The one case that pins actual output lives in `src/random.rs` and
 /// says there that it is a change detector.
 #[test]

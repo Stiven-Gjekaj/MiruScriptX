@@ -919,7 +919,7 @@ that situation. `now` refuses because a wrong time is worse than none, and a
 random number that repeats is still a number in the correct range.
 
 **Which numbers follow from a given start is not defined by this document.** A
-later 1.x can change the generator. Section 3 of the
+later 1.x can change the generator. Section 3.8 of the
 [stability guarantee](stability.md) states this.
 
 ---

@@ -11,7 +11,7 @@
 //! release.
 //!
 //! **Which numbers a seed produces is not part of the stability guarantee.**
-//! Section 3 of `docs/stability.md` says so. A later 1.x can replace this.
+//! Section 3.8 of `docs/stability.md` says so. A later 1.x can replace this.
 
 /// A stream of numbers, decided by its seed.
 ///
