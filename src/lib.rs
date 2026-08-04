@@ -26,6 +26,7 @@ pub mod globals;
 pub mod lexer;
 pub mod ops;
 pub mod parser;
+pub mod random;
 pub mod suggest;
 pub mod token;
 pub mod value;
