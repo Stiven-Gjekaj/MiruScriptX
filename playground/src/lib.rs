@@ -407,6 +407,12 @@ mod tests {
     fn every_bundled_example_runs() {
         // The dropdown must not be able to offer a program that fails, and an
         // example that calls input() would, since the page has no stdin.
+        //
+        // This runs natively, where `BrowserClock` cannot reach `Date.now`.
+        // Nothing here asks it to: `dice.miru` sets a seed, so the generator
+        // never falls back to the clock. A bundled example that called `now()`,
+        // or `random()` without seeding first, would fail here rather than in a
+        // browser, which is the right place to find out.
         for name in example_names() {
             let source = example_source(&name);
             assert!(!source.is_empty(), "{name} has no source");

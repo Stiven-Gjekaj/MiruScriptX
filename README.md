@@ -219,7 +219,7 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | **Library** | lib.rs | 823 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
 | **Total** | **17 files** | **12837** | Written from scratch in Rust |
 
-The playground is a separate crate: 549 lines of Rust binding the language to
+The playground is a separate crate: 555 lines of Rust binding the language to
 WebAssembly, and 602 of hand-written HTML, CSS, and JavaScript. It is counted
 apart because it is not the language, and neither its code nor its dependencies
 are involved in running a `.miru` file.
