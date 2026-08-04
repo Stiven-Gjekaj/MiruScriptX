@@ -327,6 +327,50 @@ program runs, which makes it jump backwards, and a difference you took across
 that moment comes out negative. For anything that has to be right about a
 duration, say what your program does when the answer is below zero.
 
+## random(), random_int(low, high), and seed(n)
+
+`random()` gives a number from 0 up to but not including 1. `random_int(low,
+high)` gives a whole number, and both ends count:
+
+```
+print(random_int(1, 6))       // a die
+print(random_int(0, 1))       // a coin, as 0 or 1
+print(random() < 0.3)         // true about three times in ten
+```
+
+To pick from an array, ask for an index:
+
+```
+let colours = ["red", "green", "blue"]
+print(colours[random_int(0, len(colours) - 1)])
+```
+
+`len(colours) - 1` is there because indexes start at 0 and both ends of
+`random_int` count. Getting this wrong by one is the usual mistake, and the
+symptom is an error about an index out of range on about one run in three.
+
+### Making a run repeat
+
+Every run of your program gives different numbers, because the generator starts
+from the clock. `seed(n)` starts it from `n` instead, and the same seed always
+gives the same numbers:
+
+```
+seed(1)
+print(random_int(1, 100), random_int(1, 100))   // the same two numbers
+seed(1)                                         // every time you run this
+print(random_int(1, 100), random_int(1, 100))
+```
+
+This is how a program that uses chance is tested. Every example in this
+repository that draws a number calls `seed` first, which is what lets its test
+assert the exact output.
+
+**Do not save a seed and expect it to work forever.** A later version of
+MiruScriptX can change the generator, and then the same seed gives different
+numbers. What is promised is the range, and that one seed repeats within one
+version.
+
 ## Higher-order functions
 
 These apply a function across an array. The function can be a named function, a
