@@ -1,0 +1,63 @@
+// words.miru
+// Counting the words in a file, and reporting the commonest.
+// Run from the repository root with: miru run examples/words.miru
+//
+// The path below is relative to where you are, not to where this file is, so
+// running it from another directory looks for examples/words.txt under that
+// directory instead. read_file says so if it is not there.
+
+let path = "examples/words.txt"
+
+if !file_exists(path) {
+  print("no file at", path)
+  print("run this from the repository root")
+  exit(1)
+}
+
+// Punctuation is not part of a word, and neither is the case of a letter. This
+// keeps a to z and drops everything else, so a word with an accent in it loses
+// that letter. Enough for this file, and worth knowing before reusing it.
+fn clean(word) {
+  let out = ""
+  for letter in split(lower(word), "") {
+    if letter >= "a" && letter <= "z" {
+      out = out + letter
+    }
+  }
+  return out
+}
+
+let counts = {}
+for line in split(read_file(path), "\n") {
+  for word in split(line, " ") {
+    let key = clean(word)
+    // Two spaces together give an empty piece, and so does a line of nothing.
+    if len(key) > 0 {
+      if has(counts, key) {
+        counts[key] = counts[key] + 1
+      } else {
+        counts[key] = 1
+      }
+    }
+  }
+}
+
+print("different words:", len(keys(counts)))
+
+// keys comes back sorted, so ties below are broken by spelling and the report
+// is the same on every run.
+let best = []
+let most = 0
+for word in keys(counts) {
+  if counts[word] > most {
+    most = counts[word]
+    best = [word]
+  } else if counts[word] == most {
+    push(best, word)
+  }
+}
+
+print("most common, at", most, "each:")
+for word in best {
+  print(" ", word)
+}

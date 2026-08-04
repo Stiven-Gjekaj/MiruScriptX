@@ -315,6 +315,34 @@ fn recover_example_output() {
     assert_eq!(run_example("recover.miru"), expected);
 }
 
+/// The word counter reads a file, so its test is the one that proves a path
+/// resolves against the working directory. `run_example` launches the binary
+/// from the repository root, which is where the example's own comment says to
+/// run it from.
+#[test]
+fn words_example_output() {
+    let expected = "different words: 23\nmost common, at 7 each:\n  the\n";
+    assert_eq!(run_example("words.miru"), expected);
+}
+
+/// Run from anywhere else, it says so and stops with 1 rather than failing
+/// inside `read_file` with a message about a path the reader did not write.
+#[test]
+fn words_example_says_where_to_run_it_from() {
+    let output = miru()
+        .arg("run")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/words.miru"))
+        .current_dir(std::env::temp_dir())
+        .output()
+        .expect("failed to launch the miru binary");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("output should be valid utf-8"),
+        "no file at examples/words.txt\nrun this from the repository root\n"
+    );
+}
+
 #[test]
 fn shop_example_output() {
     let expected = "notebook x 2\npen x 5\nsubtotal: 1300\ntax: 8 percent\ntotal: 1404\n";
