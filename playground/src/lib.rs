@@ -169,10 +169,10 @@ pub fn version() -> String {
 /// that has drifted from the one in the repository. These are the same files
 /// `tests/integration.rs` runs through the real binary.
 ///
-/// Two examples are deliberately absent. `greeter.miru` calls `input()`, and
-/// the playground has nowhere to read a line from. `shop.miru` imports
-/// `prices.miru`, and there is no file system here to resolve that against, so
-/// it would only ever show the refusal.
+/// Three examples are deliberately absent. `greeter.miru` and `guess.miru` call
+/// `input()`, and the playground has nowhere to read a line from. `shop.miru`
+/// imports `prices.miru`, and there is no file system here to resolve that
+/// against, so it would only ever show the refusal.
 ///
 /// **An example that reads or writes a file cannot go in this list either**,
 /// for the same reason as `shop.miru`. The page has no file system, so
@@ -180,6 +180,11 @@ pub fn version() -> String {
 /// requires each entry here to complete cleanly. `file_exists` and `args` are
 /// fine: they answer `false` and `[]` rather than refusing, which is the honest
 /// answer here and keeps a program that merely checks before reading runnable.
+/// That is why `words.miru` is absent as well.
+///
+/// `now`, `random`, `random_int`, and `seed` are all fine here. The page has a
+/// clock, which it supplies through `BrowserClock`, and the generator is the
+/// language's own.
 const EXAMPLES: &[(&str, &str)] = &[
     ("greet", include_str!("../../examples/greet.miru")),
     ("fib", include_str!("../../examples/fib.miru")),
@@ -187,6 +192,7 @@ const EXAMPLES: &[(&str, &str)] = &[
     ("contacts", include_str!("../../examples/contacts.miru")),
     ("transform", include_str!("../../examples/transform.miru")),
     ("recover", include_str!("../../examples/recover.miru")),
+    ("dice", include_str!("../../examples/dice.miru")),
 ];
 
 /// The names of the bundled examples, in the order they should be offered.

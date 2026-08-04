@@ -315,6 +315,26 @@ fn recover_example_output() {
     assert_eq!(run_example("recover.miru"), expected);
 }
 
+/// The dice example draws the same shape every run, because it seeds the
+/// generator. Ten thousand rolls of two dice peak at 7, which is the point of
+/// the program, so the test asserts the whole histogram rather than a total.
+#[test]
+fn dice_example_output() {
+    let expected = "two dice, 10000 rolls\n\
+         2 ##### 262\n\
+         3 ########## 542\n\
+         4 ################ 804\n\
+         5 ###################### 1113\n\
+         6 ########################### 1359\n\
+         7 ################################ 1622\n\
+         8 ############################ 1439\n\
+         9 ###################### 1148\n\
+         10 ################# 852\n\
+         11 ########### 557\n\
+         12 ###### 302\n";
+    assert_eq!(run_example("dice.miru"), expected);
+}
+
 /// The word counter reads a file, so its test is the one that proves a path
 /// resolves against the working directory. `run_example` launches the binary
 /// from the repository root, which is where the example's own comment says to

@@ -1,0 +1,37 @@
+// dice.miru
+// Rolling two dice ten thousand times, and drawing what comes out.
+// Run with: miru run examples/dice.miru
+//
+// Two dice do not give a flat spread. There is one way to roll 2 and six ways
+// to roll 7, so the shape below is the point of the program. The seed makes it
+// the same shape every time; take that line out and it moves a little on each
+// run, and 7 still wins.
+
+seed(451)
+
+let rolls = 10000
+let counts = {}
+
+for n in range(2, 13) {
+  counts[str(n)] = 0
+}
+
+for i in range(0, rolls) {
+  let total = random_int(1, 6) + random_int(1, 6)
+  counts[str(total)] = counts[str(total)] + 1
+}
+
+// A bar of one character per fifty rolls, so the tallest fits on a line.
+fn bar(count) {
+  let out = ""
+  for i in range(0, count / 50) {
+    out = out + "#"
+  }
+  return out
+}
+
+print("two dice,", rolls, "rolls")
+for n in range(2, 13) {
+  let count = counts[str(n)]
+  print(n, bar(count), count)
+}
