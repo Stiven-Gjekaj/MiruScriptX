@@ -291,6 +291,42 @@ if is_error(text) {
 `file_exists` gives `false` there rather than failing, because the honest answer
 to the question is then no.
 
+## now()
+
+`now()` gives the number of milliseconds since the start of 1970, as an integer.
+That date is where computers count time from, and the number itself is rarely
+what you want. The difference between two of them is:
+
+```
+let started = now()
+let total = 0
+for n in range(1, 1000000) {
+  total = total + n
+}
+print("took", now() - started, "milliseconds")
+```
+
+This is the first builtin whose answer is not decided by what you wrote.
+`upper("hi")` is `"HI"` today and next year. `now()` is different every time you
+call it, which is the whole point, and also the reason a program that has to
+print the same thing twice should not use it.
+
+The clock comes from whoever is running your program. `miru` has one, and so
+does the browser playground. Somewhere without one, `now()` fails and `try`
+catches it:
+
+```
+let t = try now()
+if is_error(t) {
+  print("no clock here:", t.message)
+}
+```
+
+**Do not use it to measure short things.** The clock can be corrected while your
+program runs, which makes it jump backwards, and a difference you took across
+that moment comes out negative. For anything that has to be right about a
+duration, say what your program does when the answer is below zero.
+
 ## Higher-order functions
 
 These apply a function across an array. The function can be a named function, a
