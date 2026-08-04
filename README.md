@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-406_passing-427819?style=for-the-badge" alt="406 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-411_passing-427819?style=for-the-badge" alt="411 tests passing"/>
 </p>
 
 <p align="center">
@@ -212,11 +212,11 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4165 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Diagnostics** | suggest.rs | 220 | Chooses the name an error offers back when a program misspells one |
 | **Formatter** | formatter.rs | 701 | Reprints a program in canonical form (`miru fmt`) |
-| **CLI and REPL** | main.rs, repl.rs | 436 | File runner, `fmt` and `disasm` commands, and the REPL |
-| **Library** | lib.rs | 730 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **16 files** | **12372** | Written from scratch in Rust |
+| **CLI and REPL** | main.rs, repl.rs | 475 | File runner, `fmt` and `disasm` commands, and the REPL |
+| **Library** | lib.rs | 822 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
+| **Total** | **16 files** | **12503** | Written from scratch in Rust |
 
-The playground is a separate crate: 515 lines of Rust binding the language to
+The playground is a separate crate: 543 lines of Rust binding the language to
 WebAssembly, and 602 of hand-written HTML, CSS, and JavaScript. It is counted
 apart because it is not the language, and neither its code nor its dependencies
 are involved in running a `.miru` file.

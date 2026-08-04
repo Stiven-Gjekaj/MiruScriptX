@@ -81,8 +81,9 @@ pub fn run_source(
     source: &str,
     out: Box<dyn Write>,
     system: Box<dyn value::System>,
+    clock: Box<dyn value::Clock>,
 ) -> Result<i32, MiruError> {
-    run_source_from(source, None, out, system)
+    run_source_from(source, None, out, system, clock)
 }
 
 /// Like [`run_source`], but for a program that came from `path`, which is what
@@ -96,16 +97,23 @@ pub fn run_source(
 /// `system` is what the program is allowed to do with files, and it is a
 /// parameter rather than a default so that granting file access is a decision
 /// somebody wrote down. Pass [`value::NoSystem`] to grant none.
+///
+/// `clock` is the same arrangement for the wall clock, which `now` reads.
+/// [`value::NoClock`] grants none. It is a second parameter rather than a fifth
+/// method on `System` because a host can have one capability without the other:
+/// the browser playground has a clock and no file system.
 pub fn run_source_from(
     source: &str,
     path: Option<&std::path::Path>,
     out: Box<dyn Write>,
     system: Box<dyn value::System>,
+    clock: Box<dyn value::Clock>,
 ) -> Result<i32, MiruError> {
     let program = parse_program(source)?;
     let mut vm = vm::Vm::with_output(out);
     vm.set_input(Box::new(StdinInput));
     vm.set_system(system);
+    vm.set_clock(clock);
     let result = vm.run_from(&program, path);
     // Flushed on both arms, not only on success. A program that failed still
     // printed whatever it printed before it failed, and this used to drop that
@@ -157,6 +165,15 @@ impl Session {
     /// Replace the input source that `input()` reads from.
     pub fn set_input(&mut self, input: Box<dyn Input>) {
         self.vm.set_input(input);
+    }
+
+    /// Give the session a clock, which `now()` reads.
+    ///
+    /// A setter rather than an argument to [`Session::new`], because the REPL
+    /// is the only caller that has a real one and every other caller wants the
+    /// default, which is no clock at all.
+    pub fn set_clock(&mut self, clock: Box<dyn value::Clock>) {
+        self.vm.set_clock(clock);
     }
 
     /// Parse, compile, and run one input against the session's accumulated
@@ -211,12 +228,28 @@ pub fn run_capture_all(source: &str) -> Result<Capture, MiruError> {
 
 /// Like [`run_capture_all`], but feeds the given lines to `input()` in order.
 pub fn run_capture_all_with_input(source: &str, input: &[&str]) -> Result<Capture, MiruError> {
+    run_capture_all_with(source, input, Box::new(value::NoClock))
+}
+
+/// Like [`run_capture_all_with_input`], and with a clock for `now()` to read.
+///
+/// The spellings above keep granting none, which is what every golden case
+/// wants: `now` is the one builtin whose result the source does not determine,
+/// so a capture that had a real clock behind it could not assert an answer.
+/// This entry point exists for the two callers that do supply one, which are
+/// the browser playground and the tests of the clock itself.
+pub fn run_capture_all_with(
+    source: &str,
+    input: &[&str],
+    clock: Box<dyn value::Clock>,
+) -> Result<Capture, MiruError> {
     let program = parse_program(source)?;
     let out = Rc::new(RefCell::new(Vec::<u8>::new()));
     let err = Rc::new(RefCell::new(Vec::<u8>::new()));
     let mut vm = vm::Vm::with_output(Box::new(SharedBuffer(Rc::clone(&out))));
     vm.set_error_output(Box::new(SharedBuffer(Rc::clone(&err))));
     vm.set_input(Box::new(ScriptedInput::new(input)));
+    vm.set_clock(clock);
     let result = vm.run(&program);
     // Flushed before either arm returns, and the code read before the error is
     // reported, for the same reasons as `run_source_from`.
@@ -487,6 +520,65 @@ impl std::error::Error for MiruError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A clock stopped at one instant, which is what makes a time assertable.
+    ///
+    /// The seam exists so the library never reads the machine's clock. That it
+    /// also makes `now` testable to the millisecond is the second thing it
+    /// buys, and the reason the tests of the clock are here rather than in the
+    /// integration tests, which can only check a bound.
+    struct FixedClock(i64);
+
+    impl value::Clock for FixedClock {
+        fn now_millis(&mut self) -> Result<i64, String> {
+            Ok(self.0)
+        }
+    }
+
+    #[test]
+    fn now_gives_back_exactly_what_the_host_clock_said() {
+        let captured = run_capture_all_with("print(now())", &[], Box::new(FixedClock(1_234_567)))
+            .expect("the program runs");
+        assert_eq!(captured.out, "1234567\n");
+    }
+
+    /// A clock is read at each call rather than once per run, so a program that
+    /// measures a duration sees two different times. Reading it once and
+    /// caching would make every interval zero.
+    #[test]
+    fn each_call_reads_the_clock_again() {
+        struct Ticking(i64);
+
+        impl value::Clock for Ticking {
+            fn now_millis(&mut self) -> Result<i64, String> {
+                self.0 += 5;
+                Ok(self.0)
+            }
+        }
+
+        let captured = run_capture_all_with(
+            "let a = now()\nlet b = now()\nprint(b - a)",
+            &[],
+            Box::new(Ticking(0)),
+        )
+        .expect("the program runs");
+        assert_eq!(captured.out, "5\n");
+    }
+
+    /// The captures that everything else uses grant no clock, which is what
+    /// keeps the golden cases deterministic. Stated as a test because it is a
+    /// property of the default rather than of any one case.
+    #[test]
+    fn the_ordinary_capture_grants_no_clock() {
+        let Err(error) = run_capture_all("now()") else {
+            panic!("the default capture granted a clock");
+        };
+        assert!(
+            error.message.contains("there is no clock"),
+            "the message was {:?}",
+            error.message
+        );
+    }
 
     /// Build an error carrying `count` identical trace entries.
     fn traced(count: usize) -> MiruError {

@@ -118,6 +118,28 @@ impl miruscriptx::value::System for RealSystem {
     }
 }
 
+/// The clock `miru` gives a program, which `now` reads.
+///
+/// `SystemTime` rather than `Instant`, because a program that asks for the time
+/// wants the time and not an interval from an unnamed origin. The conversion
+/// cannot lose a millisecond that matters: `as i64` from the `u128` of
+/// milliseconds since the epoch is exact until the year 292278994.
+///
+/// A clock before the epoch gives an error rather than a negative number. It
+/// means the host is set to a date in the 1960s, which a program cannot do
+/// anything sensible with, and saying so is better than handing back a time
+/// that arithmetic will quietly turn into nonsense.
+struct RealClock;
+
+impl miruscriptx::value::Clock for RealClock {
+    fn now_millis(&mut self) -> Result<i64, String> {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|since| since.as_millis() as i64)
+            .map_err(|_| "the host's clock is set before 1970".to_string())
+    }
+}
+
 fn eval_source(args: &[String]) -> ExitCode {
     let Some((source, rest)) = args.split_first() else {
         return usage_error("the '-e' command needs a program");
@@ -127,7 +149,12 @@ fn eval_source(args: &[String]) -> ExitCode {
         arguments: rest.to_vec(),
     });
 
-    match miruscriptx::run_source(source, Box::new(std::io::stdout()), system) {
+    match miruscriptx::run_source(
+        source,
+        Box::new(std::io::stdout()),
+        system,
+        Box::new(RealClock),
+    ) {
         // `ExitCode` rather than `std::process::exit`, so the code still
         // travels back through the join from the interpreter's own thread and
         // every destructor on the way still runs. The cast is exact: `exit`
@@ -183,7 +210,13 @@ fn run_file(args: &[String]) -> ExitCode {
 
     let out = Box::new(std::io::stdout());
     let system = Box::new(RealSystem { arguments });
-    match miruscriptx::run_source_from(&source, Some(std::path::Path::new(path)), out, system) {
+    match miruscriptx::run_source_from(
+        &source,
+        Some(std::path::Path::new(path)),
+        out,
+        system,
+        Box::new(RealClock),
+    ) {
         Ok(code) => ExitCode::from(code as u8),
         Err(err) => {
             eprintln!("miru: {}", err.render(&source));

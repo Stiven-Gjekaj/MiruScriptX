@@ -9,6 +9,8 @@ use rustyline::DefaultEditor;
 use miruscriptx::value::Value;
 use miruscriptx::Session;
 
+use crate::RealClock;
+
 /// Start the REPL. It reads a line (or a multi-line block) at a time, runs it,
 /// and echoes the value of each expression. State persists across inputs, so
 /// variables and functions you define stay available. Line editing and history
@@ -34,6 +36,10 @@ pub fn run() -> ExitCode {
     }
 
     let mut session = Session::new();
+    // The same clock `run` and `-e` give a program. A session that could not
+    // answer `now()` would be the one place in `miru` where a builtin refuses
+    // for no reason the person at the prompt could see.
+    session.set_clock(Box::new(RealClock));
     let mut buffer = String::new();
 
     let exit_code = loop {

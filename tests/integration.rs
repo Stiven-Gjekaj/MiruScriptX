@@ -897,3 +897,37 @@ fn a_file_carries_an_exit_code_too() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "working\n");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// `miru` gives a program a clock, so `now` answers rather than refusing.
+///
+/// The bound is the only assertion a test of a real clock can make. It is the
+/// millisecond value of 2025-06-15, which is before this test was written and
+/// after every machine that could plausibly run it was built, so the test says
+/// the number came from a clock and not from a zero.
+#[test]
+fn the_binary_gives_a_program_a_clock() {
+    let output = run_eval("-e", "print(now() > 1750000000000)");
+    assert!(output.status.success(), "stderr was {:?}", output.stderr);
+    assert_eq!(output.stdout, b"true\n");
+}
+
+/// The clock is a whole capability rather than one builtin, so the two entry
+/// points that run a program both supply it. A `run` that had no clock would be
+/// a difference between `miru run` and `miru -e` that nothing else has.
+#[test]
+fn running_a_file_gives_a_clock_too() {
+    let dir = std::env::temp_dir().join("miru-clock-test");
+    std::fs::create_dir_all(&dir).expect("a temporary directory");
+    let path = dir.join("when.miru");
+    std::fs::write(&path, "print(type(now()))\n").expect("write the program");
+
+    let output = miru()
+        .arg("run")
+        .arg(&path)
+        .output()
+        .expect("failed to launch miru");
+
+    assert!(output.status.success(), "stderr was {:?}", output.stderr);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "int\n");
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -101,10 +101,38 @@ impl Outcome {
     }
 }
 
+#[wasm_bindgen]
+extern "C" {
+    /// The page's own clock, which is what `now()` reads here.
+    ///
+    /// Bound directly rather than through `js-sys`, which would work and would
+    /// also add a dependency to a crate whose whole point is that it has one.
+    /// Six lines of `extern` reach the same function.
+    #[wasm_bindgen(js_namespace = Date, js_name = now)]
+    fn date_now() -> f64;
+}
+
+/// The clock the browser gives a program.
+///
+/// `Date.now()` is a float because JavaScript has one number type. It holds
+/// every integer up to 2^53 exactly, and the millisecond count does not reach
+/// that until the year 287396, so the conversion loses nothing.
+///
+/// **The playground has a clock and no file system, and that is the point of
+/// them being two capabilities.** A page can say what time it is. It cannot
+/// open a file, and `read_file` still refuses here.
+struct BrowserClock;
+
+impl miruscriptx::value::Clock for BrowserClock {
+    fn now_millis(&mut self) -> Result<i64, String> {
+        Ok(date_now() as i64)
+    }
+}
+
 /// Run a program and return everything it printed.
 #[wasm_bindgen]
 pub fn run(source: &str) -> Outcome {
-    match miruscriptx::run_capture_all(source) {
+    match miruscriptx::run_capture_all_with(source, &[], Box::new(BrowserClock)) {
         Ok(captured) => Outcome::ran(captured),
         Err(error) => Outcome::failed(&error, source),
     }
