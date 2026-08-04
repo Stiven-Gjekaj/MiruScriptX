@@ -1,6 +1,6 @@
 # Next steps
 
-You now know all of MiruScriptX 1.4. Here is where to go from here.
+You now know all of MiruScriptX 1.5. Here is where to go from here.
 
 ## Try it without installing anything
 

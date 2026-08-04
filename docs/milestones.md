@@ -422,6 +422,51 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.5: a clock, chance, and programs worth reading
+
+Shipped. Four builtins, a fourth kind of builtin to hold them, and the three
+example programs the language could not have run a week earlier.
+
+- **`now()`.** The milliseconds since 1970. The first builtin whose result the
+  program's own source does not determine, and the end of the property that
+  made the golden cases as simple as they are.
+
+- **`random()`, `random_int(low, high)`, and `seed(n)`.** SplitMix64, written
+  here rather than taken from a crate: thirty lines of arithmetic against a
+  dependency the README would have to count.
+
+- **Three examples.** A guessing game, a word frequency counter over a real
+  file, and ten thousand dice rolls drawn as a histogram. Closes #4, which had
+  asked for programs somebody would actually write and named the guessing game
+  among them.
+
+Four things worth carrying forward:
+
+- **A capability is a value, and the reason is not the target.** The library
+  must not call `SystemTime::now`, which panics on `wasm32-unknown-unknown`,
+  and the fix is not a `cfg`. A `cfg` answers what the target supports; the
+  question that decides this is what the embedder permits, and no target knows
+  that. `Clock` is a separate trait from `System` because the browser
+  playground has one and not the other, which is the case that proves the two
+  are not one capability.
+
+- **The counts moved again, and one of them did not.** Adding four builtins
+  left the number taking a `BuiltinFn` at forty-one, because none of the four
+  is a `define` call. The others went to forty-nine and fifty-two. This is the
+  third release to move these and the first where a count of builtins stayed
+  still while builtins were added.
+
+- **A stale test binary gave a false green.** The specification cross-check
+  passed with a builtin that was not in the specification, because the test
+  binary had not been relinked after `BUILTIN_NAMES` grew. `cargo clean -p
+  miruscriptx` showed two real failures. Yesterday the same trap ran the other
+  way and produced a false red.
+
+- **A seeded generator is not the same thing as randomness a test forbids.**
+  Issue #4 said an example must not use random numbers, because its output has
+  to be the same between runs. `seed` satisfies the requirement that rule was
+  protecting, and all three new examples use chance and assert exact output.
+
 ## 1.4: a standard library that reaches further, and a map for a newcomer
 
 Shipped. Four builtins, one defect closed, and the answer to the question a
