@@ -43,7 +43,8 @@ project has hit.
 
 | Change | Files |
 | ------ | ----- |
-| A builtin | `src/builtins.rs` (the function, `register`, `BUILTIN_NAMES`), `docs/specification.md` section 8, `docs/stability.md` section 2.3, `wiki/13-builtins.md` |
+| A builtin | `src/builtins.rs` (the function, `register` with the right `define`, `BUILTIN_NAMES`), `docs/specification.md` section 8, `docs/stability.md` section 2.3, `wiki/13-builtins.md` |
+| A host capability | the trait and its refusing default in `src/value.rs`, the field and setter on `Vm`, the parameter on `run_source_from` in `src/lib.rs`, the real one in `src/main.rs`, the browser's in `playground/src/lib.rs`, `docs/architecture.md` |
 | Syntax | `src/lexer.rs` or `src/parser.rs`, `src/ast.rs`, `src/compiler.rs`, `src/formatter.rs`, `docs/specification.md` sections 2 and 3 |
 | A new opcode | `src/chunk.rs` (the enum, the `OPCODES` table, the disassembler), `src/compiler.rs`, `src/vm.rs` |
 | An error message | wherever it is raised, and `docs/specification.md` **only if that message is quoted there**. Section 3.1 of `docs/stability.md` leaves the words of a message free |
@@ -64,21 +65,24 @@ project has hit.
   size. Its failure message gives the number to use.
 - **Code and its tests go in one commit. Documentation goes in its own.**
 
-### Three builtins, not one kind
+### Four builtins, not one kind
 
 `define` is the ordinary kind, and almost certainly the one you want.
 `define_system` is for a builtin that needs the file system, and it is refused
 by default so that the browser playground and any embedder get a sentence
-rather than file access. `define_host` is for one that calls back into user
+rather than file access. `define_ambient` is for one that reads something the
+program's own source does not determine, such as the clock; it is refused by
+default for the same reason. `define_host` is for one that calls back into user
 code, such as `map`. Copying the wrong one is a mistake you find out about
 late.
 
-Adding one also moves **three different counts, which are three different
-numbers**: how many take a `BuiltinFn`, how many reach `call_native`, and how
+Adding one also moves **counts that are different numbers**: how many take a
+`BuiltinFn`, how many take an `AmbientFn`, how many reach `call_native`, and how
 many exist. `builtin_kind_counts_match_the_comments_that_quote_them` in
-`src/builtins.rs` holds all three, and the prose that quotes each of them is
-named in its failure message. Do not assume they move together. Two correct
-sentences were once lined up to be "corrected" into wrong ones.
+`src/builtins.rs` holds all of them, and the prose that quotes each one is named
+in its failure message. Do not assume they move together. Two correct sentences
+were once lined up to be "corrected" into wrong ones, and 1.5 added a builtin
+without changing the first of these numbers at all.
 
 `tests/specification.rs` checks `BUILTIN_NAMES` against the specification in
 both directions, so it names the builtin whose documentation you missed.
