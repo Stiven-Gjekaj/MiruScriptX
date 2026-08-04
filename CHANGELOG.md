@@ -8,7 +8,42 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
-## 1.4.0 (2026-08-03)
+## Unreleased
+
+### Added
+
+- **`now()`.** The milliseconds since the start of 1970, as an integer. Nothing
+  in the language could tell the time before this.
+
+  ```
+  let started = now()
+  do_the_work()
+  print("took", now() - started, "milliseconds")
+  ```
+
+  It is the first builtin whose result the program's own source does not
+  determine. Every other one gives the same answer each time it is called with
+  the same arguments, and a program that has to produce identical output twice
+  should not call this one.
+
+  The clock comes from the host, and `now()` fails where there is no clock, in
+  the way `read_file` fails where there is no file system. `try` catches it.
+  `miru` has a clock, and so does the browser playground, which still has no
+  file system: the two are separate capabilities and a host can have either
+  without the other.
+
+  **The result is not monotonic.** A clock corrected while a program runs goes
+  backwards, so a duration measured across that moment is negative.
+
+### Changed
+
+- **A fourth kind of builtin.** `now` is handed neither the output sink nor the
+  file system, so it takes a new signature, `AmbientFn`, for what a program can
+  ask for that its own source does not determine. Nothing about calling one
+  differs. This is visible only to somebody embedding the language: the Rust
+  entry points `run_source` and `run_source_from` now take a clock alongside the
+  file system, and `run_capture_all_with` is a new entry point for a caller that
+  wants to supply one. The Rust API is not part of the stability guarantee.
 
 ### Added
 
