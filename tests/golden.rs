@@ -1926,6 +1926,32 @@ fn the_file_builtins_refuse_where_there_is_no_file_system() {
     ]);
 }
 
+/// `now` refuses where the host has no clock.
+///
+/// Golden tests grant no clock, for the same reason they grant no file system:
+/// what a host supplies is the host's decision, and the default is nothing.
+/// That is also what keeps every case in this file deterministic. `now` is the
+/// first builtin whose result the source does not determine, so a golden case
+/// that called it with a real clock behind it could not assert an answer.
+#[test]
+fn now_refuses_where_there_is_no_clock() {
+    check_all(&[
+        (
+            "now()",
+            "err this program is running where there is no clock @ 1:1",
+        ),
+        // Catchable, like the file refusals.
+        ("is_error(try now())", "ok true"),
+        (
+            "let r = try now()\nr.message",
+            "ok \"this program is running where there is no clock\"",
+        ),
+        // The arity check runs before the clock is consulted, so the complaint
+        // about the call is the same whether or not the host has one.
+        ("now(1)", "err now expects 0 argument(s) but got 1 @ 1:1"),
+    ]);
+}
+
 /// Argument checking happens before the host is consulted, so a program gets
 /// the same complaint about a wrong type whether or not files are available.
 #[test]

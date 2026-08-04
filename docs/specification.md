@@ -728,7 +728,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 48 builtins. A program can use each of them without an import.
+There are 49 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -868,6 +868,32 @@ operation. An element that is not a number is an error.
 `filter` asks whether the result of `f` is true. A result that is a caught
 error stops the program, as `if` does. `map` and `reduce` only keep the result,
 so they do not refuse one.
+
+### 8.9 Time
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `now()` | 0 | The milliseconds since 1970-01-01T00:00:00Z, as an integer. |
+
+`now` gives an integer and not a float, so no whole millisecond is lost.
+
+**The result is not monotonic.** A host whose clock is corrected while a program
+runs gives a smaller number than it gave a moment before. A program that
+measures how long something took by subtracting two of these can therefore get a
+negative answer, and one that must not be wrong about it has to say what it does
+in that case.
+
+`now` gives an error if the host has no clock, and `try` catches it. This is the
+rule `read_file` follows, and for the same reason: a program handed a wrong time
+goes on to do the wrong thing with it, and 1970 is a wrong time rather than an
+absent one. `miru` has a clock. So does the browser playground, which has no
+file system: the two capabilities are separate and a host can have either
+without the other.
+
+**`now` is the first builtin whose result the program's own source does not
+determine.** Every other builtin gives the same answer each time it is called
+with the same arguments. A program that must produce the same output twice
+should not call this one.
 
 ---
 

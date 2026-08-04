@@ -161,6 +161,33 @@ impl Clock for NoClock {
     }
 }
 
+/// What a program can ask for that its own source does not determine.
+///
+/// One bundle rather than one argument per capability, because the builtins
+/// that reach for any of this reach for more than one of it. The clock is here
+/// now; the random number generator joins it, and needs the clock, since a
+/// program that asks for a random number without setting a seed has to be given
+/// one from somewhere.
+pub struct Ambient<'a> {
+    clock: &'a mut dyn Clock,
+}
+
+impl<'a> Ambient<'a> {
+    pub fn new(clock: &'a mut dyn Clock) -> Ambient<'a> {
+        Ambient { clock }
+    }
+
+    /// The host's clock, or its refusal.
+    pub fn now_millis(&mut self) -> Result<i64, String> {
+        self.clock.now_millis()
+    }
+}
+
+/// The signature of a builtin that reads something its arguments do not
+/// contain. It gets [`Ambient`] and nothing else: none of them writes, and none
+/// of them touches a file.
+pub type AmbientFn = fn(&mut Ambient, Vec<Value>) -> Result<Value, String>;
+
 /// A function compiled to bytecode. The whole program is itself one of these,
 /// an anonymous script with no parameters.
 pub struct CompiledFunction {
@@ -367,6 +394,8 @@ pub enum NativeFn {
     Plain(BuiltinFn),
     /// Takes the host's file system and command line.
     System(SystemFn),
+    /// Takes what the program's own source does not determine.
+    Ambient(AmbientFn),
 }
 
 /// The signature of a higher-order builtin: it checks its arguments and returns

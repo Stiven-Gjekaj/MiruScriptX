@@ -23,8 +23,8 @@ use crate::chunk::{Chunk, OpCode};
 use crate::globals::{Globals, ModuleId, ROOT_MODULE};
 use crate::suggest::with_suggestion;
 use crate::value::{
-    Closure, CompiledFunction, EmptyInput, Input, NativeFn, NoSystem, Output, System, Upvalue,
-    Value,
+    Ambient, Clock, Closure, CompiledFunction, EmptyInput, Input, NativeFn, NoClock, NoSystem,
+    Output, System, Upvalue, Value,
 };
 use crate::MiruError;
 
@@ -174,6 +174,9 @@ pub struct Vm {
     /// The host's file system and command line, if it has one. Absent unless
     /// the embedder supplies it, so nothing gains file access by accident.
     system: Box<dyn System>,
+    /// The host's wall clock, on the same terms as `system`: absent until an
+    /// embedder supplies one, so no program reads a time the host never gave.
+    clock: Box<dyn Clock>,
     /// The code a program asked to stop with, once it has asked.
     ///
     /// `None` until something calls [`Output::request_exit`]. Whoever runs the
@@ -231,6 +234,7 @@ impl Vm {
             err: Box::new(std::io::stderr()),
             input: Box::new(EmptyInput),
             system: Box::new(NoSystem),
+            clock: Box::new(NoClock),
             exit: None,
             line: 0,
             column: 0,
@@ -270,6 +274,16 @@ impl Vm {
     /// embedder gets until it decides otherwise.
     pub fn set_system(&mut self, system: Box<dyn System>) {
         self.system = system;
+    }
+
+    /// Give this VM a clock.
+    ///
+    /// On the same terms as [`Vm::set_system`]: a VM that is never given one
+    /// refuses `now`, which is what an embedder gets until it decides
+    /// otherwise. Unlike a file system, this is a capability the browser
+    /// playground does supply, since a page has `Date.now`.
+    pub fn set_clock(&mut self, clock: Box<dyn Clock>) {
+        self.clock = clock;
     }
 
     /// Flush any buffered output.
@@ -1057,8 +1071,9 @@ impl Vm {
         // program never dealt with into a line of output that looks
         // deliberate.
         //
-        // Checking here covers forty-five at once: every builtin that arrives
-        // as a `Value::Builtin`, which is the plain ones and the system ones.
+        // Checking here covers forty-six at once: every builtin that arrives
+        // as a `Value::Builtin`, which is the plain ones, the system ones, and
+        // the ambient ones.
         // It does not cover the three higher-order builtins, because those
         // become tasks in `call_at_stack` and never reach this function.
         //
@@ -1102,6 +1117,13 @@ impl Vm {
                         self.system = system;
                         result
                     }
+                    // No swap here, and the difference is worth stating so the
+                    // next reader does not copy one in. The two arms above pass
+                    // `self`, or would borrow a field while `self` is passed.
+                    // An ambient builtin is handed neither the output sink nor
+                    // the input source, so borrowing the field it does need is
+                    // an ordinary field borrow and nothing has to be moved out.
+                    NativeFn::Ambient(func) => func(&mut Ambient::new(&mut *self.clock), args),
                 };
                 result.map_err(|message| MiruError::with_column(line, column, message))
             }

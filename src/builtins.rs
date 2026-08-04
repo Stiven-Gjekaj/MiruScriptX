@@ -9,7 +9,8 @@ use std::rc::Rc;
 
 use crate::globals::Globals;
 use crate::value::{
-    Builtin, BuiltinFn, HostBuiltin, HostFn, Input, NativeFn, Output, System, SystemFn, Value,
+    Ambient, AmbientFn, Builtin, BuiltinFn, HostBuiltin, HostFn, Input, NativeFn, Output, System,
+    SystemFn, Value,
 };
 
 /// Register every builtin into a program's globals.
@@ -59,6 +60,7 @@ pub fn register(globals: &mut Globals) {
     define_system(globals, "write_file", write_file);
     define_system(globals, "file_exists", file_exists);
     define_system(globals, "args", args);
+    define_ambient(globals, "now", now);
     define_host(globals, "map", map);
     define_host(globals, "filter", filter);
     define_host(globals, "reduce", reduce);
@@ -92,6 +94,19 @@ fn define_system(globals: &mut Globals, name: &'static str, func: SystemFn) {
         .slot_for_builtin(name)
         .expect("room for the builtins");
     let func = NativeFn::System(func);
+    globals.define(slot, Value::Builtin(Builtin { name, func }));
+}
+
+/// Register a builtin that reads something its arguments do not contain: the
+/// clock, or the random number generator.
+///
+/// Called like any other builtin, as [`define_system`] is, and separate for the
+/// same reason: what it is handed differs, and nothing else does.
+fn define_ambient(globals: &mut Globals, name: &'static str, func: AmbientFn) {
+    let slot = globals
+        .slot_for_builtin(name)
+        .expect("room for the builtins");
+    let func = NativeFn::Ambient(func);
     globals.define(slot, Value::Builtin(Builtin { name, func }));
 }
 
@@ -1018,6 +1033,19 @@ fn file_exists(system: &mut dyn System, args: Vec<Value>) -> Result<Value, Strin
     }
 }
 
+/// `now()` gives the milliseconds since 1970-01-01T00:00:00Z.
+///
+/// An integer rather than a float, because a float loses whole milliseconds
+/// somewhere in the year 287396 and an integer does not, and because the two
+/// things a program does with this are subtract one from another and print it.
+///
+/// It refuses where the host has no clock, rather than answering 0. Section 8
+/// of the specification says so, and `try` catches it.
+fn now(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("now", &args, 0)?;
+    ambient.now_millis().map(Value::Int)
+}
+
 /// `input()` reads one line from the input source and returns it as a string,
 /// or `nil` at end of input. `input(prompt)` writes the prompt string first.
 fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
@@ -1089,8 +1117,9 @@ impl Args {
     ///
     /// Forty-one is the count of `define` calls, not the count of builtins.
     /// The two were the same figure until 1.1 and are not any more: there are
-    /// forty-eight builtins, of which four take a `SystemFn` and three take a
-    /// `HostFn` and would not be touched by such a change.
+    /// forty-nine builtins, of which four take a `SystemFn`, one takes an
+    /// `AmbientFn`, and three take a `HostFn`, and none of those eight would be
+    /// touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
             Args::One(a) => vec![a],
@@ -1964,13 +1993,16 @@ mod count {
         );
     }
 
-    /// Hold the three kind counts to the numbers written in prose about them.
+    /// Hold the kind counts to the numbers written in prose about them.
     ///
     /// There is no single "number of builtins" that every sentence means. A
     /// claim about `BuiltinFn` counts the `define` calls, a claim about the
     /// caught-error guard counts everything reaching `call_native`, and a claim
     /// about the language counts all of them. Those were one figure until 1.1
     /// and are three now.
+    ///
+    /// 1.5 shows how little they move together: it added a builtin and the
+    /// first of those three did not change, because `now` is not a `define`.
     ///
     /// This was nearly the cause of real damage: two comments saying
     /// "thirty-seven" were read as stale and lined up to be "corrected" to
@@ -1985,12 +2017,13 @@ mod count {
         let mut globals = Globals::new();
         register(&mut globals);
 
-        let (mut plain, mut system, mut host) = (0, 0, 0);
+        let (mut plain, mut system, mut ambient, mut host) = (0, 0, 0, 0);
         for slot in 0..globals.builtin_count() {
             match globals.get(slot as u16) {
                 Some(Value::Builtin(builtin)) => match builtin.func {
                     NativeFn::Plain(_) => plain += 1,
                     NativeFn::System(_) => system += 1,
+                    NativeFn::Ambient(_) => ambient += 1,
                 },
                 Some(Value::HostBuiltin(_)) => host += 1,
                 Some(other) => {
@@ -2009,21 +2042,26 @@ mod count {
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
-            plain + system,
-            45,
-            "{} builtins reach `call_native`, not 45. Quoted by the caught-error \
+            ambient, 1,
+            "{ambient} builtins take an AmbientFn, not 1. This kind arrived in \
+             1.5 and is quoted by `Args::into_vec` above."
+        );
+        assert_eq!(
+            plain + system + ambient,
+            46,
+            "{} builtins reach `call_native`, not 46. Quoted by the caught-error \
              guard in `Vm::call_native`.",
-            plain + system
+            plain + system + ambient
         );
         assert_eq!(
             host, 3,
             "{host} builtins are higher-order, not 3. Quoted by the same two \
-             places, which say the other seven take a different signature."
+             places, which say the other eight take a different signature."
         );
         assert_eq!(
-            plain + system + host,
+            plain + system + ambient + host,
             BUILTIN_NAMES.len(),
-            "the three kinds do not add up to the pinned list"
+            "the four kinds do not add up to the pinned list"
         );
     }
 }
@@ -2031,7 +2069,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 48] = [
+pub const BUILTIN_NAMES: [&str; 49] = [
     "print",
     "eprint",
     "exit",
@@ -2077,6 +2115,7 @@ pub const BUILTIN_NAMES: [&str; 48] = [
     "write_file",
     "file_exists",
     "args",
+    "now",
     "map",
     "filter",
     "reduce",

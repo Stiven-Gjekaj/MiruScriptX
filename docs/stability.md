@@ -49,7 +49,7 @@ The rules in section 5 of the specification are stable. This includes:
 
 ### 2.3 The builtins
 
-All 48 builtins keep their names, their arguments, and their results. Section 8
+All 49 builtins keep their names, their arguments, and their results. Section 8
 of the specification lists them.
 
 Four of them need something from the host: `read_file`, `write_file`,
@@ -58,6 +58,12 @@ them a file system and a command line**, and that a host which does not is
 refused rather than silently given nothing. `miru` gives both. A host that
 embeds the language decides for itself, and the browser playground gives
 neither.
+
+`now` needs the host's clock, on the same terms. It is a separate capability
+rather than a fifth file operation, and a host can have either without the
+other: the playground has a clock and no file system. What is stable is what
+`now` gives **when the host has a clock**, and that a host without one is
+refused.
 
 A later 1.x can add a builtin. A later 1.x cannot remove one, and cannot change
 what one does.
