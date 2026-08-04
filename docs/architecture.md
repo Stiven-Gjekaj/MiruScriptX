@@ -521,6 +521,27 @@ without spawning a process. A parallel `Input` trait feeds `input()` the same
 way: real standard input in the binary, a scripted buffer in
 `run_capture_with_input`.
 
+### A capability the host may not have is a value, not a `cfg`
+
+`Output` and `Input` are always there. `System` and `Clock` are not, and they
+are the two traits an embedder decides about: `System` is the file system and
+the command line, and `Clock` is the wall clock that `now()` reads. A VM that is
+given neither refuses both, so nothing gains file access or a time by accident.
+
+They are separate traits because a host can have one and not the other. The
+browser playground is exactly that case: a page can answer `Date.now()` and
+cannot open a file, so it supplies a `Clock` and no `System`, and `read_file`
+still refuses there.
+
+**Neither is conditional compilation, and this is the reason.** `std::fs` in a
+WebAssembly build has no file system and no way to say so; `SystemTime::now`
+there does not fail, it panics. Either would compile cleanly, pass every native
+check, and go wrong only on the page. But the question a `cfg` answers is what
+the target supports, and the question that matters is what the embedder permits,
+which no target knows. So the capability is a value, `NoSystem` and `NoClock`
+are what everything gets by default, and `src/main.rs` is the one file that
+builds the real ones.
+
 ### A higher-order builtin suspends rather than calling back
 
 `map`, `filter`, and `reduce` apply a function the program supplies. The obvious
@@ -765,6 +786,14 @@ dispatch, which is what stops `print(r)` turning a failure nobody dealt with int
 a line of output that looks deliberate. A builtin whose whole job is to inspect a
 failure has to say so in `builtins::accepts_failure`, and there should be very
 few of those.
+
+That signature is `BuiltinFn`, and there are three others. `SystemFn` is handed
+the file system, `AmbientFn` is handed what a program can ask for that its own
+source does not determine, which is the clock, and `HostFn` is the higher-order
+shape described below. The first
+three are called identically and differ only in what they receive, so the choice
+is only ever the question of what the builtin needs. Registration says which:
+`define`, `define_system`, `define_ambient`, `define_host`.
 
 ### Add a higher-order builtin
 
