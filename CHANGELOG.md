@@ -67,10 +67,14 @@ semantic versioning.
 - **A fourth kind of builtin.** `now`, `random`, `random_int`, and `seed` are
   handed neither the output sink nor the file system, so they take a new
   signature, `AmbientFn`, for what a program can ask for that its own source
-  does not determine. Nothing about calling one differs. This is visible only to somebody embedding the language: the Rust
-  entry points `run_source` and `run_source_from` now take a clock alongside the
-  file system, and `run_capture_all_with` is a new entry point for a caller that
+  does not determine. Nothing about calling one differs.
+
+  This is visible only to somebody embedding the language. The Rust entry
+  points `run_source` and `run_source_from` now take a clock alongside the file
+  system, and `run_capture_all_with` is a new entry point for a caller that
   wants to supply one. The Rust API is not part of the stability guarantee.
+
+## 1.4.0 (2026-08-03)
 
 ### Added
 
