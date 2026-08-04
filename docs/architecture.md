@@ -574,7 +574,7 @@ loop it replaced was a plain Rust `for`, and that costs more than the nested
 call it removed. Closing the remaining gap would mean either duplicating all
 three builtins' semantics or changing `BuiltinFn` across the forty-one
 builtins that use it. That is the number of `define` calls and not the number
-of builtins, which is fifty; the other nine take a different signature
+of builtins, which is fifty-one; the other ten take a different signature
 and would not be touched.
 
 It is kept for the limit below, which is a correctness fix rather than a speed

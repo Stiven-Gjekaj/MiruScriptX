@@ -1976,6 +1976,38 @@ fn random_stays_inside_its_range() {
     ]);
 }
 
+/// `random_int` is held to its range and to what it refuses, for the same
+/// reason as `random`: the numbers are free and the rules are not.
+#[test]
+fn random_int_stays_inside_its_range() {
+    check_all(&[
+        ("let n = random_int(1, 6)\nn >= 1 && n <= 6", "ok true"),
+        ("type(random_int(1, 6))", "ok \"int\""),
+        // A range of one value is that value, and does not spin in the
+        // rejection loop looking for another.
+        ("random_int(4, 4)", "ok 4"),
+        // A range across zero is the case the unsigned arithmetic inside has to
+        // get right.
+        ("let n = random_int(-3, 3)\nn >= -3 && n <= 3", "ok true"),
+        (
+            "random_int(6, 1)",
+            "err random_int expects a low bound not above the high bound but got 6 and 1 @ 1:1",
+        ),
+        (
+            "random_int(1, 6.5)",
+            "err random_int expects an int high bound but got a float @ 1:1",
+        ),
+        (
+            "random_int(\"1\", 6)",
+            "err random_int expects an int low bound but got a string @ 1:1",
+        ),
+        (
+            "random_int(1)",
+            "err random_int expects 2 argument(s) but got 1 @ 1:1",
+        ),
+    ]);
+}
+
 /// Argument checking happens before the host is consulted, so a program gets
 /// the same complaint about a wrong type whether or not files are available.
 #[test]

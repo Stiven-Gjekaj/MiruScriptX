@@ -62,6 +62,7 @@ pub fn register(globals: &mut Globals) {
     define_system(globals, "args", args);
     define_ambient(globals, "now", now);
     define_ambient(globals, "random", random);
+    define_ambient(globals, "random_int", random_int);
     define_host(globals, "map", map);
     define_host(globals, "filter", filter);
     define_host(globals, "reduce", reduce);
@@ -1056,6 +1057,35 @@ fn random(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
     Ok(Value::Float(ambient.rng().unit()))
 }
 
+/// `random_int(low, high)` gives an integer from `low` to `high`, both
+/// included.
+///
+/// Both ends are in the range because that is what a program asking for a die
+/// or a card means, and because a half-open range would make `random_int(1, 6)`
+/// the wrong spelling of the most common use of it.
+///
+/// Floats are refused rather than truncated. `random_int(1, 6.5)` is a program
+/// that has not decided what it wants, and either answer this could give would
+/// be a guess about which.
+fn random_int(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("random_int", &args, 2)?;
+    let bound = |value: &Value, which: &str| match value {
+        Value::Int(n) => Ok(*n),
+        other => Err(format!(
+            "random_int expects an int {which} bound but got a {}",
+            other.type_name()
+        )),
+    };
+    let low = bound(&args[0], "low")?;
+    let high = bound(&args[1], "high")?;
+    if low > high {
+        return Err(format!(
+            "random_int expects a low bound not above the high bound but got {low} and {high}"
+        ));
+    }
+    Ok(Value::Int(ambient.rng().int_in(low, high)))
+}
+
 /// `input()` reads one line from the input source and returns it as a string,
 /// or `nil` at end of input. `input(prompt)` writes the prompt string first.
 fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
@@ -1127,8 +1157,8 @@ impl Args {
     ///
     /// Forty-one is the count of `define` calls, not the count of builtins.
     /// The two were the same figure until 1.1 and are not any more: there are
-    /// fifty builtins, of which four take a `SystemFn`, two take an
-    /// `AmbientFn`, and three take a `HostFn`, and none of those nine would be
+    /// fifty-one builtins, of which four take a `SystemFn`, three take an
+    /// `AmbientFn`, and three take a `HostFn`, and none of those ten would be
     /// touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
@@ -2052,21 +2082,21 @@ mod count {
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
-            ambient, 2,
-            "{ambient} builtins take an AmbientFn, not 2. This kind arrived in \
+            ambient, 3,
+            "{ambient} builtins take an AmbientFn, not 3. This kind arrived in \
              1.5 and is quoted by `Args::into_vec` above."
         );
         assert_eq!(
             plain + system + ambient,
-            47,
-            "{} builtins reach `call_native`, not 47. Quoted by the caught-error \
+            48,
+            "{} builtins reach `call_native`, not 48. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
         assert_eq!(
             host, 3,
             "{host} builtins are higher-order, not 3. Quoted by the same two \
-             places, which say the other nine take a different signature."
+             places, which say the other ten take a different signature."
         );
         assert_eq!(
             plain + system + ambient + host,
@@ -2079,7 +2109,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 50] = [
+pub const BUILTIN_NAMES: [&str; 51] = [
     "print",
     "eprint",
     "exit",
@@ -2127,6 +2157,7 @@ pub const BUILTIN_NAMES: [&str; 50] = [
     "args",
     "now",
     "random",
+    "random_int",
     "map",
     "filter",
     "reduce",

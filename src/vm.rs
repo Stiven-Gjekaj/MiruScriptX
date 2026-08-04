@@ -1081,7 +1081,7 @@ impl Vm {
         // program never dealt with into a line of output that looks
         // deliberate.
         //
-        // Checking here covers forty-seven at once: every builtin that arrives
+        // Checking here covers forty-eight at once: every builtin that arrives
         // as a `Value::Builtin`, which is the plain ones, the system ones, and
         // the ambient ones.
         // It does not cover the three higher-order builtins, because those
