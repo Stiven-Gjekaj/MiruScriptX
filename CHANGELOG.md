@@ -62,6 +62,22 @@ semantic versioning.
   The generator is written in the language's own source rather than taken from
   a crate. It is SplitMix64, about thirty lines of arithmetic.
 
+- **Three example programs.** `examples/` had nine programs, each showing one
+  feature, and nothing that looked like a program somebody would write.
+
+  | Example | What it shows |
+  | ------- | ------------- |
+  | `guess.miru` | A number guessing game: `random_int`, `seed`, and `input` in a loop |
+  | `words.miru` | Word frequency over a real file: `read_file`, `split`, and counting in a map |
+  | `dice.miru` | Ten thousand rolls of two dice, drawn as a histogram |
+
+  Each one seeds the generator with a literal where it uses chance, so its
+  integration test asserts exact output. `dice.miru` is in the browser
+  playground; the other two read input or a file, which the page has neither
+  of.
+
+  Closes #4.
+
 ### Changed
 
 - **A fourth kind of builtin.** `now`, `random`, `random_int`, and `seed` are
