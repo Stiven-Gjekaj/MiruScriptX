@@ -120,6 +120,47 @@ impl System for NoSystem {
 /// line. It gets [`System`] and nothing else, because none of them writes.
 pub type SystemFn = fn(&mut dyn System, Vec<Value>) -> Result<Value, String>;
 
+/// The host's wall clock.
+///
+/// Separate from [`System`] for the reason that trait's own doc gives. `System`
+/// is the capability a host may not have at all: a browser has a screen and a
+/// keyboard, and no files and no command line. A browser does have a clock.
+/// Folding the two together would force it either to refuse a question it can
+/// answer or to implement four file methods it cannot.
+///
+/// It is a trait for the other half of that reasoning, which does apply.
+/// `std::time::SystemTime::now` panics on `wasm32-unknown-unknown`. A library
+/// that read the clock directly would compile cleanly, pass every native check,
+/// and abort the page. So the clock is a value the host supplies, and
+/// [`NoClock`] is what everything gets until something says otherwise.
+pub trait Clock {
+    /// Milliseconds since 1970-01-01T00:00:00Z.
+    ///
+    /// Not monotonic. A host whose clock is corrected gives a smaller number
+    /// than it gave a moment before, and a program that measures a duration
+    /// with two of these can see a negative one.
+    fn now_millis(&mut self) -> Result<i64, String>;
+}
+
+/// A [`Clock`] that has no time to tell.
+///
+/// It refuses rather than answering zero, for the reason [`NoSystem`] refuses.
+/// A program handed a wrong time goes on to do the wrong thing with it, and
+/// 1970 is a wrong time rather than an absent one. `try` catches the refusal.
+pub struct NoClock;
+
+impl NoClock {
+    /// One sentence, in the shape `NoSystem::REFUSAL` uses: it names the
+    /// situation the host is in, not the call that ran into it.
+    const REFUSAL: &'static str = "this program is running where there is no clock";
+}
+
+impl Clock for NoClock {
+    fn now_millis(&mut self) -> Result<i64, String> {
+        Err(NoClock::REFUSAL.to_string())
+    }
+}
+
 /// A function compiled to bytecode. The whole program is itself one of these,
 /// an anonymous script with no parameters.
 pub struct CompiledFunction {
@@ -669,6 +710,15 @@ pub fn quoted_string(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The default clock refuses, and says what is missing rather than which
+    /// call failed. A host that supplies nothing gets no time at all, which is
+    /// the same default `NoSystem` sets for files.
+    #[test]
+    fn the_default_clock_refuses_rather_than_answering_zero() {
+        let message = NoClock.now_millis().expect_err("NoClock has no time");
+        assert_eq!(message, "this program is running where there is no clock");
+    }
 
     /// Teardown descends only into a body no one else holds. If it descended
     /// into a shared one it would release values another reference still points
