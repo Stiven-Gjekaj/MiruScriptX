@@ -35,12 +35,39 @@ semantic versioning.
   **The result is not monotonic.** A clock corrected while a program runs goes
   backwards, so a duration measured across that moment is negative.
 
+- **`random()`, `random_int(low, high)`, and `seed(n)`.** Nothing in the
+  language could pick a number before this.
+
+  ```
+  print(random())               // a float from 0 up to but not including 1
+  print(random_int(1, 6))       // a die: both ends are in the range
+  seed(1)                       // the same seed gives the same numbers
+  ```
+
+  The generator starts from the clock the first time a program asks, so two
+  runs differ. `seed(n)` starts it from `n` instead, which is what makes a
+  program that uses chance testable: it can be asserted against exact output
+  and still be about chance.
+
+  Where the host has no clock, the generator starts from a fixed value and the
+  program repeats its runs. `random` does not refuse there, unlike `now`: a
+  wrong time is worse than none, and a repeated number is still a number in the
+  right range.
+
+  **Which numbers a seed gives is not part of the stability guarantee**, and
+  section 3.8 of it is new and says so. A later 1.x can change the generator.
+  What is promised is each builtin's range, and that one seed repeats within
+  one release.
+
+  The generator is written in the language's own source rather than taken from
+  a crate. It is SplitMix64, about thirty lines of arithmetic.
+
 ### Changed
 
-- **A fourth kind of builtin.** `now` is handed neither the output sink nor the
-  file system, so it takes a new signature, `AmbientFn`, for what a program can
-  ask for that its own source does not determine. Nothing about calling one
-  differs. This is visible only to somebody embedding the language: the Rust
+- **A fourth kind of builtin.** `now`, `random`, `random_int`, and `seed` are
+  handed neither the output sink nor the file system, so they take a new
+  signature, `AmbientFn`, for what a program can ask for that its own source
+  does not determine. Nothing about calling one differs. This is visible only to somebody embedding the language: the Rust
   entry points `run_source` and `run_source_from` now take a clock alongside the
   file system, and `run_capture_all_with` is a new entry point for a caller that
   wants to supply one. The Rust API is not part of the stability guarantee.
