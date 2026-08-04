@@ -784,7 +784,7 @@ attaches the current line and column automatically.
 It will never be handed a caught failure: `call_native` refuses one before
 dispatch, which is what stops `print(r)` turning a failure nobody dealt with into
 a line of output that looks deliberate. A builtin whose whole job is to inspect a
-failure has to say so in `builtins::accepts_failure`, and there should be very
+failure has to say so in `builtins::accepts_error`, and there should be very
 few of those.
 
 That signature is `BuiltinFn`, and there are three others. `SystemFn` is handed
