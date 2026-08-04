@@ -1952,6 +1952,30 @@ fn now_refuses_where_there_is_no_clock() {
     ]);
 }
 
+/// `random` is asserted by its properties, never by its value.
+///
+/// A golden case that pinned a number would be pinning something the guarantee
+/// deliberately leaves free: section 3 of `docs/stability.md` says a later 1.x
+/// can change the generator. What a program can depend on is the range, and
+/// these cases hold exactly that. The exact sequence is pinned once, as a unit
+/// test in `src/random.rs`, where it is labelled a change detector.
+///
+/// These run under a capture with no clock, so the generator starts from its
+/// fixed value and the cases are deterministic without setting a seed.
+#[test]
+fn random_stays_inside_its_range() {
+    check_all(&[
+        ("let r = random()\nr >= 0 && r < 1", "ok true"),
+        ("type(random())", "ok \"float\""),
+        // Two draws in one program are two draws, not one value read twice.
+        ("random() == random()", "ok false"),
+        (
+            "random(1)",
+            "err random expects 0 argument(s) but got 1 @ 1:1",
+        ),
+    ]);
+}
+
 /// Argument checking happens before the host is consulted, so a program gets
 /// the same complaint about a wrong type whether or not files are available.
 #[test]

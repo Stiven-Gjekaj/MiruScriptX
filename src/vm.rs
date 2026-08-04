@@ -21,6 +21,7 @@ use crate::ast::{BinaryOp, UnaryOp};
 use crate::builtins::{Args, HostTask, Step};
 use crate::chunk::{Chunk, OpCode};
 use crate::globals::{Globals, ModuleId, ROOT_MODULE};
+use crate::random::Rng;
 use crate::suggest::with_suggestion;
 use crate::value::{
     Ambient, Clock, Closure, CompiledFunction, EmptyInput, Input, NativeFn, NoClock, NoSystem,
@@ -177,6 +178,14 @@ pub struct Vm {
     /// The host's wall clock, on the same terms as `system`: absent until an
     /// embedder supplies one, so no program reads a time the host never gave.
     clock: Box<dyn Clock>,
+    /// The random number generator, or `None` until a program asks for a
+    /// number or sets a seed.
+    ///
+    /// Not a capability of the host, unlike the two above it. The algorithm
+    /// belongs to the language, so that a seed gives the same numbers wherever
+    /// the program runs. What it starts from is a host question, which is why
+    /// it is seeded lazily, from the clock, by `Ambient::rng`.
+    rng: Option<Rng>,
     /// The code a program asked to stop with, once it has asked.
     ///
     /// `None` until something calls [`Output::request_exit`]. Whoever runs the
@@ -235,6 +244,7 @@ impl Vm {
             input: Box::new(EmptyInput),
             system: Box::new(NoSystem),
             clock: Box::new(NoClock),
+            rng: None,
             exit: None,
             line: 0,
             column: 0,
@@ -1071,7 +1081,7 @@ impl Vm {
         // program never dealt with into a line of output that looks
         // deliberate.
         //
-        // Checking here covers forty-six at once: every builtin that arrives
+        // Checking here covers forty-seven at once: every builtin that arrives
         // as a `Value::Builtin`, which is the plain ones, the system ones, and
         // the ambient ones.
         // It does not cover the three higher-order builtins, because those
@@ -1123,7 +1133,9 @@ impl Vm {
                     // An ambient builtin is handed neither the output sink nor
                     // the input source, so borrowing the field it does need is
                     // an ordinary field borrow and nothing has to be moved out.
-                    NativeFn::Ambient(func) => func(&mut Ambient::new(&mut *self.clock), args),
+                    NativeFn::Ambient(func) => {
+                        func(&mut Ambient::new(&mut *self.clock, &mut self.rng), args)
+                    }
                 };
                 result.map_err(|message| MiruError::with_column(line, column, message))
             }

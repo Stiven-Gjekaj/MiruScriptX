@@ -728,7 +728,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 49 builtins. A program can use each of them without an import.
+There are 50 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -891,9 +891,26 @@ file system: the two capabilities are separate and a host can have either
 without the other.
 
 **`now` is the first builtin whose result the program's own source does not
-determine.** Every other builtin gives the same answer each time it is called
-with the same arguments. A program that must produce the same output twice
-should not call this one.
+determine.** Section 8.10 gives the others. Every builtin outside these two
+sections gives the same answer each time it is called with the same arguments.
+
+### 8.10 Random numbers
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `random()` | 0 | A float from 0 up to but not including 1. |
+
+The generator is started from the host's clock the first time a program asks
+for a number, so two runs of the same program give different numbers.
+
+Where the host has no clock, the generator starts from a fixed value, and the
+program gives the same numbers each time it runs. `random` does not refuse in
+that situation. `now` refuses because a wrong time is worse than none, and a
+random number that repeats is still a number in the correct range.
+
+**Which numbers follow from a given start is not defined by this document.** A
+later 1.x can change the generator. Section 3 of the
+[stability guarantee](stability.md) states this.
 
 ---
 

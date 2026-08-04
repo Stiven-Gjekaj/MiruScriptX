@@ -61,6 +61,7 @@ pub fn register(globals: &mut Globals) {
     define_system(globals, "file_exists", file_exists);
     define_system(globals, "args", args);
     define_ambient(globals, "now", now);
+    define_ambient(globals, "random", random);
     define_host(globals, "map", map);
     define_host(globals, "filter", filter);
     define_host(globals, "reduce", reduce);
@@ -1046,6 +1047,15 @@ fn now(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
     ambient.now_millis().map(Value::Int)
 }
 
+/// `random()` gives a float from 0 up to but not including 1.
+///
+/// The generator seeds itself from the clock the first time a program asks, so
+/// two runs differ. `seed` pins it when they must not.
+fn random(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("random", &args, 0)?;
+    Ok(Value::Float(ambient.rng().unit()))
+}
+
 /// `input()` reads one line from the input source and returns it as a string,
 /// or `nil` at end of input. `input(prompt)` writes the prompt string first.
 fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
@@ -1117,8 +1127,8 @@ impl Args {
     ///
     /// Forty-one is the count of `define` calls, not the count of builtins.
     /// The two were the same figure until 1.1 and are not any more: there are
-    /// forty-nine builtins, of which four take a `SystemFn`, one takes an
-    /// `AmbientFn`, and three take a `HostFn`, and none of those eight would be
+    /// fifty builtins, of which four take a `SystemFn`, two take an
+    /// `AmbientFn`, and three take a `HostFn`, and none of those nine would be
     /// touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
@@ -2042,21 +2052,21 @@ mod count {
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
-            ambient, 1,
-            "{ambient} builtins take an AmbientFn, not 1. This kind arrived in \
+            ambient, 2,
+            "{ambient} builtins take an AmbientFn, not 2. This kind arrived in \
              1.5 and is quoted by `Args::into_vec` above."
         );
         assert_eq!(
             plain + system + ambient,
-            46,
-            "{} builtins reach `call_native`, not 46. Quoted by the caught-error \
+            47,
+            "{} builtins reach `call_native`, not 47. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
         assert_eq!(
             host, 3,
             "{host} builtins are higher-order, not 3. Quoted by the same two \
-             places, which say the other eight take a different signature."
+             places, which say the other nine take a different signature."
         );
         assert_eq!(
             plain + system + ambient + host,
@@ -2069,7 +2079,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 49] = [
+pub const BUILTIN_NAMES: [&str; 50] = [
     "print",
     "eprint",
     "exit",
@@ -2116,6 +2126,7 @@ pub const BUILTIN_NAMES: [&str; 49] = [
     "file_exists",
     "args",
     "now",
+    "random",
     "map",
     "filter",
     "reduce",

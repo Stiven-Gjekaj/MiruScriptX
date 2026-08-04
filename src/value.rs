@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use crate::chunk::Chunk;
+use crate::random::Rng;
 
 /// What the host gives a program to speak through, and to stop with. The
 /// virtual machine implements this, so the very same builtins can target real
@@ -170,16 +171,43 @@ impl Clock for NoClock {
 /// one from somewhere.
 pub struct Ambient<'a> {
     clock: &'a mut dyn Clock,
+    rng: &'a mut Option<Rng>,
 }
 
 impl<'a> Ambient<'a> {
-    pub fn new(clock: &'a mut dyn Clock) -> Ambient<'a> {
-        Ambient { clock }
+    pub fn new(clock: &'a mut dyn Clock, rng: &'a mut Option<Rng>) -> Ambient<'a> {
+        Ambient { clock, rng }
     }
 
     /// The host's clock, or its refusal.
     pub fn now_millis(&mut self) -> Result<i64, String> {
         self.clock.now_millis()
+    }
+
+    /// The generator, seeded from the clock the first time a program asks for
+    /// a random number.
+    ///
+    /// **The seeding rule lives here, in one place, and not in the builtins.**
+    /// A builtin that reached for the generator directly could forget it, and
+    /// the symptom would be every run of every program producing the same
+    /// numbers, which looks like a working generator until somebody compares
+    /// two runs.
+    ///
+    /// A host with no clock gets a fixed seed and therefore repeats its runs.
+    /// That is stated in the specification rather than hidden: an embedder that
+    /// supplies no clock has said nothing about randomness, and a program that
+    /// asks for a random number still wants a number.
+    pub fn rng(&mut self) -> &mut Rng {
+        if self.rng.is_none() {
+            let seed = self.clock.now_millis().unwrap_or(Rng::WITHOUT_A_CLOCK);
+            *self.rng = Some(Rng::seeded(seed));
+        }
+        self.rng.as_mut().expect("the generator was just seeded")
+    }
+
+    /// Start the generator again from `seed`, whatever it was doing before.
+    pub fn set_seed(&mut self, seed: i64) {
+        *self.rng = Some(Rng::seeded(seed));
     }
 }
 
