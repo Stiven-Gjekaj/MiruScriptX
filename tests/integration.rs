@@ -377,6 +377,62 @@ fn greeter_example_reads_stdin() {
     );
 }
 
+/// The guessing game plays out the same way every time, because it seeds the
+/// generator with a literal. That is the whole reason an example can use chance
+/// and still be asserted against exact output.
+///
+/// The guesses below are a binary search for 52, which is what `seed(2026)`
+/// gives for `random_int(1, 100)` in this release. A change of generator moves
+/// the secret and fails this test, which is correct: the example's own comment
+/// says the seed decides the game.
+#[test]
+fn guess_example_plays_a_seeded_game() {
+    use std::io::Write;
+
+    let mut child = miru()
+        .arg("run")
+        .arg("examples/guess.miru")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(b"50\nnope\n75\n60\n52\n")
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("wait for miru");
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("output should be valid utf-8"),
+        "I am thinking of a number from 1 to 100.\n\
+         Your guess: Higher.\n\
+         Your guess: That is not a number.\n\
+         Your guess: Lower.\n\
+         Your guess: Lower.\n\
+         Your guess: That is it, in 4 guesses.\n"
+    );
+}
+
+/// With nothing on standard input the game says the answer and stops, rather
+/// than looping forever on a `nil` it did not check for.
+#[test]
+fn guess_example_ends_at_end_of_input() {
+    let output = miru()
+        .arg("run")
+        .arg("examples/guess.miru")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("failed to launch the miru binary");
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("output should be valid utf-8"),
+        "I am thinking of a number from 1 to 100.\n\
+         Your guess: The number was 52\n"
+    );
+}
+
 #[test]
 fn the_retired_vm_flag_is_still_accepted() {
     // v0.4 offered --vm to opt into the bytecode engine. It is now the only

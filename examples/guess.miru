@@ -1,0 +1,39 @@
+// guess.miru
+// A number guessing game, and a loop that reads what you type.
+// Run with: miru run examples/guess.miru
+//
+// The secret comes from random_int. seed makes the game the same every time,
+// which is what lets a test assert its output; take the seed line out and each
+// run is a different game.
+
+seed(2026)
+
+let secret = random_int(1, 100)
+let guesses = 0
+
+print("I am thinking of a number from 1 to 100.")
+
+while true {
+  let typed = input("Your guess: ")
+  if typed == nil {
+    // End of input: whoever is playing has gone, so say the answer and stop.
+    print("The number was", secret)
+    break
+  }
+
+  let guess = try int(trim(typed))
+  if is_error(guess) {
+    print("That is not a number.")
+    continue
+  }
+
+  guesses = guesses + 1
+  if guess < secret {
+    print("Higher.")
+  } else if guess > secret {
+    print("Lower.")
+  } else {
+    print("That is it, in", guesses, "guesses.")
+    break
+  }
+}
