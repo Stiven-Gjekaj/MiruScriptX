@@ -7,14 +7,21 @@ on:
 
 jobs:
   check:
-    name: Build, test, format, and lint
-    runs-on: ubuntu-latest
+    name: Build, test, format, and lint (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing must not hide whether the others work. The whole
+      # point of the matrix is to find out where the difference is, and
+      # cancelling the rest at the first red throws that away.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - name: Check out the code
         uses: actions/checkout@v5
 
       - name: Install the Rust toolchain
-        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -28,9 +35,17 @@ jobs:
       - name: Test
         run: cargo test --workspace --verbose
 
+      # The two WebAssembly steps below run on one platform only. The target is
+      # the same everywhere, so building it three times would cost three times
+      # the minutes to learn one thing.
+      - name: Add the WebAssembly target
+        if: matrix.os == 'ubuntu-latest'
+        run: rustup target add wasm32-unknown-unknown
+
       - name: Build for WebAssembly
         # The playground publishes from a separate workflow that only runs on
         # main. Building the target here keeps it from rotting on a branch,
         # where the breakage would otherwise surface as a failed deploy after
         # a merge rather than as a failed check before one.
+        if: matrix.os == 'ubuntu-latest'
         run: cargo build --target wasm32-unknown-unknown -p miruscriptx-playground
