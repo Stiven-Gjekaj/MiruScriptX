@@ -217,9 +217,9 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4191 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Diagnostics** | suggest.rs | 220 | Chooses the name an error offers back when a program misspells one |
 | **Formatter** | formatter.rs | 701 | Reprints a program in canonical form (`miru fmt`) |
-| **CLI and REPL** | main.rs, repl.rs, keyboard.rs | 956 | File runner, `fmt` and `disasm` commands, the REPL, and raw-mode key reading |
+| **CLI and REPL** | main.rs, repl.rs, keyboard.rs | 972 | File runner, `fmt` and `disasm` commands, the REPL, and raw-mode key reading |
 | **Library** | lib.rs | 918 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **18 files** | **13628** | Written from scratch in Rust |
+| **Total** | **18 files** | **13644** | Written from scratch in Rust |
 
 The playground is a separate crate: 563 lines of Rust binding the language to
 WebAssembly, and 602 of hand-written HTML, CSS, and JavaScript. It is counted

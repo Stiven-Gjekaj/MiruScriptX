@@ -37,6 +37,8 @@
 //! the keyboard. Section 8.11 of the specification says so, and so does the
 //! wiki.
 
+use std::io::Read;
+
 /// The terminal settings from before raw mode, put back when this is dropped.
 ///
 /// `Drop` rather than a `restore` method, because the three ways a program can
@@ -101,10 +103,13 @@ impl RealKeyboard {
 
     /// The next byte, from what is left over or from the terminal.
     fn next_byte(&mut self) -> Result<Option<u8>, String> {
-        if !self.pending.is_empty() {
-            return Ok(Some(self.pending.remove(0)));
+        if self.pending.is_empty() {
+            self.pending = read_bytes()?;
         }
-        read_one_byte()
+        if self.pending.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(self.pending.remove(0)))
     }
 }
 
@@ -124,9 +129,12 @@ impl miruscriptx::value::Keyboard for RealKeyboard {
             // from the start of a sequence. A key sends its whole sequence at
             // once, so anything that has not arrived within the wait was not
             // part of one.
-            match read_byte_soon() {
-                Ok(Some(byte)) => {
-                    pending.push(byte);
+            if !pending.is_empty() {
+                return true;
+            }
+            match read_bytes_soon() {
+                Ok(more) if !more.is_empty() => {
+                    pending.extend(more);
                     true
                 }
                 _ => false,
@@ -249,17 +257,20 @@ fn sequence_name(body: &[u8]) -> String {
 mod platform {
     use super::RawMode;
     use nix::sys::termios::{self, LocalFlags, SetArg, SpecialCharacterIndices};
-    use std::io::Read;
 
     impl RawMode {
         pub fn enter() -> Result<Option<RawMode>, String> {
             let stdin = std::io::stdin();
-            let saved = match termios::tcgetattr(&stdin) {
-                Ok(saved) => saved,
-                // Not a terminal, which is what a pipe or a file gives. There
+            let Ok(saved) = termios::tcgetattr(&stdin) else {
+                // Not a terminal, which is what a pipe or a file gives: there
                 // is nothing to put into raw mode and nothing to put back.
-                Err(nix::errno::Errno::ENOTTY) => return Ok(None),
-                Err(err) => return Err(format!("cannot read the terminal settings: {err}")),
+                //
+                // Any failure means that, rather than one specific errno.
+                // Matching only ENOTTY passed on Linux and failed on macOS,
+                // which reports a different one for the same situation, and
+                // the distinction was never useful: if the settings cannot be
+                // read, they cannot be changed either.
+                return Ok(None);
             };
             let mut raw = saved.clone();
             raw.local_flags
@@ -282,13 +293,8 @@ mod platform {
         }
     }
 
-    pub fn read_one_byte() -> Result<Option<u8>, String> {
-        let mut byte = [0u8; 1];
-        match std::io::stdin().read(&mut byte) {
-            Ok(0) => Ok(None),
-            Ok(_) => Ok(Some(byte[0])),
-            Err(err) => Err(format!("cannot read from the keyboard: {err}")),
-        }
+    pub fn read_bytes() -> Result<Vec<u8>, String> {
+        super::read_up_to_four(&mut std::io::stdin())
     }
 
     /// A byte if one is already there or arrives very soon, and `None`
@@ -298,7 +304,7 @@ mod platform {
     /// sequence. A key sends its whole sequence in one burst, so a wait of a
     /// few milliseconds separates the two without being long enough for a
     /// person to notice.
-    pub fn read_byte_soon() -> Result<Option<u8>, String> {
+    pub fn read_bytes_soon() -> Result<Vec<u8>, String> {
         use nix::poll::{PollFd, PollFlags, PollTimeout};
         use std::os::fd::AsFd;
 
@@ -307,16 +313,15 @@ mod platform {
         let ready = nix::poll::poll(&mut fds, PollTimeout::from(25u8))
             .map_err(|err| format!("cannot wait for the keyboard: {err}"))?;
         if ready == 0 {
-            return Ok(None);
+            return Ok(Vec::new());
         }
-        read_one_byte()
+        read_bytes()
     }
 }
 
 #[cfg(windows)]
 mod platform {
     use super::RawMode;
-    use std::io::Read;
     use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Console::{
         GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT,
@@ -372,13 +377,8 @@ mod platform {
         }
     }
 
-    pub fn read_one_byte() -> Result<Option<u8>, String> {
-        let mut byte = [0u8; 1];
-        match std::io::stdin().read(&mut byte) {
-            Ok(0) => Ok(None),
-            Ok(_) => Ok(Some(byte[0])),
-            Err(err) => Err(format!("cannot read from the keyboard: {err}")),
-        }
+    pub fn read_bytes() -> Result<Vec<u8>, String> {
+        super::read_up_to_four(&mut std::io::stdin())
     }
 
     /// The console has no `poll`, so this reads only what is already buffered.
@@ -386,12 +386,28 @@ mod platform {
     /// `PeekConsoleInput` would be the exact equivalent. It is not used here
     /// because the pending buffer already holds whatever a sequence delivered
     /// in one burst, and the console delivers one.
-    pub fn read_byte_soon() -> Result<Option<u8>, String> {
-        Ok(None)
+    pub fn read_bytes_soon() -> Result<Vec<u8>, String> {
+        Ok(Vec::new())
     }
 }
 
-use platform::{read_byte_soon, read_one_byte};
+use platform::{read_bytes, read_bytes_soon};
+
+/// Read between one and four bytes, blocking until at least one arrives.
+///
+/// **Four and not one, because Windows requires it.** Rust's standard input
+/// there refuses a buffer that cannot hold one whole character when the handle
+/// is a console, so a one-byte read is an error on the exact platform this
+/// module exists to support. Reading four is also fewer calls for an escape
+/// sequence, which arrives in one burst.
+fn read_up_to_four(source: &mut impl Read) -> Result<Vec<u8>, String> {
+    let mut buffer = [0u8; 4];
+    match source.read(&mut buffer) {
+        Ok(0) => Ok(Vec::new()),
+        Ok(read) => Ok(buffer[..read].to_vec()),
+        Err(err) => Err(format!("cannot read from the keyboard: {err}")),
+    }
+}
 
 #[cfg(test)]
 mod tests {
