@@ -32,6 +32,31 @@ semantic versioning.
 
   Closes #14.
 
+- **A share link in the playground.** Showing somebody a program meant sending
+  them the text and asking them to paste it in.
+
+  **Share** puts the program in the fragment of the address, the part after the
+  `#`, and copies the link. A browser never sends a fragment to a server, so
+  neither GitHub Pages nor anybody else is given the program: it travels only in
+  the link, wherever the writer chooses to put that.
+
+  The text is compressed with `CompressionStream` before base64url, which is a
+  browser API rather than a dependency, because everything under
+  `playground/web/` is hand-written and stays that way. `words.miru`, the
+  longest example, encodes to 1019 characters against 1669 raw.
+
+  A program is encoded as UTF-8 bytes rather than as a string, so one holding an
+  emoji survives. A link past 8000 characters is **refused with a message
+  rather than truncated**, since a link that quietly loses the end of a program
+  is worse than no link. A damaged fragment gives an empty editor and says so.
+  Choosing an example clears the fragment, so a shared program does not come
+  back on the next reload.
+
+  The round trip is verified outside a browser, in node. **The page itself has
+  no automated test**, as it never has.
+
+  Closes #9.
+
 ### Changed
 
 - **Every syntax error is reported, not only the first.** A file with four
