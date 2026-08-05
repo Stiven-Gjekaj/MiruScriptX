@@ -8,6 +8,42 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## Unreleased
+
+### Changed
+
+- **The playground is redesigned.** It was a plain two-pane page that looked
+  like a form.
+
+  A red statement header carries the top of the page, the two panes sit on a
+  visible grid drawn in 2px rules with no rounded corner anywhere, and the
+  examples moved out of a dropdown into a row of cards that say what each
+  program demonstrates and how long it is. A **Reference** tab joins Output and
+  Bytecode with the keywords and the builtins somebody needs in the first ten
+  minutes. A status bar under the panes gives the version, the exit code, how
+  long the run took, and the line count, and the editor has line numbers.
+
+  **A theme toggle**, which the page did not have: it followed the system and
+  offered no way to disagree with it. The choice is remembered, and it is set
+  before the first paint so the wrong theme never flashes.
+
+  The tag, the description, and the line count on each card come from the
+  playground crate rather than from JavaScript, so a card cannot describe a
+  program the repository does not have.
+
+  **The page still makes no third-party request.** Archivo is vendored under
+  `playground/web/fonts/` as a 34KB variable WOFF2 with its OFL licence beside
+  it, rather than linked from a font service, because a page that phones out on
+  every load sits badly beside what Share promises about a program never
+  leaving the browser.
+
+  Contrast was measured rather than eyeballed, in both themes. Accent-coloured
+  text now takes a light step of the ramp on the dark ground instead of the
+  dark step it shares with the light ground, which had left the card tags
+  unreadable in dark. Everything on the page clears 4.5:1 except the text on
+  the red field itself, which reaches 4.20:1 against white: that is the ceiling
+  for this red, and closing the gap would mean a different red.
+
 ## 1.7.0 (2026-08-05)
 
 ### Added

@@ -1,35 +1,127 @@
 /*
- * The playground's styling. No framework and no web fonts: the page loads a
- * WebAssembly module and three small local files, and nothing else.
+ * The playground's styling, on the Modernist design system: flat, on a visible
+ * grid, no rounded corner anywhere, 2px rules doing the organising, everything
+ * flush left, and a single red used sparingly except in the poster, which is
+ * the one place it runs as a field.
  *
- * The editor is a textarea layered over a <pre>. Every metric they share is
- * declared once, in the .editor block, because a difference of half a pixel in
- * any of them shows up as highlighting that drifts away from the text as you
- * scroll down.
+ * No framework and no third-party request. Archivo is served from fonts/ next
+ * to this file rather than from a font service, so the page still fetches
+ * nothing from anybody: the same promise Share makes about the program.
+ *
+ * The editor is a textarea layered over a <pre>, with a gutter beside them.
+ * Every metric the two layers share is declared once, in the .editor block,
+ * because a difference of half a pixel in any of them shows up as highlighting
+ * that drifts away from the text as you scroll down.
  */
 
-:root {
-  color-scheme: light dark;
-  --bg: #ffffff;
-  --panel: #f6f7f9;
-  --border: #d8dce2;
-  --text: #1b1f24;
-  --muted: #5c6570;
-  --accent: #b4472f;
-  --error: #a4232a;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+@font-face {
+  font-family: "Archivo";
+  src: url("fonts/archivo-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
 }
 
+:root {
+  color-scheme: light;
+
+  /* — the tokens — */
+  --bg: #f3f2f2;
+  --surface: #eae9e9;
+  --text: #201e1d;
+  --accent: #ec3013;
+  --accent-600: #dd2b0f;
+  --accent-700: #ae1800;
+  --divider: color-mix(in srgb, #201e1d 40%, transparent);
+
+  /*
+   * White rather than the #f3f2f2 ground, and the difference is not cosmetic.
+   * Text on the red field tops out at 4.20:1 against pure white and 3.78:1
+   * against the ground, so the lighter one is worth taking: the poster's
+   * 52px heading clears the 3:1 that large text needs either way, but the
+   * subhead and the nav links sit below the 4.5:1 that ordinary text wants
+   * and every point counts. Reaching 4.5:1 there would mean a darker red,
+   * which is the one thing this design is.
+   */
+  --on-accent: #ffffff;
+
+  /*
+   * The accent as *text*, which is a different colour from the accent as a
+   * fill. #ec3013 on this ground reaches about 3:1: enough for a button or an
+   * icon, not enough to read a sentence in. So text takes a deep step of the
+   * ramp on the light ground and a light one on the dark ground, which is what
+   * the system's guidance says and what a single --accent everywhere gets
+   * wrong: a dark red label on a dark surface is unreadable.
+   */
+  --accent-text: #ae1800;
+
+  /* Token colours for code. The spans they apply to come from the language's
+     own lexer, so what looks like a keyword here is what the language treats
+     as one. */
+  --code-keyword: #dd2b0f;
+  --code-builtin: #7c1405;
+  --code-number: #ae1800;
+  --code-string: #605d5d;
+  --code-comment: #9b9797;
+  --error: #ae1800;
+
+  --sans: "Archivo", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --rule: 2px solid var(--divider);
+  --page: 90rem;
+}
+
+/*
+ * Dark. The media query is the default and the attribute overrides it in both
+ * directions, so the toggle can put somebody in light while their system is in
+ * dark, which is the whole reason for having a toggle.
+ */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14171c;
-    --panel: #1b1f26;
-    --border: #2c333d;
-    --text: #e6e9ee;
-    --muted: #9aa4b2;
-    --accent: #e2795c;
-    --error: #f0736f;
+    color-scheme: dark;
+    --bg: #201e1d;
+    --surface: #2d2b2b;
+    --text: #f3f2f2;
+    --divider: color-mix(in srgb, #f3f2f2 30%, transparent);
+    --code-keyword: #ff9783;
+    --code-builtin: #ffc4b8;
+    --code-number: #ffe0d9;
+    --code-string: #bab6b6;
+    --code-comment: #7d7979;
+    --error: #ff9783;
+    --accent-text: #ff9783;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #201e1d;
+  --surface: #2d2b2b;
+  --text: #f3f2f2;
+  --divider: color-mix(in srgb, #f3f2f2 30%, transparent);
+  --code-keyword: #ff9783;
+  --code-builtin: #ffc4b8;
+  --code-number: #ffe0d9;
+  --code-string: #bab6b6;
+  --code-comment: #7d7979;
+  --error: #ff9783;
+  --accent-text: #ff9783;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3f2f2;
+  --surface: #eae9e9;
+  --text: #201e1d;
+  --divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --code-keyword: #dd2b0f;
+  --code-builtin: #7c1405;
+  --code-number: #ae1800;
+  --code-string: #605d5d;
+  --code-comment: #9b9797;
+  --error: #ae1800;
+  --accent-text: #ae1800;
 }
 
 * {
@@ -37,145 +129,344 @@
 }
 
 body {
-  margin: 0;
-  padding: 1.5rem 1rem 2rem;
+  margin: 0 auto;
+  max-width: var(--page);
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family: var(--sans);
+  font-size: 15px;
   line-height: 1.5;
 }
 
-header {
-  max-width: 76rem;
-  margin: 0 auto 1.25rem;
+/* Themed, never a browser default. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-h1 {
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+a {
+  color: var(--accent-text);
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+h1,
+h2 {
+  font-weight: 800;
   margin: 0;
-  font-size: 1.5rem;
-  letter-spacing: -0.01em;
-}
-
-.tagline {
-  margin: 0.25rem 0 0;
-  color: var(--muted);
-}
-
-.version {
-  margin: 0.25rem 0 0;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 0.8rem;
-}
-
-main {
-  max-width: 76rem;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  align-items: start;
-}
-
-/* One column once two panes side by side would be too narrow to read code in. */
-@media (max-width: 60rem) {
-  main {
-    grid-template-columns: 1fr;
-  }
-}
-
-.pane {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--panel);
-}
-
-.pane-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.625rem;
-  border-bottom: 1px solid var(--border);
-  min-height: 3rem;
-  flex-wrap: wrap;
-}
-
-.pane-head label {
-  color: var(--muted);
-  font-size: 0.85rem;
 }
 
 .spacer {
   flex: 1;
 }
 
-button,
-select {
-  font: inherit;
-  font-size: 0.9rem;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.3rem 0.7rem;
-  cursor: pointer;
+.muted {
+  color: color-mix(in srgb, var(--text) 72%, transparent);
 }
 
-button:hover:not(:disabled),
-select:hover:not(:disabled) {
-  border-color: var(--accent);
+.accent {
+  color: var(--accent-text);
 }
 
-button:disabled,
-select:disabled {
-  opacity: 0.5;
-  cursor: default;
+/* A small flush-left label above a block. */
+.kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0 0 8px;
 }
 
-#run {
-  border-color: var(--accent);
+/* ── the poster ────────────────────────────────────────────────────────── */
+
+.poster {
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 18px 28px 30px;
+}
+
+.poster-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+  color: var(--on-accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.brand:hover {
+  color: var(--on-accent);
+}
+
+.brand-mark {
+  width: 24px;
+  height: 24px;
+  background: var(--on-accent);
   color: var(--accent);
-  font-weight: 600;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 14px;
 }
+
+.poster-nav {
+  display: flex;
+  gap: 16px;
+}
+
+.poster-nav a {
+  color: var(--on-accent);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.poster-nav a:hover {
+  color: var(--on-accent);
+  text-decoration: underline;
+}
+
+.theme-toggle {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #f3f2f2 55%, transparent);
+  color: var(--on-accent);
+  cursor: pointer;
+  padding: 0;
+}
+
+.theme-toggle:hover {
+  background: color-mix(in srgb, #f3f2f2 14%, transparent);
+}
+
+.theme-toggle svg {
+  display: block;
+  grid-area: 1 / 1;
+}
+
+/* One icon at a time: the moon offers dark, the sun offers light. */
+.icon-sun {
+  display: none;
+}
+
+:root[data-theme="dark"] .icon-moon {
+  display: none;
+}
+
+:root[data-theme="dark"] .icon-sun {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .icon-moon {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .icon-sun {
+    display: block;
+  }
+}
+
+.build {
+  font-family: var(--mono);
+  font-size: 11px;
+  border: 1px solid color-mix(in srgb, #f3f2f2 55%, transparent);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.poster h1 {
+  font-size: clamp(30px, 4.6vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+  max-width: 1050px;
+  text-wrap: balance;
+}
+
+.poster p {
+  margin: 14px 0 0;
+  font-size: 15px;
+  max-width: 720px;
+  text-wrap: pretty;
+}
+
+/* ── the two panes ─────────────────────────────────────────────────────── */
+
+main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: var(--rule);
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pane-editor {
+  border-right: var(--rule);
+}
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: var(--rule);
+  min-height: 46px;
+  flex-wrap: wrap;
+}
+
+.pane-results .pane-head {
+  padding: 0 14px;
+  gap: 18px;
+}
+
+.filename {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+/* — buttons — */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 7px 14px;
+  border-radius: 0;
+}
+
+.btn svg {
+  display: block;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #f3f2f2;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-600);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--accent-700);
+}
+
+.btn-secondary {
+  border-color: var(--divider);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.btn-secondary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+/* — tabs — */
 
 .tabs {
   display: flex;
-  gap: 0.25rem;
+  gap: 18px;
 }
 
 .tab {
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 14px 2px 11px;
+  color: color-mix(in srgb, var(--text) 70%, transparent);
+}
+
+.tab:hover {
+  color: var(--text);
 }
 
 .tab.active {
-  background: var(--bg);
-  border-color: var(--border);
   color: var(--text);
-  font-weight: 600;
+  border-bottom-color: var(--accent);
 }
 
-/*
- * The editor stack. The textarea and the <pre> are both absolutely positioned
- * over the same box and must agree on every one of these metrics.
- */
+/* — the editor stack — */
+
 .editor {
-  position: relative;
-  height: 26rem;
+  display: flex;
+  height: 27rem;
 }
 
-.editor > #highlight,
-.editor > #source {
+#gutter {
+  width: 54px;
+  flex: none;
+  margin: 0;
+  padding: 14px 12px 14px 0;
+  overflow: hidden;
+  text-align: right;
+  border-right: 1px solid var(--divider);
+  background: var(--surface);
+  color: color-mix(in srgb, var(--text) 40%, transparent);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.editor-text {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.editor-text > #highlight,
+.editor-text > #source {
   position: absolute;
   inset: 0;
   margin: 0;
-  padding: 0.75rem;
+  padding: 14px 16px;
   border: 0;
   font-family: var(--mono);
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.65;
   tab-size: 2;
   white-space: pre;
   overflow: auto;
@@ -189,6 +480,8 @@ select:disabled {
 }
 
 #source {
+  width: 100%;
+  height: 100%;
   resize: none;
   background: transparent;
   /*
@@ -198,27 +491,30 @@ select:disabled {
    */
   color: transparent;
   caret-color: var(--accent);
-}
-
-#source::selection {
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
-#source:focus {
-  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
-#output {
+/* — the results — */
+
+.results {
+  position: relative;
+  height: calc(27rem + 46px + 2px);
+}
+
+#output,
+#reference {
+  position: absolute;
+  inset: 0;
   margin: 0;
-  padding: 0.75rem;
-  height: 26rem;
   overflow: auto;
+}
+
+#output {
+  padding: 14px 16px;
   font-family: var(--mono);
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.65;
   white-space: pre;
-  background: var(--bg);
 }
 
 #output.failed {
@@ -233,28 +529,242 @@ select:disabled {
 }
 
 #output .exit {
-  color: var(--muted);
+  color: color-mix(in srgb, var(--text) 72%, transparent);
 }
+
+#output.bytecode {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 78%, transparent);
+}
+
+#reference {
+  padding: 14px 16px;
+}
+
+#reference[hidden] {
+  display: none;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.chips span {
+  font-family: var(--mono);
+  font-size: 11px;
+  border: 1px solid var(--divider);
+  padding: 1px 7px;
+}
+
+.glossary {
+  margin: 0 0 16px;
+}
+
+.glossary > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.glossary > div:last-child {
+  border-bottom: 0;
+}
+
+.glossary dt,
+.glossary dd {
+  margin: 0;
+}
+
+.glossary dd {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--text) 72%, transparent);
+}
+
+.glossary code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.glossary code.builtin {
+  color: var(--code-builtin);
+}
+
+.glossary code.keyword {
+  color: var(--code-keyword);
+}
+
+.more {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.more a {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+
+.more a:hover {
+  text-decoration: underline;
+}
+
+/* ── the status bar ────────────────────────────────────────────────────── */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  height: 36px;
+  border-bottom: var(--rule);
+  font-family: var(--mono);
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+
+.status kbd {
+  font: inherit;
+}
+
+/* ── the examples ──────────────────────────────────────────────────────── */
+
+.examples {
+  padding: 22px 28px 28px;
+}
+
+.examples-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.examples-head .kicker {
+  margin: 0;
+}
+
+.examples-head .muted {
+  font-size: 12px;
+}
+
+/* The 2px gap is the divider showing through, which is how this system draws
+   a grid: the rules are the structure, not a decoration on top of it. */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  background: var(--divider);
+  border: var(--rule);
+}
+
+.card {
+  appearance: none;
+  font: inherit;
+  text-align: left;
+  background: var(--surface);
+  color: var(--text);
+  border: 0;
+  border-top: 3px solid transparent;
+  padding: 14px 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.card:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.card:active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+}
+
+.card.current {
+  border-top-color: var(--accent);
+}
+
+.card-tag {
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.card-name {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.card-about {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--text) 80%, transparent);
+  text-wrap: pretty;
+}
+
+.card-lines {
+  font-size: 10px;
+  color: color-mix(in srgb, var(--text) 72%, transparent);
+  font-family: var(--mono);
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+/* The last cell is a link out rather than a program, so it inverts. */
+.card-wiki {
+  background: var(--text);
+  color: var(--bg);
+  text-decoration: none;
+}
+
+.card-wiki:hover {
+  background: var(--text);
+  color: var(--bg);
+  opacity: 0.88;
+}
+
+.card-wiki .card-tag {
+  color: color-mix(in srgb, var(--bg) 80%, transparent);
+}
+
+.card-wiki .card-about,
+.card-wiki .card-lines {
+  color: color-mix(in srgb, var(--bg) 80%, transparent);
+}
+
+.card-wiki .card-name {
+  font-family: var(--sans);
+  font-weight: 800;
+}
+
+/* ── the footer ────────────────────────────────────────────────────────── */
 
 footer {
-  max-width: 76rem;
-  margin: 1.25rem auto 0;
-  color: var(--muted);
-  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 28px;
+  border-top: var(--rule);
+  flex-wrap: wrap;
 }
 
-footer a {
-  color: var(--muted);
-}
-
-footer span {
-  margin: 0 0.4rem;
-}
-
-/* The one thing the playground cannot do, said before you try it. */
 .scope {
-  margin: 0 0 0.6rem;
-  max-width: 46rem;
+  margin: 0;
+  margin-right: auto;
+  max-width: 760px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 72%, transparent);
+  text-wrap: pretty;
 }
 
 .scope code {
@@ -262,52 +772,60 @@ footer span {
   font-size: 0.95em;
 }
 
-/*
- * Token colours. The spans these apply to come from the language's own lexer,
- * so what looks like a keyword here is what the language treats as one.
- */
-#highlight .keyword {
-  color: #b4472f;
-  font-weight: 600;
+.footer-links {
+  display: flex;
+  gap: 20px;
 }
 
-#highlight .builtin {
-  color: #7048a8;
+.footer-links a {
+  font-size: 12.5px;
 }
 
-#highlight .string {
-  color: #2c7a4b;
-}
+/* ── narrower screens ──────────────────────────────────────────────────── */
 
-#highlight .number,
-#highlight .literal {
-  color: #a8621b;
-}
-
-#highlight .comment {
-  color: #7b8794;
-  font-style: italic;
-}
-
-@media (prefers-color-scheme: dark) {
-  #highlight .keyword {
-    color: #e2795c;
+/* One column once two panes side by side would be too narrow to read code in.
+   The editor pane's right rule becomes a bottom rule, since it is now the
+   division between stacked things rather than beside ones. */
+@media (max-width: 60rem) {
+  main {
+    grid-template-columns: 1fr;
   }
 
-  #highlight .builtin {
-    color: #c3a0f0;
+  .pane-editor {
+    border-right: 0;
+    border-bottom: var(--rule);
   }
 
-  #highlight .string {
-    color: #7fc99a;
+  .cards {
+    grid-template-columns: repeat(2, 1fr);
   }
 
-  #highlight .number,
-  #highlight .literal {
-    color: #e0aa6a;
+  /* Stacked, the two panes are read one after the other rather than side by
+     side, so a full-height results pane is a screen of nothing between the
+     program and the examples. */
+  .editor {
+    height: 22rem;
   }
 
-  #highlight .comment {
-    color: #7b8794;
+  .results {
+    height: 16rem;
+  }
+}
+
+@media (max-width: 34rem) {
+  .poster,
+  .examples,
+  footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .poster-nav {
+    order: 3;
+    width: 100%;
   }
 }

@@ -9,27 +9,123 @@
       content="Run MiruScriptX in your browser. The same compiler and virtual machine as the command line tool, built to WebAssembly."
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <!--
+      Self-hosted, not fetched from a font service. The page makes no
+      third-party request at all, which is the same promise Share makes about
+      the program you write: it stays in the browser. See fonts/OFL.txt.
+    -->
+    <link
+      rel="preload"
+      href="fonts/archivo-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link rel="stylesheet" href="style.css" />
+    <!--
+      Set the theme before the first paint. Inline because a separate file
+      would arrive after the page had already been painted in the wrong one,
+      and a flash of the other theme is the thing this exists to avoid.
+    -->
+    <script>
+      try {
+        const saved = localStorage.getItem("miru-theme");
+        if (saved) document.documentElement.dataset.theme = saved;
+      } catch {
+        // Private browsing can refuse localStorage. The media query still
+        // decides, which is the right answer when nothing was remembered.
+      }
+    </script>
   </head>
   <body>
-    <header>
-      <h1>MiruScriptX</h1>
-      <p class="tagline">
-        Compiled to bytecode, run on a stack virtual machine, here in your
-        browser.
+    <!-- The poster. The one place the accent runs as a field. -->
+    <header class="poster">
+      <div class="poster-bar">
+        <a class="brand" href="https://github.com/stiven-gjekaj/miruscriptx">
+          <span class="brand-mark" aria-hidden="true">M</span>
+          <span>MiruScriptX</span>
+        </a>
+        <nav class="poster-nav">
+          <a
+            href="https://github.com/stiven-gjekaj/miruscriptx/blob/main/docs/language-reference.md"
+            >Reference</a
+          >
+          <a href="https://github.com/stiven-gjekaj/miruscriptx/tree/main/wiki"
+            >Wiki</a
+          >
+          <a href="https://github.com/stiven-gjekaj/miruscriptx">GitHub</a>
+        </nav>
+        <button
+          id="theme"
+          class="theme-toggle"
+          type="button"
+          aria-label="Switch to the dark theme"
+        >
+          <svg
+            class="icon-moon"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+          </svg>
+          <svg
+            class="icon-sun"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"
+            />
+          </svg>
+        </button>
+        <span class="build" id="build">wasm</span>
+      </div>
+
+      <h1>The whole language, in your browser.</h1>
+      <p>
+        The same compiler and stack virtual machine as the command line, built
+        to WebAssembly. Write a program, run it, read its bytecode.
       </p>
-      <p class="version">Loading<span id="version"></span></p>
     </header>
 
     <main>
-      <section class="pane">
+      <section class="pane pane-editor" aria-label="Editor">
         <div class="pane-head">
-          <label for="examples">Example</label>
-          <select id="examples" disabled></select>
+          <span class="filename" id="filename">untitled.miru</span>
           <span class="spacer"></span>
-          <button id="run" type="button" disabled>Run</button>
-          <button id="format" type="button" disabled>Format</button>
-          <button id="share" type="button" disabled>Share</button>
+          <button id="format" class="btn btn-secondary" type="button" disabled>
+            Format
+          </button>
+          <button id="share" class="btn btn-secondary" type="button" disabled>
+            Share
+          </button>
+          <button id="run" class="btn btn-primary" type="button" disabled>
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <polygon points="6 3 20 12 6 21 6 3" />
+            </svg>
+            Run
+          </button>
         </div>
 
         <!--
@@ -38,21 +134,26 @@
           exactly. Keeping the textarea real is the point: native undo,
           selection, and mobile keyboards keep working, and the highlighting
           can never desynchronise from what actually runs.
+
+          The gutter is a third layer, scrolled with the other two.
         -->
         <div class="editor">
-          <pre id="highlight" aria-hidden="true"><code></code></pre>
-          <textarea
-            id="source"
-            spellcheck="false"
-            autocapitalize="off"
-            autocomplete="off"
-            autocorrect="off"
-            aria-label="MiruScriptX source code"
-          ></textarea>
+          <pre id="gutter" aria-hidden="true"></pre>
+          <div class="editor-text">
+            <pre id="highlight" aria-hidden="true"><code></code></pre>
+            <textarea
+              id="source"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              autocorrect="off"
+              aria-label="MiruScriptX source code"
+            ></textarea>
+          </div>
         </div>
       </section>
 
-      <section class="pane">
+      <section class="pane pane-results" aria-label="Results">
         <div class="pane-head">
           <div class="tabs" role="tablist">
             <button
@@ -75,11 +176,99 @@
             >
               Bytecode
             </button>
+            <button
+              id="tab-reference"
+              class="tab"
+              role="tab"
+              aria-selected="false"
+              aria-controls="reference"
+              type="button"
+            >
+              Reference
+            </button>
           </div>
         </div>
-        <pre id="output" role="tabpanel" aria-live="polite"></pre>
+
+        <div class="results">
+          <pre id="output" role="tabpanel" aria-live="polite"></pre>
+
+          <!--
+            The reference. Short on purpose: it is what somebody needs in the
+            first ten minutes, and the link at the bottom is where the rest
+            lives. The keyword list is filled in from the language itself.
+          -->
+          <div id="reference" role="tabpanel" hidden>
+            <h2 class="kicker">Keywords</h2>
+            <div class="chips" id="keywords"></div>
+
+            <h2 class="kicker">Builtins you will meet first</h2>
+            <dl class="glossary">
+              <div>
+                <dt><code class="builtin">print(…)</code></dt>
+                <dd>write a line to output</dd>
+              </div>
+              <div>
+                <dt><code class="builtin">len(x)</code></dt>
+                <dd>the length of a string, an array, or a map</dd>
+              </div>
+              <div>
+                <dt><code class="builtin">range(a, b)</code></dt>
+                <dd>the integers from a up to b</dd>
+              </div>
+              <div>
+                <dt>
+                  <code class="builtin">map</code> ·
+                  <code class="builtin">filter</code> ·
+                  <code class="builtin">reduce</code>
+                </dt>
+                <dd>reshape an array with a function</dd>
+              </div>
+              <div>
+                <dt>
+                  <code class="builtin">keys(m)</code> ·
+                  <code class="builtin">has(m, k)</code>
+                </dt>
+                <dd>walk and probe a map</dd>
+              </div>
+              <div>
+                <dt>
+                  <code class="keyword">try</code> ·
+                  <code class="builtin">is_error(x)</code>
+                </dt>
+                <dd>catch a failure as a value</dd>
+              </div>
+            </dl>
+
+            <p class="more">
+              <a
+                href="https://github.com/stiven-gjekaj/miruscriptx/blob/main/docs/language-reference.md"
+                >All <span id="builtin-count">53</span> builtins on one page
+                →</a
+              >
+            </p>
+          </div>
+        </div>
       </section>
     </main>
+
+    <!-- What the run just did, in the language's own units. -->
+    <div class="status">
+      <span id="status-version">miru</span>
+      <span class="muted">browser clock · no file system</span>
+      <span class="spacer"></span>
+      <span class="muted"><kbd id="run-key">Ctrl</kbd> + <kbd>↵</kbd> run</span>
+      <span id="status-exit">exit 0</span>
+      <span class="accent" id="status-ms"></span>
+      <span class="muted" id="status-lines"></span>
+    </div>
+
+    <section class="examples" aria-label="Examples">
+      <div class="examples-head">
+        <h2 class="kicker accent">Start from an example</h2>
+        <span class="muted">Every example runs here, with nothing to set up</span>
+      </div>
+      <div class="cards" id="examples"></div>
+    </section>
 
     <footer>
       <p class="scope">
@@ -90,17 +279,13 @@
         <strong>Share</strong> puts the program in the address bar, in the part
         after the <code>#</code>, which a browser never sends to a server.
       </p>
-      <a href="https://github.com/stiven-gjekaj/miruscriptx">Source on GitHub</a>
-      <span aria-hidden="true">/</span>
-      <a
-        href="https://github.com/stiven-gjekaj/miruscriptx/blob/main/docs/language-reference.md"
-        >Language reference</a
-      >
-      <span aria-hidden="true">/</span>
-      <a
-        href="https://github.com/stiven-gjekaj/miruscriptx/blob/main/docs/architecture.md"
-        >How it works</a
-      >
+      <nav class="footer-links">
+        <a href="https://github.com/stiven-gjekaj/miruscriptx">Source on GitHub</a>
+        <a
+          href="https://github.com/stiven-gjekaj/miruscriptx/blob/main/docs/architecture.md"
+          >How it works</a
+        >
+      </nav>
     </footer>
 
     <script type="module" src="main.js"></script>
