@@ -204,20 +204,122 @@ pub fn version() -> String {
 /// language's own. **`read_key` is not**: a page has no keyboard buffer to take
 /// a key from, so it refuses, and an example that called it would fail
 /// `every_bundled_example_runs`.
-const EXAMPLES: &[(&str, &str)] = &[
-    ("greet", include_str!("../../examples/greet.miru")),
-    ("fib", include_str!("../../examples/fib.miru")),
-    ("fizzbuzz", include_str!("../../examples/fizzbuzz.miru")),
-    ("contacts", include_str!("../../examples/contacts.miru")),
-    ("transform", include_str!("../../examples/transform.miru")),
-    ("recover", include_str!("../../examples/recover.miru")),
-    ("dice", include_str!("../../examples/dice.miru")),
+///
+/// The tag and the description live here rather than in the page, because they
+/// say what a program in this language demonstrates and the page should not be
+/// the thing deciding that. The page asks; this answers.
+const EXAMPLES: &[Example] = &[
+    Example {
+        name: "greet",
+        tag: "Functions",
+        about: "Functions, arrays, and a loop",
+        source: include_str!("../../examples/greet.miru"),
+    },
+    Example {
+        name: "fib",
+        tag: "Recursion",
+        about: "The first ten Fibonacci numbers, recursively",
+        source: include_str!("../../examples/fib.miru"),
+    },
+    Example {
+        name: "fizzbuzz",
+        tag: "Control flow",
+        about: "The classic, from 1 to 15, with the modulo operator",
+        source: include_str!("../../examples/fizzbuzz.miru"),
+    },
+    Example {
+        name: "contacts",
+        tag: "Maps",
+        about: "A small phone book: build it, update it, look something up",
+        source: include_str!("../../examples/contacts.miru"),
+    },
+    Example {
+        name: "transform",
+        tag: "Higher-order",
+        about: "Reshape a list with map, filter, and reduce",
+        source: include_str!("../../examples/transform.miru"),
+    },
+    Example {
+        name: "recover",
+        tag: "Errors",
+        about: "try: a failure becomes a value you can check",
+        source: include_str!("../../examples/recover.miru"),
+    },
+    Example {
+        name: "dice",
+        tag: "Randomness",
+        about: "Ten thousand rolls of two dice, drawn as a histogram",
+        source: include_str!("../../examples/dice.miru"),
+    },
 ];
+
+/// One bundled example: what it is called, what it shows, and its text.
+struct Example {
+    name: &'static str,
+    tag: &'static str,
+    about: &'static str,
+    source: &'static str,
+}
+
+/// One bundled example, as a card on the page needs it.
+///
+/// The line count is computed here rather than counted in JavaScript, so the
+/// figure on a card comes from the same string the editor is filled with and
+/// cannot disagree with it.
+#[wasm_bindgen]
+pub struct ExampleInfo {
+    name: String,
+    tag: String,
+    about: String,
+    lines: usize,
+}
+
+#[wasm_bindgen]
+impl ExampleInfo {
+    #[wasm_bindgen(getter)]
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    /// The short label above the name, such as `Maps`.
+    #[wasm_bindgen(getter)]
+    pub fn tag(&self) -> String {
+        self.tag.clone()
+    }
+
+    /// One line saying what the program demonstrates.
+    #[wasm_bindgen(getter)]
+    pub fn about(&self) -> String {
+        self.about.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn lines(&self) -> usize {
+        self.lines
+    }
+}
+
+/// Every bundled example, in the order they should be offered.
+#[wasm_bindgen]
+pub fn examples() -> Vec<ExampleInfo> {
+    EXAMPLES
+        .iter()
+        .map(|example| ExampleInfo {
+            name: example.name.to_string(),
+            tag: example.tag.to_string(),
+            about: example.about.to_string(),
+            lines: line_count(example.source),
+        })
+        .collect()
+}
 
 /// The names of the bundled examples, in the order they should be offered.
 #[wasm_bindgen]
 pub fn example_names() -> Vec<String> {
-    EXAMPLES.iter().map(|(name, _)| name.to_string()).collect()
+    EXAMPLES
+        .iter()
+        .map(|example| example.name.to_string())
+        .collect()
 }
 
 /// The source of one bundled example, or an empty string if there is no such
@@ -226,9 +328,19 @@ pub fn example_names() -> Vec<String> {
 pub fn example_source(name: &str) -> String {
     EXAMPLES
         .iter()
-        .find(|(candidate, _)| *candidate == name)
-        .map(|(_, source)| source.to_string())
+        .find(|example| example.name == name)
+        .map(|example| example.source.to_string())
         .unwrap_or_default()
+}
+
+/// How many lines of text, counting the way a person reading the file would.
+///
+/// A trailing newline ends the last line rather than starting an empty one, so
+/// a file of three lines that ends in a newline counts three and not four.
+/// `lines_in` in `tests/documentation.rs` counts the same way, and the two
+/// should stay in step: both answer the question a reader would ask.
+pub fn line_count(text: &str) -> usize {
+    text.lines().count()
 }
 
 /// A run of source text to colour: where it starts, how long it is, and what
@@ -459,6 +571,48 @@ mod tests {
     #[test]
     fn an_unknown_example_yields_nothing_rather_than_panicking() {
         assert_eq!(example_source("nope"), "");
+    }
+
+    #[test]
+    fn every_example_carries_a_card_worth_of_description() {
+        // The cards on the page are built from this, so an example added
+        // without a tag or a description would show a blank one. Catching it
+        // here is cheaper than noticing it in a browser.
+        let cards = examples();
+        assert_eq!(cards.len(), example_names().len());
+
+        for card in &cards {
+            assert!(!card.tag().is_empty(), "{} has no tag", card.name());
+            assert!(
+                !card.about().is_empty(),
+                "{} has no description",
+                card.name()
+            );
+            assert_eq!(
+                card.lines(),
+                line_count(&example_source(&card.name())),
+                "{} reports a line count that is not its source's",
+                card.name()
+            );
+        }
+    }
+
+    #[test]
+    fn the_cards_are_in_the_order_the_examples_are_offered_in() {
+        // The page fills the editor from the first card, so a listing in some
+        // other order would open on a program that is not the one shown first.
+        let named: Vec<String> = examples().iter().map(ExampleInfo::name).collect();
+        assert_eq!(named, example_names());
+    }
+
+    #[test]
+    fn a_line_count_ends_at_the_last_line_rather_than_after_it() {
+        // A trailing newline ends a line; it does not start an empty one.
+        // Every example file ends in one, so getting this wrong would make
+        // every card claim one line too many.
+        assert_eq!(line_count("a\nb\nc\n"), 3);
+        assert_eq!(line_count("a\nb\nc"), 3);
+        assert_eq!(line_count(""), 0);
     }
 
     #[test]
