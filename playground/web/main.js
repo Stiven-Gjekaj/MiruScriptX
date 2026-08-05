@@ -18,6 +18,7 @@ const output = document.getElementById("output");
 const examples = document.getElementById("examples");
 const runButton = document.getElementById("run");
 const formatButton = document.getElementById("format");
+const shareButton = document.getElementById("share");
 const outputTab = document.getElementById("tab-output");
 const bytecodeTab = document.getElementById("tab-bytecode");
 
@@ -126,8 +127,148 @@ function selectTab(next) {
 
 function loadExample(name) {
   source.value = example_source(name);
+  // The example wins over whatever a shared link carried in, and clearing the
+  // fragment stops the old program coming back on the next reload.
+  clearFragment();
   paint();
   evaluate();
+}
+
+// --- Sharing ----------------------------------------------------------------
+//
+// The program goes in the URL fragment, which never leaves the browser: the
+// server is not sent it and GitHub Pages keeps no record of it. A query string
+// would be sent on every request, and a program is the writer's own text.
+//
+// Compressed before encoding, because base64 alone makes text a third larger
+// and a URL has a practical ceiling. CompressionStream is a browser API, so
+// this page still has no dependencies: everything under playground/web/ is
+// hand-written HTML, CSS, and JavaScript and stays that way.
+
+/** Roughly what a browser will carry. Beyond this a link is refused. */
+const MAX_URL = 8000;
+
+/** Base64url: the plain alphabet loses `+` and `/` to URL escaping. */
+function toBase64Url(bytes) {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(text) {
+  const padded = text.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+async function collect(stream) {
+  const chunks = [];
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const bytes = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.length;
+  }
+  return bytes;
+}
+
+async function encodeProgram(text) {
+  // The UTF-8 bytes, not the string. `btoa` refuses a character above U+00FF,
+  // so a program with an emoji in it would fail without this step.
+  const bytes = new TextEncoder().encode(text);
+  const stream = new Blob([bytes])
+    .stream()
+    .pipeThrough(new CompressionStream("deflate-raw"));
+  return toBase64Url(await collect(stream));
+}
+
+async function decodeProgram(encoded) {
+  const bytes = fromBase64Url(encoded);
+  const stream = new Blob([bytes])
+    .stream()
+    .pipeThrough(new DecompressionStream("deflate-raw"));
+  return new TextDecoder().decode(await collect(stream));
+}
+
+function clearFragment() {
+  if (location.hash) {
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+}
+
+async function share() {
+  let link;
+  try {
+    const encoded = await encodeProgram(source.value);
+    link = `${location.origin}${location.pathname}#code=${encoded}`;
+  } catch (error) {
+    output.textContent = `Could not make a link.\n\n${error}`;
+    output.classList.add("failed");
+    return;
+  }
+
+  // Refused rather than truncated. A link that quietly loses the end of a
+  // program is worse than no link: whoever opens it sees a program that looks
+  // whole and is not.
+  if (link.length > MAX_URL) {
+    output.textContent =
+      `This program is too long to put in a link (${link.length} characters, ` +
+      `and about ${MAX_URL} is the most a link carries).\n\n` +
+      "Send the program itself instead.";
+    output.classList.add("failed");
+    selectTab("output");
+    return;
+  }
+
+  history.replaceState(null, "", link);
+  try {
+    await navigator.clipboard.writeText(link);
+    shareButton.textContent = "Copied";
+  } catch {
+    // No clipboard permission, which some browsers withhold. The link is in
+    // the address bar either way, so say that rather than failing.
+    shareButton.textContent = "In the address bar";
+  }
+  setTimeout(() => {
+    shareButton.textContent = "Share";
+  }, 2000);
+}
+
+/**
+ * Load a program from the fragment, if there is one.
+ *
+ * Gives whether one was loaded, so start-up knows to skip the first example.
+ */
+async function loadFromFragment() {
+  const match = /^#code=(.+)$/.exec(location.hash);
+  if (!match) {
+    return false;
+  }
+  try {
+    source.value = await decodeProgram(match[1]);
+    paint();
+    evaluate();
+    return true;
+  } catch {
+    // A damaged fragment shows an empty editor and says so. Showing a partial
+    // program as though it were whole is the one outcome to avoid.
+    source.value = "";
+    paint();
+    output.textContent =
+      "This link is damaged, so the program it carried could not be read.";
+    output.classList.add("failed");
+    selectTab("output");
+    return true;
+  }
 }
 
 async function main() {
@@ -143,7 +284,7 @@ async function main() {
     examples.append(option);
   }
 
-  for (const control of [examples, runButton, formatButton]) {
+  for (const control of [examples, runButton, formatButton, shareButton]) {
     control.disabled = false;
   }
 
@@ -151,6 +292,7 @@ async function main() {
   source.addEventListener("scroll", syncScroll);
   examples.addEventListener("change", () => loadExample(examples.value));
   runButton.addEventListener("click", evaluate);
+  shareButton.addEventListener("click", share);
   outputTab.addEventListener("click", () => selectTab("output"));
   bytecodeTab.addEventListener("click", () => selectTab("bytecode"));
 
@@ -176,7 +318,11 @@ async function main() {
     }
   });
 
-  loadExample(example_names()[0]);
+  // A shared link wins over the first example, which is the whole point of
+  // opening one.
+  if (!(await loadFromFragment())) {
+    loadExample(example_names()[0]);
+  }
 }
 
 main().catch((error) => {

@@ -29,6 +29,7 @@
           <span class="spacer"></span>
           <button id="run" type="button" disabled>Run</button>
           <button id="format" type="button" disabled>Format</button>
+          <button id="share" type="button" disabled>Share</button>
         </div>
 
         <!--
@@ -83,8 +84,11 @@
     <footer>
       <p class="scope">
         This page runs one file. There is no file system in the browser, so
-        <code>import</code> reports that the program was not loaded from a file.
-        Everything else is the language exactly as the command line runs it.
+        <code>import</code> reports that the program was not loaded from a file,
+        and no keyboard buffer, so <code>read_key</code> refuses. Everything
+        else is the language exactly as the command line runs it.
+        <strong>Share</strong> puts the program in the address bar, in the part
+        after the <code>#</code>, which a browser never sends to a server.
       </p>
       <a href="https://github.com/stiven-gjekaj/miruscriptx">Source on GitHub</a>
       <span aria-hidden="true">/</span>
