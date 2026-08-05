@@ -1,6 +1,6 @@
 # Next steps
 
-You now know all of MiruScriptX 1.6. Here is where to go from here.
+You now know all of MiruScriptX 1.7. Here is where to go from here.
 
 ## Try it without installing anything
 
@@ -10,11 +10,17 @@ in your browser. It is the same lexer, compiler, and virtual machine as the
 machine and the other way round. It has the example programs ready to load, a
 Format button, and a tab showing the bytecode your program compiles to.
 
+**Share** copies a link that carries the program you wrote. It goes in the part
+of the address after the `#`, which a browser never sends to a server, so
+sharing a program sends it to the person you give the link to and to nobody
+else.
+
 What it cannot do is anything that needs a file, because a browser has no file
 system to give it: `import`, `read_file`, and `write_file` all report there
 rather than pretending. `file_exists` answers `false` and `args` gives an empty
 array, since those are the honest answers when there is no file system and no
-command line. `input` reads nothing, because there is no keyboard to read from.
+command line. `input` reads nothing and `read_key` refuses, because a page has
+no keyboard to read from the way a terminal does.
 
 `eprint` and `exit` do work there. A page has no process to end, but it can say
 what a program asked for, so `eprint` output appears marked as its own stream

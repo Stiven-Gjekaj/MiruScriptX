@@ -422,6 +422,54 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.7: every error at once, a link to a program, and colour in an editor
+
+Shipped. Three issues with nothing in common, which is why they could be built
+and merged in any order, and **the tracker is empty for the first time since
+1.0**.
+
+- **Every syntax error is reported, not only the first.** A file with four
+  mistakes took four runs to fix. Three rules bound the report and section 6.2.1
+  of the specification is new and gives them. Closes #10.
+
+- **A share link in the playground.** The program goes in the fragment of the
+  address, which a browser never sends to a server, so a shared program reaches
+  the person given the link and nobody else. Closes #9.
+
+- **A TextMate grammar for editors.** `editors/vscode/`, which Visual Studio
+  Code and Sublime Text both read. It colours the six classes the playground
+  colours, taken from `class_of` rather than decided a second time. Closes #14.
+
+Four things worth carrying forward:
+
+- **The issue named a hazard that did not exist and missed the one that did.**
+  #10 warned that recovery would drift the nesting counter, and calls it the
+  condition most likely to be missed. Reading the three sites showed all of them
+  already balanced, so recovery in `program` was correct for free. What actually
+  bit was elsewhere: the lexer makes no newline token inside `(` or `[`, so one
+  unclosed bracket removes every statement separator in the rest of the file and
+  produced twenty errors burying the real one. The information is gone before
+  the parser runs. Reading the code before designing around a warning saved the
+  work; only running it found the real fault.
+
+- **A guard with no test is not a guard.** The check that stops the parse when
+  the nesting limit is hit could be deleted and every test still passed. It is
+  covered now, by a case with a second mistake after the deep one that must not
+  be reported.
+
+- **The counts did not move, for the first time in five releases.** No builtin
+  was added or changed, so plain 40, system 4, ambient 5, host 4, and 49
+  reaching `call_native` all stayed put. That is exactly why the grammar's
+  builtin list is generated from `BUILTIN_NAMES` by `scripts/build_grammar.sh`
+  rather than typed: this release is the exception, not the rule.
+
+- **Some things are checked by looking at them.** The grammar and the share link
+  have no automated test between them, and both say so where a reader will find
+  it. `editors/highlight-test.miru` holds a line for each rule a grammar written
+  from regular expressions gets wrong; the encode and decode round trip was
+  verified in node against six programs, but the page wiring was verified by
+  opening the page. Saying which is which is the honest part.
+
 ## 1.6: three platforms, sorting by a key, and reading a key
 
 Shipped. Three issues, and the first of them earned its place twice over.
