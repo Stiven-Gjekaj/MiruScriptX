@@ -10,6 +10,29 @@ semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- **`sort` takes a key function.** Sorting anything but an array of bare
+  numbers or strings meant writing a sort in MiruScriptX.
+
+  ```
+  sort(people, fn(p) { return p.age })
+  sort(["bbb", "a", "cc"], len)                       // any function works
+  reverse(sort(scores, fn(x) { return x }))           // decreasing
+  ```
+
+  A key function rather than a comparator. The function is asked what to sort
+  each element **by**, once per element, and the keys then follow the same
+  ordering rules the elements follow in `sort(a)`: all numbers, or all strings.
+
+  **The sort is stable**, and the specification now says so, because that is
+  what makes sorting by two keys two passes with the less important key first.
+
+  `sort(a)` is unchanged, and every golden case for it passes untouched.
+  `sort(a, nil)` is an error rather than a plain sort.
+
+  Closes #6.
+
 ### Changed
 
 - **The test suite runs on Windows and macOS, not only Linux.** CI had one job
