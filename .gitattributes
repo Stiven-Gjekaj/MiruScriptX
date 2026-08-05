@@ -1,0 +1,25 @@
+# Line endings in the files the tests read back.
+#
+# CI runs the suite on Windows as well as on Linux and macOS, and a Windows
+# checkout converts a text file to CRLF by default. Three things in this
+# repository read a file's bytes and compare them against something written
+# here, so a converted checkout would fail them all in a way that looks like a
+# language defect rather than a checkout setting:
+#
+#   - `miru fmt` writes `\n`, so a `.miru` file checked out with CRLF does not
+#     round trip, and `tests/integration.rs` asserts that it does.
+#   - `read_file` gives back exactly what is on disk, so `examples/words.txt`
+#     with CRLF changes what `examples/words.miru` counts.
+#   - The golden cases hold source text against output, character for character.
+#
+# Pinning these to LF everywhere is the fix. It is not a preference about
+# editors: it is the condition under which the tests mean anything on Windows.
+*.miru text eol=lf
+*.txt text eol=lf
+*.rs text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+
+# Binary, and never to be converted.
+*.png binary
