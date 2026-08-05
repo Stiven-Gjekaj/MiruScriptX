@@ -33,7 +33,51 @@ semantic versioning.
 
   Closes #6.
 
+- **`read_key()`.** `input()` waits for a whole line and for Enter, so nothing
+  that reacts to a keystroke could be written.
+
+  ```
+  while true {
+    let key = read_key()
+    if key == "left" { move_left() }
+    if key == "ctrl+c" { break }
+  }
+  ```
+
+  A key that makes a character gives that character. Everything else gives a
+  name: `up`, `down`, `left`, `right`, `enter`, `tab`, `escape`, `backspace`,
+  `delete`, `insert`, `home`, `end`, `pageup`, `pagedown`, `f1` to `f12`, and
+  `ctrl+a` to `ctrl+z`. A key with no name gives `unknown` rather than an
+  error, so a loop can ignore it. Section 8.11 of the specification has the
+  list, and section 2.3 of the guarantee makes it permanent.
+
+  > **While a program reads keys, Control-C does not stop it.** The terminal
+  > hands it over as `"ctrl+c"` instead. A program that does not check for it
+  > cannot be stopped from the keyboard.
+
+  This is deliberate and the alternative is worse: leaving the signal on would
+  end the process without unwinding, so the terminal would be left with no echo
+  and the person would have to fix it blind. Taking it off means the restore
+  always happens, whether the program finished, failed, or called `exit`.
+
+  Where standard input is not a terminal, `read_key` reads it anyway: a pipe
+  has bytes and nothing is buffering a line. The playground has no keyboard at
+  all and refuses.
+
+  Closes #32.
+
+- **`examples/keys.miru`**, which moves a marker with the arrow keys. The one
+  example the browser playground cannot run.
+
 ### Changed
+
+- **Two new direct dependencies that add no crate.** `nix` on unix and
+  `windows-sys` on windows, for the raw terminal mode `read_key` needs.
+  `rustyline` already brought both, at these versions and with these features,
+  so `Cargo.lock` holds the same 76 packages it did before. The README badge
+  moves from 2 direct dependencies to 4 and its total is unchanged.
+
+  `crossterm` does the same job and would have added eight or so crates.
 
 - **The test suite runs on Windows and macOS, not only Linux.** CI had one job
   on `ubuntu-latest` while the release workflow built a binary for five
