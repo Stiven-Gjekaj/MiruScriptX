@@ -294,7 +294,7 @@ mod platform {
     }
 
     pub fn read_bytes() -> Result<Vec<u8>, String> {
-        super::read_up_to_four(&mut std::io::stdin())
+        super::read_burst(&mut std::io::stdin())
     }
 
     /// A byte if one is already there or arrives very soon, and `None`
@@ -378,14 +378,18 @@ mod platform {
     }
 
     pub fn read_bytes() -> Result<Vec<u8>, String> {
-        super::read_up_to_four(&mut std::io::stdin())
+        super::read_burst(&mut std::io::stdin())
     }
 
-    /// The console has no `poll`, so this reads only what is already buffered.
+    /// Windows has no `poll` over standard input that works for a console and
+    /// a pipe alike, so this always says "nothing more arrived".
     ///
-    /// `PeekConsoleInput` would be the exact equivalent. It is not used here
-    /// because the pending buffer already holds whatever a sequence delivered
-    /// in one burst, and the console delivers one.
+    /// That is only consulted when the buffer is empty part way through a
+    /// sequence, which one read of [`READ_SIZE`] bytes makes very unlikely: a
+    /// console delivers a key's whole sequence at once, and a pipe delivers
+    /// far more than one key. The consequence where it does happen is that a
+    /// split sequence reads as Escape, which is the same answer this gives for
+    /// Escape pressed alone.
     pub fn read_bytes_soon() -> Result<Vec<u8>, String> {
         Ok(Vec::new())
     }
@@ -393,15 +397,27 @@ mod platform {
 
 use platform::{read_bytes, read_bytes_soon};
 
-/// Read between one and four bytes, blocking until at least one arrives.
+/// How many bytes one read asks for.
 ///
-/// **Four and not one, because Windows requires it.** Rust's standard input
-/// there refuses a buffer that cannot hold one whole character when the handle
-/// is a console, so a one-byte read is an error on the exact platform this
-/// module exists to support. Reading four is also fewer calls for an escape
-/// sequence, which arrives in one burst.
-fn read_up_to_four(source: &mut impl Read) -> Result<Vec<u8>, String> {
-    let mut buffer = [0u8; 4];
+/// **Not one, because Windows refuses it.** Rust's standard input there rejects
+/// a buffer that cannot hold one whole character when the handle is a console,
+/// so a one-byte read fails on the exact platform this module exists for.
+///
+/// **Not four either, and this is the size that matters.** A key sends its
+/// whole escape sequence in one burst, but a *pipe* delivers several keys at
+/// once, and a read that stops in the middle of the second sequence leaves the
+/// rest to a follow-up read that Windows cannot make. That produced a real
+/// fault: `ESC [ C ESC` filled a four-byte buffer, the trailing escape was
+/// read as Escape pressed alone, and the arrow-key example quit early on
+/// Windows and nowhere else. Sixteen holds any sequence this decoder knows
+/// several times over, so the follow-up read is needed only at a terminal,
+/// where it works.
+const READ_SIZE: usize = 16;
+
+/// Read at least one byte and at most [`READ_SIZE`], blocking until one
+/// arrives.
+fn read_burst(source: &mut impl Read) -> Result<Vec<u8>, String> {
+    let mut buffer = [0u8; READ_SIZE];
     match source.read(&mut buffer) {
         Ok(0) => Ok(Vec::new()),
         Ok(read) => Ok(buffer[..read].to_vec()),
@@ -486,6 +502,40 @@ mod tests {
     #[test]
     fn an_unknown_sequence_is_named_unknown() {
         assert_eq!(key_from(b"\x1b[99~").unwrap().unwrap(), "unknown");
+    }
+
+    /// Several keys arriving in one read, decoded with **no follow-up read
+    /// available**. This is the Windows condition exactly: there is no `poll`
+    /// there, so `read_bytes_soon` always says nothing more arrived, and the
+    /// decoder has to work from the buffer alone.
+    ///
+    /// It is a regression test for a real fault. With a four-byte read,
+    /// `ESC [ C ESC` filled the buffer, the trailing escape had no follow-up
+    /// read to complete it, and it decoded as Escape pressed alone. The
+    /// arrow-key example quit at the second key on Windows and nowhere else,
+    /// and only the platform matrix caught it.
+    #[test]
+    fn a_burst_of_several_keys_decodes_without_a_follow_up_read() {
+        // The same loop `RealKeyboard::read_key` runs, over bytes rather than
+        // a terminal, with `more` refusing to fetch anything: reading from the
+        // buffer alone is all Windows can do.
+        let mut source: &[u8] = b"\x1b[C\x1b[C\x1b[Dq";
+        let mut pending: Vec<u8> = Vec::new();
+        let mut keys = Vec::new();
+        loop {
+            if pending.is_empty() {
+                pending = read_burst(&mut source).expect("the read works");
+            }
+            if pending.is_empty() {
+                break;
+            }
+            let first = pending.remove(0);
+            let key = decode(first, &mut pending, |left| !left.is_empty())
+                .expect("the bytes decode")
+                .expect("a key");
+            keys.push(key);
+        }
+        assert_eq!(keys, vec!["right", "right", "left", "q"]);
     }
 
     /// A byte that cannot start a character is refused rather than guessed at.
