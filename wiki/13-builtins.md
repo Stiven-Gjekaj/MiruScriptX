@@ -188,6 +188,7 @@ print(ends_with("hello.miru", ".miru"))     // true
 - `index_of(array, value)` returns the index of the first match, or -1.
 - `slice(seq, start, end)` returns the half-open slice of an array or string.
 - `sort(array)` returns a sorted copy (all numbers or all strings).
+  `sort(array, key)` sorts by something else; see below.
 - `reverse(seq)` returns a reversed copy of an array or string.
 
 ```
@@ -196,6 +197,49 @@ print(sort(xs))                // [1, 2, 3]
 print(reverse(xs))             // [2, 1, 3]
 print(slice(xs, 0, 2))         // [3, 1]
 print(index_of([10, 20], 20))  // 1
+```
+
+### Sorting by something other than the value
+
+`sort(array)` puts numbers or strings in order. To sort anything else, give it a
+second argument: a function that says what to sort each element **by**.
+
+```
+let people = [
+  {"name": "Mai", "age": 31},
+  {"name": "Aiko", "age": 24},
+  {"name": "Ken", "age": 45},
+]
+
+for p in sort(people, fn(x) { return x.age }) {
+  print(p.age, p.name)
+}
+```
+
+The function is asked for a key, not for a comparison. It receives one element
+and returns the value to order that element by. Those keys follow the same rule
+the elements do: all numbers, or all strings.
+
+Any function works, including a builtin:
+
+```
+print(sort(["bbb", "a", "cc"], len))   // ["a", "cc", "bbb"]
+```
+
+**For decreasing order, reverse it:**
+
+```
+print(reverse(sort(scores, fn(x) { return x })))
+```
+
+**The sort is stable**, which means two elements with the same key keep the
+order they were already in. That is what makes sorting by two things work: sort
+by the less important one first, then by the more important one.
+
+```
+let by_name = sort(people, fn(p) { return p.name })
+let result = sort(by_name, fn(p) { return p.age })
+// same age, and Aiko comes before Ken
 ```
 
 ## Math functions
