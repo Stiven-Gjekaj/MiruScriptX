@@ -601,6 +601,32 @@ error (./math.miru, line 2, column 12): division by zero
 The program does not show the source in this case. It holds the text of the
 file it started with, not the text of the module.
 
+### 6.2.1 More than one syntax error
+
+**A syntax error is the only kind that can be reported more than one time in a
+run.** A program stops at the first error it makes while it runs, so there is
+only one of those. A program can hold several syntax mistakes at once, and each
+one is reported, in the order they appear in the file. Each has the shape above.
+
+A program with a syntax error does not run, however many errors it has. The
+exit code is 1.
+
+Three rules limit the report:
+
+- Two errors at one position are one error.
+- A run reports at most 20 errors.
+- After three statements fail in a row with none between them that parsed, the
+  report stops. **One mistake can make every statement after it fail.** An
+  unclosed `(` or `[` is the case that does: section 2.3 says the lexer makes no
+  newline token inside those, so nothing after the opening bracket can end a
+  statement. Those later errors are consequences of the first one, not separate
+  mistakes.
+
+**An error in the lexer is different, and there is only ever one.** The lexer
+reads the source before the parser sees it, so a program with an unterminated
+string or a bad `\u{...}` escape stops there and no statement is parsed at all.
+Section 2.8 gives those errors.
+
 ### 6.3 Catching an error
 
 `try EXPRESSION` gives the value of the expression. If the expression gives an

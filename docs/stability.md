@@ -133,6 +133,13 @@ Do not depend on these. A later 1.x can change any of them.
 The **shape** of an error report is stable. The **words** are not. A later 1.x
 can make a message clearer.
 
+**How many reports a program gets is not stable either.** Since 1.7 a program
+with several syntax mistakes gets a report for each, where it used to get one.
+The shape of each is what section 2.5 promises; how many appear, and which of
+them a later 1.x decides are consequences of an earlier one rather than
+separate mistakes, is not promised. Section 6.2.1 of the specification gives
+the rules as they are today.
+
 Do not compare a message with a fixed string. Use `is_error` to find out that a
 program holds an error. Read the `message` field to show it to a person.
 
