@@ -1081,13 +1081,13 @@ impl Vm {
         // program never dealt with into a line of output that looks
         // deliberate.
         //
-        // Checking here covers forty-nine at once: every builtin that arrives
+        // Checking here covers forty-eight at once: every builtin that arrives
         // as a `Value::Builtin`, which is the plain ones, the system ones, and
         // the ambient ones.
-        // It does not cover the three higher-order builtins, because those
+        // It does not cover the four higher-order builtins, because those
         // become tasks in `call_at_stack` and never reach this function.
         //
-        // Those three are still safe, by a different route rather than by this
+        // Those four are still safe, by a different route rather than by this
         // one: a caught error is not an array and is not callable, so they
         // refuse it when they check the types of their arguments. The message
         // names the type instead of naming the unhandled error, which is worth

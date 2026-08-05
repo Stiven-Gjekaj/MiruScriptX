@@ -41,7 +41,6 @@ pub fn register(globals: &mut Globals) {
     define(globals, "pop", pop);
     define(globals, "index_of", index_of);
     define(globals, "slice", slice);
-    define(globals, "sort", sort);
     define(globals, "reverse", reverse);
     define(globals, "abs", abs);
     define(globals, "min", min);
@@ -64,6 +63,7 @@ pub fn register(globals: &mut Globals) {
     define_ambient(globals, "random", random);
     define_ambient(globals, "random_int", random_int);
     define_ambient(globals, "seed", seed);
+    define_host(globals, "sort", sort);
     define_host(globals, "map", map);
     define_host(globals, "filter", filter);
     define_host(globals, "reduce", reduce);
@@ -660,48 +660,67 @@ fn number_as_f64(value: &Value) -> f64 {
     }
 }
 
-/// `sort(array)` returns a sorted copy. The array must hold all numbers or all
-/// strings; anything else is an error.
-fn sort(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
-    check_arity("sort", &args, 1)?;
-    let mut sorted = match &args[0] {
-        Value::Array(items) => items.borrow().clone(),
-        other => {
-            return Err(format!(
-                "sort expects an array but got a {}",
-                other.type_name()
-            ))
-        }
-    };
-    if sorted.iter().all(|v| matches!(v, Value::Int(_))) {
-        sorted.sort_by_key(|v| match v {
-            Value::Int(n) => *n,
-            _ => 0,
-        });
-    } else if sorted.iter().all(|v| matches!(v, Value::Str(_))) {
-        sorted.sort_by(|a, b| match (a, b) {
-            (Value::Str(x), Value::Str(y)) => x.cmp(y),
-            _ => Ordering::Equal,
-        });
-    } else if sorted
-        .iter()
-        .all(|v| matches!(v, Value::Int(_) | Value::Float(_)))
-    {
-        if sorted
+/// How a set of values is ordered, decided once by looking at all of them.
+///
+/// Extracted so that the two forms of `sort` cannot come to disagree. Both ask
+/// this same question: `sort(a)` asks it about the elements and `sort(a, key)`
+/// asks it about the keys. Two copies of this decision is how one form would
+/// end up refusing `NaN` while the other quietly ordered it.
+#[derive(Clone, Copy)]
+enum Ordered {
+    Ints,
+    Strings,
+    /// A mix of integers and floats, compared as floats. Section 5.2 of the
+    /// specification gives the promotion rule this follows.
+    Numbers,
+}
+
+impl Ordered {
+    /// Decide how to order these values, or say why they cannot be ordered.
+    fn of(values: &[Value]) -> Result<Ordered, String> {
+        if values.iter().all(|v| matches!(v, Value::Int(_))) {
+            Ok(Ordered::Ints)
+        } else if values.iter().all(|v| matches!(v, Value::Str(_))) {
+            Ok(Ordered::Strings)
+        } else if values
             .iter()
-            .any(|v| matches!(v, Value::Float(f) if f.is_nan()))
+            .all(|v| matches!(v, Value::Int(_) | Value::Float(_)))
         {
-            return Err("sort cannot order NaN".to_string());
+            // NaN is refused rather than ordered arbitrarily. It compares equal
+            // to nothing, including itself, so a sort that admitted it would
+            // give a different arrangement depending on where it started.
+            if values
+                .iter()
+                .any(|v| matches!(v, Value::Float(f) if f.is_nan()))
+            {
+                Err("sort cannot order NaN".to_string())
+            } else {
+                Ok(Ordered::Numbers)
+            }
+        } else {
+            Err("sort expects an array of all numbers or all strings".to_string())
         }
-        sorted.sort_by(|a, b| {
-            number_as_f64(a)
-                .partial_cmp(&number_as_f64(b))
-                .unwrap_or(Ordering::Equal)
-        });
-    } else {
-        return Err("sort expects an array of all numbers or all strings".to_string());
     }
-    Ok(Value::array(sorted))
+
+    fn compare(self, a: &Value, b: &Value) -> Ordering {
+        match (self, a, b) {
+            (Ordered::Ints, Value::Int(x), Value::Int(y)) => x.cmp(y),
+            (Ordered::Strings, Value::Str(x), Value::Str(y)) => x.cmp(y),
+            // `of` has already refused NaN, so the comparison always answers.
+            (Ordered::Numbers, _, _) => number_as_f64(a)
+                .partial_cmp(&number_as_f64(b))
+                .unwrap_or(Ordering::Equal),
+            // Unreachable: `of` checked every value against the kind it chose.
+            _ => Ordering::Equal,
+        }
+    }
+}
+
+/// Order `values` in place, or say why they cannot be ordered.
+fn sort_in_place(values: &mut [Value]) -> Result<(), String> {
+    let ordering = Ordered::of(values)?;
+    values.sort_by(|a, b| ordering.compare(a, b));
+    Ok(())
 }
 
 /// `reverse(seq)` returns a reversed copy of an array or string.
@@ -1173,15 +1192,15 @@ impl Args {
     ///
     /// This is the last per-element heap allocation left in the engine, and it
     /// only happens when a *builtin* is the callback, as in `map(xs, abs)`.
-    /// Removing it means changing [`BuiltinFn`] for the forty-one builtins
+    /// Removing it means changing [`BuiltinFn`] for the forty builtins
     /// registered with `define`, several of which move values out of the vector
     /// they are handed, which is a larger change than it looks and is left for
     /// later.
     ///
-    /// Forty-one is the count of `define` calls, not the count of builtins.
-    /// The two were the same figure until 1.1 and are not any more: there are
+    /// Forty is the count of `define` calls, not the count of builtins. The
+    /// two were the same figure until 1.1 and are not any more: there are
     /// fifty-two builtins, of which four take a `SystemFn`, four take an
-    /// `AmbientFn`, and three take a `HostFn`, and none of those eleven would
+    /// `AmbientFn`, and four take a `HostFn`, and none of those twelve would
     /// be touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
@@ -1243,6 +1262,26 @@ pub enum HostTask {
         next: usize,
         acc: Value,
     },
+    Sort {
+        /// The key function, or `Value::Nil` when `sort` was given one
+        /// argument. That spelling is unambiguous because the constructor
+        /// refuses a second argument that is not callable, so a program cannot
+        /// reach here by writing `sort(a, nil)`.
+        func: Value,
+        items: Vec<Value>,
+        next: usize,
+        /// The element whose key is being computed, kept for the same reason
+        /// `Filter` keeps one: it is moved into the result rather than cloned
+        /// a second time when the answer arrives.
+        pending: Option<Value>,
+        /// The keys, and the elements they belong to, at matching indexes.
+        ///
+        /// Two vectors rather than one of pairs, so that deciding how to order
+        /// the keys can look at them as a slice without cloning every one of
+        /// them out of a tuple first.
+        keys: Vec<Value>,
+        kept: Vec<Value>,
+    },
 }
 
 impl HostTask {
@@ -1252,7 +1291,8 @@ impl HostTask {
         match self {
             HostTask::Map { func, .. }
             | HostTask::Filter { func, .. }
-            | HostTask::Reduce { func, .. } => func,
+            | HostTask::Reduce { func, .. }
+            | HostTask::Sort { func, .. } => func,
         }
     }
 
@@ -1298,6 +1338,48 @@ impl HostTask {
                 }
                 match take_next(items, next) {
                     None => Ok(Step::Done(array(std::mem::take(out)))),
+                    Some(item) => {
+                        *pending = Some(item.clone());
+                        Ok(Step::Call(Args::One(item)))
+                    }
+                }
+            }
+            HostTask::Sort {
+                func,
+                items,
+                next,
+                pending,
+                keys,
+                kept,
+            } => {
+                // One argument. The whole sort happens on this first resume and
+                // the task never asks for a call, so `callback` is never
+                // consulted and the `nil` held there is never reached.
+                if matches!(func, Value::Nil) {
+                    let mut sorted = std::mem::take(items);
+                    sort_in_place(&mut sorted)?;
+                    return Ok(Step::Done(array(sorted)));
+                }
+                if let Some(key) = last {
+                    keys.push(key);
+                    kept.push(pending.take().expect("an element under decision"));
+                }
+                match take_next(items, next) {
+                    None => {
+                        let ordering = Ordered::of(keys)?;
+                        // A permutation is sorted rather than the elements, so
+                        // no key and no element is cloned to get them into one
+                        // place. `sort_by` is stable, which is what makes two
+                        // passes a two-key sort and is promised in section 8.4
+                        // of the specification.
+                        let mut order: Vec<usize> = (0..keys.len()).collect();
+                        order.sort_by(|&a, &b| ordering.compare(&keys[a], &keys[b]));
+                        let out = order
+                            .into_iter()
+                            .map(|i| std::mem::replace(&mut kept[i], Value::Nil))
+                            .collect();
+                        Ok(Step::Done(array(out)))
+                    }
                     Some(item) => {
                         *pending = Some(item.clone());
                         Ok(Step::Call(Args::One(item)))
@@ -1387,6 +1469,56 @@ fn filter(args: Vec<Value>) -> Result<HostTask, String> {
         items,
         next: 0,
         out: Vec::new(),
+        pending: None,
+    })
+}
+
+/// `sort(array)` gives a sorted copy. `sort(array, key)` gives one ordered by
+/// `key(x)` for each element, rather than by the elements themselves.
+///
+/// A key function and not a comparator. A key is asked for once per element,
+/// which is a walk from start to end and so fits the shape every other
+/// higher-order builtin already has; a comparator would mean driving a sort as
+/// a state machine that hands out one comparison at a time. Decreasing order is
+/// `reverse(sort(a, key))`, and a two-key sort is two passes, least significant
+/// first, which works because the sort is stable.
+fn sort(args: Vec<Value>) -> Result<HostTask, String> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(format!(
+            "sort expects 1 or 2 argument(s) but got {}",
+            args.len()
+        ));
+    }
+    let mut args = args.into_iter();
+    let items = match args.next().expect("at least one argument") {
+        Value::Array(items) => items.borrow().clone(),
+        other => {
+            return Err(format!(
+                "sort expects an array but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    // Checked here rather than left to fail at the call, which is what `map`
+    // and `filter` do. This one has to know the difference between "no key
+    // function" and "a second argument that is not one", because the first is
+    // spelled as `nil` in the task.
+    let func = match args.next() {
+        None => Value::Nil,
+        Some(func @ (Value::Closure(_) | Value::Builtin(_) | Value::HostBuiltin(_))) => func,
+        Some(other) => {
+            return Err(format!(
+                "sort expects a function but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    Ok(HostTask::Sort {
+        keys: Vec::with_capacity(items.len()),
+        kept: Vec::with_capacity(items.len()),
+        func,
+        items,
+        next: 0,
         pending: None,
     })
 }
@@ -2100,8 +2232,8 @@ mod count {
         }
 
         assert_eq!(
-            plain, 41,
-            "{plain} builtins take a BuiltinFn, not 41. Quoted by `Args::into_vec` \
+            plain, 40,
+            "{plain} builtins take a BuiltinFn, not 40. Quoted by `Args::into_vec` \
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
@@ -2111,15 +2243,15 @@ mod count {
         );
         assert_eq!(
             plain + system + ambient,
-            49,
-            "{} builtins reach `call_native`, not 49. Quoted by the caught-error \
+            48,
+            "{} builtins reach `call_native`, not 48. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
         assert_eq!(
-            host, 3,
-            "{host} builtins are higher-order, not 3. Quoted by the same two \
-             places, which say the other eleven take a different signature."
+            host, 4,
+            "{host} builtins are higher-order, not 4. Quoted by the same two \
+             places, which say the other twelve take a different signature."
         );
         assert_eq!(
             plain + system + ambient + host,
@@ -2159,7 +2291,6 @@ pub const BUILTIN_NAMES: [&str; 52] = [
     "pop",
     "index_of",
     "slice",
-    "sort",
     "reverse",
     "abs",
     "min",
@@ -2182,6 +2313,7 @@ pub const BUILTIN_NAMES: [&str; 52] = [
     "random",
     "random_int",
     "seed",
+    "sort",
     "map",
     "filter",
     "reduce",

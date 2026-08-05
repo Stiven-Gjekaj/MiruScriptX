@@ -572,9 +572,9 @@ went from 128.4 to 117.1 ns per element, and `map` with a *builtin* callback got
 worse, from 84.6 to 107.4. A state machine yields a step per element where the
 loop it replaced was a plain Rust `for`, and that costs more than the nested
 call it removed. Closing the remaining gap would mean either duplicating all
-three builtins' semantics or changing `BuiltinFn` across the forty-one
+three builtins' semantics or changing `BuiltinFn` across the forty
 builtins that use it. That is the number of `define` calls and not the number
-of builtins, which is fifty-two; the other eleven take a different signature
+of builtins, which is fifty-two; the other twelve take a different signature
 and would not be touched.
 
 It is kept for the limit below, which is a correctness fix rather than a speed

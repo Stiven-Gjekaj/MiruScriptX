@@ -868,6 +868,73 @@ fn higher_order_builtins() {
     ]);
 }
 
+/// `sort(a, key)` orders by what the key function gives, not by the elements.
+///
+/// The one-argument form is pinned above, in the builtin block, and those cases
+/// are unchanged by this: `sort` became a higher-order builtin in 1.6 and its
+/// existing behaviour did not move.
+#[test]
+fn sort_takes_a_key_function() {
+    check_all(&[
+        (
+            "sort([{\"a\": 2}, {\"a\": 1}], fn(x) { return x.a })",
+            "ok [{\"a\": 1}, {\"a\": 2}]",
+        ),
+        // A builtin is a key function like any other, which also exercises the
+        // path that drives a task without ever leaving `call_native`.
+        ("sort([\"bbb\", \"a\", \"cc\"], len)", "ok [\"a\", \"cc\", \"bbb\"]"),
+        // Decreasing order is `reverse`, which is why no second argument for it
+        // was added.
+        (
+            "reverse(sort([3, 1, 2], fn(x) { return x }))",
+            "ok [3, 2, 1]",
+        ),
+        // **Stability.** Two passes, least significant key first, is a two-key
+        // sort. This case fails if the sort stops being stable, which section
+        // 8.4 of the specification now promises it is.
+        (
+            "let p = [{\"a\": 1, \"n\": \"b\"}, {\"a\": 1, \"n\": \"a\"}, {\"a\": 0, \"n\": \"c\"}]\n\
+             let by_name = sort(p, fn(x) { return x.n })\n\
+             map(sort(by_name, fn(x) { return x.a }), fn(x) { return x.n })",
+            "ok [\"c\", \"a\", \"b\"]",
+        ),
+        ("sort([], fn(x) { return x })", "ok []"),
+        ("sort([5], fn(x) { return x })", "ok [5]"),
+        // The keys go through the same ordering rules the elements do, so a key
+        // function that gives something unorderable gives the existing error.
+        // A caught error is refused here rather than by `Value::condition`: a
+        // key is not a conditional, and it is not a number or a string either.
+        (
+            "sort([1, 2], fn(x) { return {} })",
+            "err sort expects an array of all numbers or all strings @ 1:1",
+        ),
+        (
+            "sort([1, 2], fn(x) { return try (1 / 0) })",
+            "err sort expects an array of all numbers or all strings @ 1:1",
+        ),
+        // `nil` is refused rather than read as "no key function", which is how
+        // the task tells the two apart internally.
+        (
+            "sort([1, 2], nil)",
+            "err sort expects a function but got a nil @ 1:1",
+        ),
+        (
+            "sort([1, 2], fn(x) { return x }, 3)",
+            "err sort expects 1 or 2 argument(s) but got 3 @ 1:1",
+        ),
+        ("sort()", "err sort expects 1 or 2 argument(s) but got 0 @ 1:1"),
+        // Since 1.6 `sort` is a higher-order builtin, so a caught error handed
+        // to it is refused by its own type check rather than by the guard in
+        // `call_native`, which higher-order builtins do not reach. Both stop
+        // the program; only the wording differs, which section 3.1 of the
+        // guarantee leaves free.
+        (
+            "let e = try (1 / 0)\nsort(e)",
+            "err sort expects an array but got a error @ 2:1",
+        ),
+    ]);
+}
+
 #[test]
 fn higher_order_builtins_iterate_a_snapshot_of_their_input() {
     // A callback that pushes to the array it is being applied to does not

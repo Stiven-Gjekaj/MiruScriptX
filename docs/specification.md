@@ -794,7 +794,7 @@ honest answer to the question is then no. `try` catches the error.
 | `pop(a)` | 1 | Removes the last element and gives it. Refuses an empty array. |
 | `index_of(a, v)` | 2 | The index of the first equal element, or `-1`. |
 | `slice(v, s, e)` | 3 | A new array or string, from `s` to `e`. The language limits `s` and `e` to the length. |
-| `sort(a)` | 1 | A new array, sorted. Needs all numbers or all strings. |
+| `sort(a)` or `sort(a, key)` | 1 or 2 | A new array, sorted. Section 8.8 gives the two-argument form. |
 | `reverse(v)` | 1 | A new array or string, reversed. |
 | `range(e)` or `range(s, e)` | 1 or 2 | An array of integers, from `s` (or 0) to `e`. `e` is not in the result. |
 
@@ -864,10 +864,33 @@ operation. An element that is not a number is an error.
 | `map(a, f)` | 2 | A new array of `f(x)` for each element. |
 | `filter(a, f)` | 2 | A new array of the elements for which `f(x)` is true. |
 | `reduce(a, f, init)` | 3 | One value, from `f(accumulator, x)` for each element. |
+| `sort(a, key)` | 2 | A new array, ordered by `key(x)` for each element. |
 
 `filter` asks whether the result of `f` is true. A result that is a caught
 error stops the program, as `if` does. `map` and `reduce` only keep the result,
 so they do not refuse one.
+
+`sort(a, key)` calls `key` one time for each element. It then orders the
+elements by the values it received. The rules for those values are the rules
+section 8.4 gives for the elements of `sort(a)`: all numbers, or all strings.
+A value that is not one of those, including a caught error, is an error.
+
+`key` must be a function. `sort(a, nil)` is an error. This is different from
+`map` and `filter`, which give the error at the call.
+
+**The sort is stable.** Two elements with equal keys keep the order they had.
+This makes a sort by two keys two sorts, the less important key first:
+
+```
+let by_name = sort(people, fn(p) { return p.name })
+let result = sort(by_name, fn(p) { return p.age })
+```
+
+For decreasing order, use `reverse`:
+
+```
+print(reverse(sort(scores, fn(x) { return x })))
+```
 
 ### 8.9 Time
 
