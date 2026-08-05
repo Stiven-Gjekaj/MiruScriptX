@@ -292,7 +292,14 @@ pub fn run_capture_all(source: &str) -> Result<Capture, MiruError> {
 
 /// Like [`run_capture_all`], but feeds the given lines to `input()` in order.
 pub fn run_capture_all_with_input(source: &str, input: &[&str]) -> Result<Capture, MiruError> {
-    run_capture_all_with(source, input, Host::none())
+    // The first error only, because every caller of this spelling asserts one
+    // message. The collecting one below is what the playground uses.
+    run_capture_all_with(source, input, Host::none()).map_err(|errors| {
+        errors
+            .into_iter()
+            .next()
+            .expect("a failed run has at least one error")
+    })
 }
 
 /// Like [`run_capture_all_with_input`], and with a host behind it.
@@ -307,8 +314,8 @@ pub fn run_capture_all_with(
     source: &str,
     input: &[&str],
     host: Host,
-) -> Result<Capture, MiruError> {
-    let program = parse_program(source)?;
+) -> Result<Capture, Vec<MiruError>> {
+    let program = parse_program_all(source)?;
     let out = Rc::new(RefCell::new(Vec::<u8>::new()));
     let err = Rc::new(RefCell::new(Vec::<u8>::new()));
     let mut vm = vm::Vm::with_output(Box::new(SharedBuffer(Rc::clone(&out))));
@@ -327,7 +334,7 @@ pub fn run_capture_all_with(
     match (result, vm.exit_code()) {
         (_, Some(code)) => Ok(captured(code)),
         (Ok(_), None) => Ok(captured(0)),
-        (Err(error), None) => Err(error),
+        (Err(error), None) => Err(vec![error]),
     }
 }
 

@@ -92,9 +92,20 @@ impl Outcome {
     }
 
     fn failed(error: &MiruError, source: &str) -> Outcome {
+        Outcome::all_failed(std::slice::from_ref(error), source)
+    }
+
+    /// Several errors, which only a syntax error can be.
+    ///
+    /// Rendered the same way one is and joined with a blank line, so the page
+    /// shows exactly what the terminal shows. This is the surface where a
+    /// beginner meets a syntax error most often, which is why it was worth the
+    /// few lines rather than showing the first and hiding the rest.
+    fn all_failed(errors: &[MiruError], source: &str) -> Outcome {
+        let text: Vec<String> = errors.iter().map(|error| error.render(source)).collect();
         Outcome {
             ok: false,
-            text: error.render(source),
+            text: text.join("\n\n"),
             diagnostics: String::new(),
             code: 1,
         }
@@ -140,7 +151,7 @@ pub fn run(source: &str) -> Outcome {
     };
     match miruscriptx::run_capture_all_with(source, &[], host) {
         Ok(captured) => Outcome::ran(captured),
-        Err(error) => Outcome::failed(&error, source),
+        Err(errors) => Outcome::all_failed(&errors, source),
     }
 }
 
@@ -361,6 +372,22 @@ mod tests {
         let outcome = run("print(\"hi\")\nprint(1 + 2)");
         assert!(outcome.ok);
         assert_eq!(outcome.text, "hi\n3\n");
+    }
+
+    /// A program with several syntax errors shows all of them, not the first.
+    /// This is the surface where a beginner meets a syntax error most often.
+    #[test]
+    fn a_program_with_several_syntax_errors_shows_all_of_them() {
+        let outcome = run("let = 1\nlet ok = 2\nlet y = 3 +\nlet fine = 4\nprint(ok]\n");
+        assert!(!outcome.ok);
+        assert_eq!(
+            outcome.text.matches("error (line").count(),
+            3,
+            "the page showed:\n{}",
+            outcome.text
+        );
+        // Each keeps its caret, exactly as the terminal renders it.
+        assert!(outcome.text.contains('^'), "{}", outcome.text);
     }
 
     #[test]
