@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-4_(57),_1_dev-007ec6?style=for-the-badge" alt="The language declares 4 direct dependencies, two of them platform-specific, over 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-440_passing-427819?style=for-the-badge" alt="440 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-442_passing-427819?style=for-the-badge" alt="442 tests passing"/>
 </p>
 
 <p align="center">
@@ -180,6 +180,7 @@ Runnable programs live in [examples/](examples):
 | [guess.miru](examples/guess.miru) | A guessing game: `random_int`, `seed`, and `input` in a loop |
 | [words.miru](examples/words.miru) | Word frequency: `read_file`, `split`, and counting in a map |
 | [dice.miru](examples/dice.miru) | Ten thousand rolls, drawn as a histogram |
+| [keys.miru](examples/keys.miru) | Arrow keys: `read_key` without waiting for a line |
 
 Run one with `miru run examples/contacts.miru`.
 
@@ -216,9 +217,9 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4191 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Diagnostics** | suggest.rs | 220 | Chooses the name an error offers back when a program misspells one |
 | **Formatter** | formatter.rs | 701 | Reprints a program in canonical form (`miru fmt`) |
-| **CLI and REPL** | main.rs, repl.rs, keyboard.rs | 917 | File runner, `fmt` and `disasm` commands, the REPL, and raw-mode key reading |
+| **CLI and REPL** | main.rs, repl.rs, keyboard.rs | 956 | File runner, `fmt` and `disasm` commands, the REPL, and raw-mode key reading |
 | **Library** | lib.rs | 918 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **18 files** | **13589** | Written from scratch in Rust |
+| **Total** | **18 files** | **13628** | Written from scratch in Rust |
 
 The playground is a separate crate: 563 lines of Rust binding the language to
 WebAssembly, and 602 of hand-written HTML, CSS, and JavaScript. It is counted

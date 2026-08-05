@@ -1,0 +1,51 @@
+// keys.miru
+// Moving something around with the arrow keys.
+// Run with: miru run examples/keys.miru
+//
+// This one needs a real terminal, so it is the one example the browser
+// playground cannot run: a page has no keyboard to read a key from.
+//
+// Press q to stop. Control-C also stops it, but only because the loop below
+// checks for it: while a program is reading keys, the terminal hands Control-C
+// over as an ordinary key instead of stopping anything.
+
+let width = 20
+let at = 10
+
+fn draw(position) {
+  let line = ""
+  for i in range(0, width) {
+    if i == position {
+      line = line + "#"
+    } else {
+      line = line + "."
+    }
+  }
+  print(line)
+}
+
+print("Left and right arrows move it. q quits.")
+draw(at)
+
+while true {
+  let key = read_key()
+
+  // No more keys. At a terminal this does not happen; with something piped
+  // in, it happens when the piped bytes run out.
+  if key == nil {
+    break
+  }
+  // Always check for this. Without it the program cannot be stopped.
+  if key == "ctrl+c" || key == "q" || key == "escape" {
+    break
+  }
+
+  if key == "left" && at > 0 {
+    at = at - 1
+  } else if key == "right" && at < width - 1 {
+    at = at + 1
+  }
+  draw(at)
+}
+
+print("stopped at", at)

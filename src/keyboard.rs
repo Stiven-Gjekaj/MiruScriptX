@@ -55,8 +55,34 @@ pub struct RawMode {
 /// that never calls it leaves the terminal exactly as it found it. That also
 /// means `miru run` on a program with no `read_key` in it behaves as it always
 /// has, including when standard input is a pipe.
+/// Whether the terminal has been put into raw mode, and whether there is one.
+enum Raw {
+    /// No key has been read yet.
+    Untried,
+    /// Raw mode is on, and dropping this puts the terminal back.
+    ///
+    /// Nothing reads the value. Holding it *is* the mechanism, which is what
+    /// the lint attribute records: if a future change starts reading it, the
+    /// attribute fires and this comment gets revisited.
+    On(
+        #[expect(
+            dead_code,
+            reason = "held only for its Drop, which restores the terminal"
+        )]
+        RawMode,
+    ),
+    /// Standard input is not a terminal, so there is nothing to configure.
+    ///
+    /// A pipe still has bytes to read, and reading them needs no raw mode:
+    /// nothing is buffering a line, because nothing is a terminal. Refusing
+    /// here would make `read_key` fail in a shell pipeline for no reason the
+    /// program could act on, and would leave the builtin with no end-to-end
+    /// test at all.
+    NotATerminal,
+}
+
 pub struct RealKeyboard {
-    raw: Option<RawMode>,
+    raw: Raw,
     /// Bytes read from the terminal but not yet used.
     ///
     /// An escape sequence is read as a group, and a sequence this module does
@@ -68,7 +94,7 @@ pub struct RealKeyboard {
 impl RealKeyboard {
     pub fn new() -> RealKeyboard {
         RealKeyboard {
-            raw: None,
+            raw: Raw::Untried,
             pending: Vec::new(),
         }
     }
@@ -84,8 +110,11 @@ impl RealKeyboard {
 
 impl miruscriptx::value::Keyboard for RealKeyboard {
     fn read_key(&mut self) -> Result<Option<String>, String> {
-        if self.raw.is_none() {
-            self.raw = Some(RawMode::enter()?);
+        if matches!(self.raw, Raw::Untried) {
+            self.raw = match RawMode::enter()? {
+                Some(mode) => Raw::On(mode),
+                None => Raw::NotATerminal,
+            };
         }
         let Some(first) = self.next_byte()? else {
             return Ok(None);
@@ -223,10 +252,15 @@ mod platform {
     use std::io::Read;
 
     impl RawMode {
-        pub fn enter() -> Result<RawMode, String> {
+        pub fn enter() -> Result<Option<RawMode>, String> {
             let stdin = std::io::stdin();
-            let saved = termios::tcgetattr(&stdin)
-                .map_err(|err| format!("cannot read the terminal settings: {err}"))?;
+            let saved = match termios::tcgetattr(&stdin) {
+                Ok(saved) => saved,
+                // Not a terminal, which is what a pipe or a file gives. There
+                // is nothing to put into raw mode and nothing to put back.
+                Err(nix::errno::Errno::ENOTTY) => return Ok(None),
+                Err(err) => return Err(format!("cannot read the terminal settings: {err}")),
+            };
             let mut raw = saved.clone();
             raw.local_flags
                 .remove(LocalFlags::ICANON | LocalFlags::ECHO | LocalFlags::ISIG);
@@ -236,7 +270,7 @@ mod platform {
             raw.control_chars[SpecialCharacterIndices::VTIME as usize] = 0;
             termios::tcsetattr(&stdin, SetArg::TCSANOW, &raw)
                 .map_err(|err| format!("cannot put the terminal into raw mode: {err}"))?;
-            Ok(RawMode { saved })
+            Ok(Some(RawMode { saved }))
         }
     }
 
@@ -300,13 +334,18 @@ mod platform {
     }
 
     impl RawMode {
-        pub fn enter() -> Result<RawMode, String> {
+        pub fn enter() -> Result<Option<RawMode>, String> {
             let handle = stdin_handle()?;
             let mut saved: u32 = 0;
             // SAFETY: `handle` came from `GetStdHandle` and was checked, and
             // `saved` is a live `u32` for the duration of the call.
+            //
+            // A failure here means the handle is not a console, which is what
+            // a pipe or a redirected file gives. Same answer as ENOTTY on
+            // unix: there is nothing to configure, and the bytes are readable
+            // anyway.
             if unsafe { GetConsoleMode(handle, &mut saved) } == 0 {
-                return Err("cannot read the console mode".to_string());
+                return Ok(None);
             }
             // ENABLE_VIRTUAL_TERMINAL_INPUT makes the console send the same
             // escape sequences a Unix terminal sends, so one decoder serves
@@ -318,7 +357,7 @@ mod platform {
             if unsafe { SetConsoleMode(handle, raw) } == 0 {
                 return Err("cannot put the console into raw mode".to_string());
             }
-            Ok(RawMode { saved })
+            Ok(Some(RawMode { saved }))
         }
     }
 

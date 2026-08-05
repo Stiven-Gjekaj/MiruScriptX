@@ -315,6 +315,66 @@ fn recover_example_output() {
     assert_eq!(run_example("recover.miru"), expected);
 }
 
+/// The arrow-key example, driven through a pipe.
+///
+/// **This is the only end-to-end test `read_key` has**, and it works because
+/// standard input that is not a terminal needs no raw mode: there is nothing
+/// buffering a line, so the bytes are read as they are. Raw mode itself, the
+/// `termios` and console calls, has no automated test on any platform.
+///
+/// The bytes below are what a terminal sends: `ESC [ C` for right, `ESC [ D`
+/// for left. Sending them through a pipe exercises the same decoder a real
+/// keypress goes through.
+#[test]
+fn keys_example_moves_with_the_arrow_keys() {
+    use std::io::Write;
+
+    let mut child = miru()
+        .arg("run")
+        .arg("examples/keys.miru")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(b"\x1b[C\x1b[C\x1b[Dq")
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("wait for miru");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("output should be valid utf-8"),
+        "Left and right arrows move it. q quits.\n\
+         ..........#.........\n\
+         ...........#........\n\
+         ............#.......\n\
+         ...........#........\n\
+         stopped at 11\n"
+    );
+}
+
+/// With nothing piped in, the loop ends at the first `nil` rather than spinning.
+#[test]
+fn keys_example_ends_at_end_of_input() {
+    let output = miru()
+        .arg("run")
+        .arg("examples/keys.miru")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("failed to launch the miru binary");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("output should be valid utf-8"),
+        "Left and right arrows move it. q quits.\n\
+         ..........#.........\n\
+         stopped at 10\n"
+    );
+}
+
 /// The dice example draws the same shape every run, because it seeds the
 /// generator. Ten thousand rolls of two dice peak at 7, which is the point of
 /// the program, so the test asserts the whole histogram rather than a total.

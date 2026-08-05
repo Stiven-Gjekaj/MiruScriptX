@@ -1124,6 +1124,52 @@ if is_error(text) {
 `file_exists` gives `false` there rather than failing, because the honest answer
 to the question is then no.
 
+## read_key()
+
+`input()` waits for you to finish a line and press Enter. `read_key()` gives you
+the key the moment it is pressed.
+
+```
+print("Press a key, or q to stop.")
+while true {
+  let key = read_key()
+  if key == nil { break }
+  if key == "q" { break }
+  if key == "ctrl+c" { break }
+  print("you pressed", key)
+}
+```
+
+A key that makes a character gives you that character: `"a"`, `"A"`, `" "`.
+Everything else gives a name: `"up"`, `"down"`, `"left"`, `"right"`, `"enter"`,
+`"tab"`, `"escape"`, `"backspace"`, `"delete"`, `"home"`, `"end"`, `"pageup"`,
+`"pagedown"`, `"insert"`, `"f1"` through `"f12"`, and `"ctrl+a"` through
+`"ctrl+z"`. A key with no name gives `"unknown"`, so a loop can ignore it.
+
+Tab gives `"tab"` and not `"ctrl+i"`, even though your terminal sends the same
+thing for both. Enter and Backspace work the same way.
+
+### Two things to know before you use it
+
+**Control-C will not stop your program.** While you are reading keys, the
+terminal hands Control-C to you as `"ctrl+c"` instead of stopping anything. That
+is why the loop above checks for it. **A program that does not check for it
+cannot be stopped from the keyboard**, and you will have to close the window.
+Check for it in every loop you write.
+
+**The terminal goes back to normal by itself** when your program ends, whether
+it finished, failed, or called `exit`. You do not have to put it back.
+
+Somewhere without a keyboard, such as the browser playground, `read_key()` fails
+and `try` catches it:
+
+```
+let k = try read_key()
+if is_error(k) {
+  print("no keyboard here:", k.message)
+}
+```
+
 ## now()
 
 `now()` gives the number of milliseconds since the start of 1970, as an integer.
