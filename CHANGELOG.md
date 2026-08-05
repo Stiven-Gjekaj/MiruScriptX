@@ -83,13 +83,26 @@ semantic versioning.
   on `ubuntu-latest` while the release workflow built a binary for five
   platforms, so we were shipping a Windows binary that no test had exercised.
 
-  **All 427 tests passed on all three platforms on the first run**, including
-  the ones most likely to differ: module paths through `canonicalize`, which
-  gives a UNC path on Windows, the file builtins, and the deep-nesting programs
-  in `tests/never_aborts.rs` that depend on the size of a thread stack. That is
-  a better result than expected and is recorded here because a matrix that
-  finds nothing is worth as much as one that finds something, and only if
-  somebody writes down which it was.
+  **Every existing test passed on all three platforms on the first run**,
+  including the ones most likely to differ: module paths through
+  `canonicalize`, which gives a UNC path on Windows, the file builtins, and the
+  deep-nesting programs in `tests/never_aborts.rs` that depend on the size of a
+  thread stack.
+
+  **It then found two real faults in `read_key`, which arrived later in this
+  release**, and neither was visible on Linux:
+
+  - On macOS, a failure to read the terminal settings was matched against one
+    specific errno that only Linux reports for a missing terminal, so running
+    with input redirected became a hard error.
+  - On Windows, a pipe delivers several keys in one read, and reading four
+    bytes stopped in the middle of the second escape sequence. The trailing
+    escape had no follow-up read to complete it, because Windows has no `poll`
+    over standard input, so it decoded as Escape pressed alone and the
+    arrow-key example quit at its second key.
+
+  Both are fixed, and the second has a regression test that runs the decoder
+  under the Windows condition on any platform.
 
   A `.gitattributes` landed first, pinning `.miru`, `.txt`, and the other text
   files to LF. A Windows checkout converts line endings by default, and three
