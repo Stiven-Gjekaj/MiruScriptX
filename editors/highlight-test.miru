@@ -1,0 +1,89 @@
+// highlight-test.miru
+// Open this in an editor with the grammar installed and read the colours.
+// It exists so that each rule a grammar written from regular expressions gets
+// wrong has a line you can look at.
+//
+// **This file does not run, and is not meant to.** It holds an unknown escape
+// and an unterminated string on purpose, because those are the two cases where
+// a bad grammar breaks the colour for the rest of the file. `miru run` on it
+// reports the escape and stops, which is correct.
+//
+// For a file that both runs and exercises the language, open the programs in
+// `examples/` beside this one: `recover.miru` uses `try` with a closure,
+// `shop.miru` uses `import`, and `keys.miru` and `dice.miru` use the newest
+// builtins.
+
+// --- Comments ---------------------------------------------------------------
+// This whole line is a comment, including the "quote and the {brace.
+let after_comment = 1   // and a comment after code
+
+// --- Strings ----------------------------------------------------------------
+// Every escape in the language. All seven should be marked inside the string.
+let escapes = "\n \t \r \\ \" \0 \u{41} \u{1F600}"
+
+// **A stray backslash is an error**, and should be marked as one rather than
+// coloured as ordinary text.
+let unknown = "\q"
+
+// **The bound on \u matters.** Six digits is the most. Seven is an error, and a
+// grammar that does not bound the digits lets the brace swallow the line.
+let six = "\u{10FFFF}"
+let seven = "\u{0000041}"
+
+// **A string cannot span a line.** The next line has no closing quote, so the
+// string must end at the end of the line. If the colour continues past it, the
+// grammar has the fault this file exists to catch.
+let unterminated = "this quote never closes
+let after_unterminated = 2
+
+// --- Numbers ----------------------------------------------------------------
+let plain = 42
+let grouped = 1_000_000
+let fraction = 1.5
+let both = 1_000.000_5
+
+// **`1.` is the integer 1 and then a dot**, not a float. The dot here is the
+// field operator, so only the 1 should be a number.
+let field = {"b": 3}
+let value = field.b
+
+// **`_1` is an identifier**, not a number, and should be plain.
+let _1 = 3
+let _leading = 4
+
+// --- Keywords and values ----------------------------------------------------
+fn shape(n) {
+  if n > 0 {
+    return true
+  } else if n == 0 {
+    return nil
+  }
+  return false
+}
+
+for i in range(0, 3) {
+  while false {
+    break
+  }
+  continue
+}
+
+let caught = try shape(1)
+
+// --- Builtins ---------------------------------------------------------------
+// A builtin is coloured wherever the name appears, not only where it is called,
+// which is what the playground does: both names below should be coloured.
+let sorted = map([3, 1, 2], abs)
+
+// **A field named after a builtin is a field**, so `len` here should be plain
+// while the `len` on the next line is a builtin.
+let holder = {"len": 9}
+let its_len = holder.len
+let real_len = len("hello")
+
+// A name that merely contains a builtin is not one. None of these is coloured.
+let lengthy = 5
+let printer = 6
+let my_sort = 7
+
+print(after_comment, plain, grouped, fraction, both, value, its_len, real_len)

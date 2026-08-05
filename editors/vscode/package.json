@@ -1,0 +1,33 @@
+{
+  "name": "miruscriptx",
+  "displayName": "MiruScriptX",
+  "description": "Syntax highlighting for MiruScriptX (.miru) files.",
+  "version": "1.0.0",
+  "publisher": "stiven-gjekaj",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stiven-gjekaj/miruscriptx"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "miruscriptx",
+        "aliases": ["MiruScriptX", "miru"],
+        "extensions": [".miru"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "miruscriptx",
+        "scopeName": "source.miru",
+        "path": "./syntaxes/miruscriptx.tmLanguage.json"
+      }
+    ]
+  }
+}

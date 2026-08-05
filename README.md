@@ -229,6 +229,7 @@ are involved in running a `.miru` file.
 ```
 src/         the language (lexer, parser, compiler, VM, CLI, REPL)
 playground/  WebAssembly bindings and the in-browser playground
+editors/     syntax highlighting for .miru files
 examples/    runnable .miru programs
 wiki/        step-by-step learning lessons
 docs/        language reference, architecture, and roadmap
