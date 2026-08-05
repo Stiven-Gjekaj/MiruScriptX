@@ -422,6 +422,48 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.6: three platforms, sorting by a key, and reading a key
+
+Shipped. Three issues, and the first of them earned its place twice over.
+
+- **The test suite runs on Windows and macOS.** CI had one job on Linux while
+  the release workflow built a binary for five platforms, so a Windows binary
+  was shipping that no test had ever exercised. Closes #12.
+
+- **`sort` takes a key function.** `sort(people, fn(p) { return p.age })`. A
+  key and not a comparator, which fits the shape `map`, `filter`, and `reduce`
+  already have. Closes #6.
+
+- **`read_key()`.** One key, without waiting for a line, which is what a game
+  loop or a menu needs and what `input()` could never give. Closes #32.
+
+Four things worth carrying forward:
+
+- **The matrix paid for itself inside one release.** It went in first because
+  #32 depended on it, passed every existing test on all three platforms on its
+  first run, and then caught two faults in `read_key` that Linux could not
+  see: an errno only Linux reports for a missing terminal, and a four-byte
+  read that split an escape sequence where Windows has no way to fetch the
+  rest. Ordering the work so the check existed before the code it would check
+  is the whole lesson.
+
+- **A count went down while a builtin was added.** `sort` moved from `define`
+  to `define_host`, so the `BuiltinFn` count fell from 41 to 40 while
+  `read_key` took the total from 52 to 53, and the number reaching
+  `call_native` ended exactly where it started. Four releases in, these numbers
+  have never once moved together.
+
+- **A dependency that adds no crate is a different thing from a dependency.**
+  `nix` and `windows-sys` became direct dependencies for raw terminal mode and
+  `Cargo.lock` did not change: rustyline already brought both, at the same
+  versions and features. `crossterm` would have added eight or so. Measuring
+  that before choosing is why the answer was easy.
+
+- **A test that cannot fail on your machine is worth writing anyway.** The
+  Windows fault has a regression test that runs the decoder under the Windows
+  condition, on any platform, and fails on Linux the moment the read size goes
+  back to four.
+
 ## 1.5: a clock, chance, and programs worth reading
 
 Shipped. Four builtins, a fourth kind of builtin to hold them, and the three
