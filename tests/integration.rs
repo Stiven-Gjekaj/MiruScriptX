@@ -767,6 +767,57 @@ fn missing_file_fails_with_nonzero_exit() {
     assert!(!output.status.success());
 }
 
+/// A file with four separate mistakes reports four errors in one run, which is
+/// the whole point of issue #10: fixing them takes one run rather than four.
+///
+/// The exit code is still 1, and the program still does not run: recovery is
+/// for the report, not for carrying on with a tree that has holes in it.
+#[test]
+fn every_syntax_error_in_a_file_is_reported() {
+    let dir = std::env::temp_dir().join("miru-many-errors-test");
+    std::fs::create_dir_all(&dir).expect("a temporary directory");
+    let path = dir.join("broken.miru");
+    std::fs::write(
+        &path,
+        "let = 1\nlet ok = 2\nlet y = 3 +\nlet fine = 4\nprint(ok]\nlet last = 5\nfn = 9\n",
+    )
+    .expect("write the program");
+
+    let output = miru()
+        .arg("run")
+        .arg(&path)
+        .output()
+        .expect("failed to launch miru");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        stderr.matches("miru: error").count(),
+        4,
+        "stderr was:\n{stderr}"
+    );
+    // Each keeps its own source line and caret, which section 2.5 of the
+    // guarantee promises for the shape of a report.
+    assert!(stderr.contains("    let = 1\n"), "stderr was:\n{stderr}");
+    assert!(stderr.contains('^'), "stderr was:\n{stderr}");
+    // And a count, so the reader knows the list is complete rather than cut
+    // off by their terminal.
+    assert!(stderr.contains("miru: 4 errors"), "stderr was:\n{stderr}");
+    // Nothing ran.
+    assert!(output.stdout.is_empty(), "the program should not have run");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// One mistake still reports exactly one error, with no count line. The common
+/// case must not get noisier to make the rare one better.
+#[test]
+fn one_syntax_error_still_reports_one() {
+    let output = run_eval("-e", "let = 1");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(stderr.matches("miru: error").count(), 1);
+    assert!(!stderr.contains("errors"), "stderr was:\n{stderr}");
+}
+
 #[test]
 fn runtime_error_reports_line_and_fails() {
     let path = std::env::temp_dir().join("miru_integration_bad.miru");

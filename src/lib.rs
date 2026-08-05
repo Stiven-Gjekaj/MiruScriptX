@@ -35,10 +35,38 @@ pub mod vm;
 /// The MiruScriptX version, taken from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Lex and parse a source string into a program (a list of statements).
-pub fn parse_program(source: &str) -> Result<Vec<ast::Stmt>, MiruError> {
-    let tokens = lexer::Lexer::tokenize(source)?;
+/// Lex and parse a source string into a program, giving **every** syntax error
+/// rather than only the first.
+///
+/// The list is never empty on the failing side, and holds at most
+/// [`parser::Parser::MAX_ERRORS`].
+///
+/// **A failure to lex is still one error.** The lexer is a stage before this
+/// one, and a program that does not lex never reaches the parser, so an
+/// unterminated string or a bad `\u{...}` stops where it always did. Section 6
+/// of the specification says so.
+pub fn parse_program_all(source: &str) -> Result<Vec<ast::Stmt>, Vec<MiruError>> {
+    let tokens = lexer::Lexer::tokenize(source).map_err(|error| vec![error])?;
     parser::Parser::parse(tokens)
+}
+
+/// Lex and parse a source string into a program, giving the first error only.
+///
+/// This is the spelling almost everything wants: the REPL reports one error and
+/// asks for the next line, a file that does not parse cannot be formatted or
+/// disassembled, and each golden case pins one message.
+///
+/// A wrapper over [`parse_program_all`] rather than a second implementation.
+/// One that is literally "take the first" cannot come to disagree with what it
+/// wraps, which is the argument [`run_source`] makes for delegating to
+/// [`run_source_from`].
+pub fn parse_program(source: &str) -> Result<Vec<ast::Stmt>, MiruError> {
+    parse_program_all(source).map_err(|errors| {
+        errors
+            .into_iter()
+            .next()
+            .expect("a failed parse has at least one error")
+    })
 }
 
 /// Run a program and return the value of its final expression (what the REPL
@@ -68,7 +96,14 @@ pub fn disassemble_source(source: &str) -> Result<String, MiruError> {
 /// runs on a file.
 pub fn format_source(source: &str) -> Result<String, MiruError> {
     let (tokens, trivia) = lexer::Lexer::tokenize_with_trivia(source)?;
-    let program = parser::Parser::parse(tokens)?;
+    // The first error only. A file that does not parse cannot be formatted at
+    // all, so listing every fault would be a longer way of saying the same no.
+    let program = parser::Parser::parse(tokens).map_err(|errors| {
+        errors
+            .into_iter()
+            .next()
+            .expect("a failed parse has at least one error")
+    })?;
     Ok(formatter::format_program(&program, &trivia))
 }
 
@@ -78,7 +113,11 @@ pub fn format_source(source: &str) -> Result<String, MiruError> {
 /// Gives the code the program stopped with: `0` unless it called `exit`.
 /// Diagnostics go to standard error unless the caller redirects them with
 /// [`vm::Vm::set_error_output`].
-pub fn run_source(source: &str, out: Box<dyn Write>, host: Host) -> Result<i32, MiruError> {
+///
+/// The failing side is a list because a program can hold more than one syntax
+/// error and all of them are worth reporting at once. It holds exactly one for
+/// every other kind of failure: a run stops at the first thing that goes wrong.
+pub fn run_source(source: &str, out: Box<dyn Write>, host: Host) -> Result<i32, Vec<MiruError>> {
     run_source_from(source, None, out, host)
 }
 
@@ -134,8 +173,8 @@ pub fn run_source_from(
     path: Option<&std::path::Path>,
     out: Box<dyn Write>,
     host: Host,
-) -> Result<i32, MiruError> {
-    let program = parse_program(source)?;
+) -> Result<i32, Vec<MiruError>> {
+    let program = parse_program_all(source)?;
     let mut vm = vm::Vm::with_output(out);
     vm.set_input(Box::new(StdinInput));
     host.give_to(&mut vm);
@@ -152,7 +191,7 @@ pub fn run_source_from(
         // plain `exit(0)` would be reported as a failure.
         (_, Some(code)) => Ok(code),
         (Ok(_), None) => Ok(0),
-        (Err(error), None) => Err(error),
+        (Err(error), None) => Err(vec![error]),
     }
 }
 

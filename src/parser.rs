@@ -104,8 +104,37 @@ impl Parser {
     /// of ten thousand terms is not something a person writes.
     pub const MAX_HEIGHT: usize = 10_000;
 
+    /// The most errors one parse reports.
+    ///
+    /// A wall of errors is as unhelpful as one. Past this the parse stops, and
+    /// whoever reports them says how many there were.
+    pub const MAX_ERRORS: usize = 20;
+
+    /// How many statements may fail in a row before the parse gives up.
+    ///
+    /// **This bounds a cascade whose cause the parser cannot repair.** The
+    /// lexer suppresses newlines inside `(` and `[` so an expression can span
+    /// lines, which means an unclosed bracket removes every statement
+    /// separator in the rest of the file. Nothing after it can end a statement,
+    /// so every following statement fails with the same complaint, and one
+    /// missing `)` produced twenty errors before this existed.
+    ///
+    /// That information is gone before the parser runs, so recovery cannot get
+    /// it back. What it can do is notice that it is not recovering: no
+    /// statement has parsed since the last error, so the errors after the first
+    /// are consequences of it rather than separate mistakes.
+    ///
+    /// Three rather than one, because three mistakes really can sit on
+    /// consecutive lines. A successfully parsed statement resets the count, so
+    /// mistakes separated by working code all report however many there are.
+    const MAX_CONSECUTIVE: usize = 3;
+
     /// Parse a full program (a list of statements) from a token stream.
-    pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, MiruError> {
+    ///
+    /// Gives **every** syntax error it can find, not only the first. A file
+    /// with four mistakes reports four, so fixing them takes one run rather
+    /// than four.
+    pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, Vec<MiruError>> {
         let mut parser = Parser {
             tokens,
             pos: 0,
@@ -117,10 +146,16 @@ impl Parser {
 
     /// Count one level of nesting, and refuse past the limit.
     ///
-    /// Every `enter` has a matching `leave` on the path that succeeds. On the
-    /// path that fails the count is left as it is, because an error ends the
-    /// parse: `Parser::parse` returns it, and this parser is never asked for
-    /// anything else.
+    /// Every `enter` has a matching `leave` on the path that succeeds, and each
+    /// caller runs its `leave` on the failing path too, so an error raised
+    /// below leaves the count where it started.
+    ///
+    /// **The one path that does not is this one.** Refusing here returns before
+    /// any `leave`, so the count stays high. That used to be harmless, because
+    /// an error ended the parse; since 1.7 the parser recovers and carries on,
+    /// and `Parser::program` handles it by checking that the count came back to
+    /// zero before recovering. It does not after this error, so this error
+    /// stops the parse, which is what the old comment assumed of every error.
     fn enter(&mut self, line: usize, column: usize) -> Result<(), MiruError> {
         self.depth += 1;
         if self.depth > Parser::MAX_NESTING {
@@ -157,18 +192,119 @@ impl Parser {
         Ok(expr)
     }
 
-    fn program(&mut self) -> Result<Vec<Stmt>, MiruError> {
+    fn program(&mut self) -> Result<Vec<Stmt>, Vec<MiruError>> {
         let mut statements = Vec::new();
+        let mut errors: Vec<MiruError> = Vec::new();
+        let mut consecutive = 0;
         self.skip_newlines();
         while !self.is_at_end() {
-            let stmt = self.statement()?;
-            if !Parser::ends_with_block(&stmt.kind) {
-                self.consume_terminator()?;
+            let started_at = self.pos;
+            match self.one_statement() {
+                Ok(stmt) => {
+                    self.skip_newlines();
+                    statements.push(stmt);
+                    consecutive = 0;
+                }
+                Err(error) => {
+                    // Not two reports of one mistake. Recovery that restarts
+                    // just before the token it failed on would say the same
+                    // thing again, and ten errors for one missing brace is
+                    // worse than the one error this replaces.
+                    if errors
+                        .last()
+                        .is_none_or(|last| (last.line, last.column) != (error.line, error.column))
+                    {
+                        errors.push(error);
+                    }
+
+                    // **The counter has to have come back.** Every `enter` in
+                    // this parser is paired with a `leave` that runs on the
+                    // failing path too, so an error raised inside a statement
+                    // leaves the depth where it started and recovery is safe.
+                    // The one exception is `enter` itself refusing, which
+                    // returns before its own `leave`: that is the nesting
+                    // limit, and carrying on from there would leave the count
+                    // high for the rest of the file and report `the program is
+                    // nested too deeply` somewhere nothing is nested.
+                    //
+                    // Checking the invariant rather than the message is what
+                    // makes this hold for whatever the parser does later. A
+                    // new unbalanced path stops recovery instead of poisoning
+                    // it.
+                    consecutive += 1;
+                    if self.depth != 0
+                        || errors.len() >= Parser::MAX_ERRORS
+                        || consecutive >= Parser::MAX_CONSECUTIVE
+                    {
+                        break;
+                    }
+
+                    self.synchronise();
+                    // Recovery must consume something. A synchronisation point
+                    // that is already under the cursor would otherwise fail the
+                    // same statement forever.
+                    if self.pos == started_at {
+                        self.advance();
+                    }
+                    self.skip_newlines();
+                }
             }
-            self.skip_newlines();
-            statements.push(stmt);
         }
-        Ok(statements)
+        if errors.is_empty() {
+            Ok(statements)
+        } else {
+            Err(errors)
+        }
+    }
+
+    /// One statement and the terminator it needs, which is the unit recovery
+    /// restarts at.
+    fn one_statement(&mut self) -> Result<Stmt, MiruError> {
+        let stmt = self.statement()?;
+        if !Parser::ends_with_block(&stmt.kind) {
+            self.consume_terminator()?;
+        }
+        Ok(stmt)
+    }
+
+    /// Skip tokens until a place where parsing can start again with
+    /// confidence.
+    ///
+    /// A statement is the unit a program repeats, so the points are the ones
+    /// that begin or end one: a statement separator, a keyword that opens a
+    /// statement, or the brace that closes a block. Section 2.3 of the
+    /// specification is where the first of those comes from, and `;` is not
+    /// checked for because the lexer already gives it as a newline.
+    fn synchronise(&mut self) {
+        loop {
+            match self.peek_kind() {
+                TokenKind::Eof => return,
+                // Past the separator, so the next statement starts clean.
+                TokenKind::Newline => {
+                    self.advance();
+                    return;
+                }
+                // Past the brace: whatever block it closed is finished with.
+                TokenKind::RBrace => {
+                    self.advance();
+                    return;
+                }
+                // On the keyword, not past it, because it is the start of the
+                // statement to try next.
+                TokenKind::Let
+                | TokenKind::Fn
+                | TokenKind::If
+                | TokenKind::While
+                | TokenKind::For
+                | TokenKind::Return
+                | TokenKind::Import
+                | TokenKind::Break
+                | TokenKind::Continue => return,
+                _ => {
+                    self.advance();
+                }
+            }
+        }
     }
 
     // --- Statements -------------------------------------------------------
@@ -904,6 +1040,129 @@ mod tests {
         Parser::parse(tokens).expect("source should parse")
     }
 
+    /// The first error from tokens that should not parse.
+    ///
+    /// Most of these cases are about one mistake, and were written when a
+    /// parse gave exactly one error. That none of them changed when the parser
+    /// began reporting several is the check that recovery did not move the
+    /// first one.
+    fn first_error_from(tokens: Vec<Token>) -> MiruError {
+        let errors = Parser::parse(tokens).expect_err("source should not parse");
+        errors.into_iter().next().expect("at least one error")
+    }
+
+    /// Every error from a source that should not parse.
+    fn all_errors(source: &str) -> Vec<MiruError> {
+        let tokens = Lexer::tokenize(source).expect("source should tokenize");
+        Parser::parse(tokens).expect_err("source should not parse")
+    }
+
+    /// Four separate mistakes report four errors, which is the whole point of
+    /// issue #10: fixing them takes one run rather than four.
+    #[test]
+    fn every_mistake_is_reported() {
+        let errors = all_errors(
+            "let = 1\nlet ok = 2\nlet y = 3 +\nlet fine = 4\nprint(ok]\nlet last = 5\nfn = 9\n",
+        );
+        let positions: Vec<(usize, usize)> = errors.iter().map(|e| (e.line, e.column)).collect();
+        assert_eq!(positions, vec![(1, 5), (3, 12), (5, 9), (7, 4)]);
+    }
+
+    /// One mistake reports exactly one error. A parser that recovers badly
+    /// gives ten for one missing brace, and that is worse than the single
+    /// error this replaced.
+    #[test]
+    fn one_mistake_reports_one_error() {
+        assert_eq!(all_errors("let x = 1\nlet = 2\nlet z = 3\n").len(), 1);
+        assert_eq!(all_errors("print(1))\n").len(), 1);
+    }
+
+    /// **The cascade case.** An unclosed bracket makes the lexer suppress every
+    /// newline after it, so no later statement can be terminated and each one
+    /// fails with the same complaint. The parser cannot recover information the
+    /// lexer already dropped; what it can do is notice it is not recovering.
+    #[test]
+    fn an_unclosed_bracket_does_not_bury_its_own_error() {
+        let mut source = String::from("let a = (\n");
+        for i in 0..400 {
+            source.push_str(&format!("let v{i} = {i}\n"));
+        }
+        let errors = all_errors(&source);
+        assert!(
+            errors.len() <= Parser::MAX_CONSECUTIVE,
+            "one missing bracket gave {} errors",
+            errors.len()
+        );
+        // The first one is the real one, and it points at the opening line.
+        assert_eq!(errors[0].line, 2);
+    }
+
+    /// The counter test from issue #10, which calls it the condition most
+    /// likely to be missed: an early error followed by hundreds of ordinary
+    /// statements must not report `the program is nested too deeply` somewhere
+    /// nothing is nested.
+    #[test]
+    fn recovery_leaves_the_nesting_counter_alone() {
+        let mut source = String::from("let = 1\n");
+        for i in 0..400 {
+            source.push_str(&format!("let v{i} = {i}\n"));
+        }
+        let errors = all_errors(&source);
+        assert_eq!(errors.len(), 1, "only the real mistake");
+        assert!(
+            !errors
+                .iter()
+                .any(|e| e.message.contains("nested too deeply")),
+            "the counter drifted: {errors:?}"
+        );
+    }
+
+    /// Past the nesting limit the parse stops rather than recovering, because
+    /// that is the one error raised before its own `leave` runs. Recovering
+    /// from it would leave the count high for the rest of the file.
+    /// On its own thread, because a libtest thread gets 2 MiB and reaching the
+    /// nesting limit needs more than that. `miru` starts a 64 MiB thread for
+    /// the same reason, and the deep cases in `tests/golden.rs` say so too.
+    /// Without it this test overflows before it reaches the limit and measures
+    /// libtest rather than the parser.
+    #[test]
+    fn the_nesting_limit_stops_the_parse() {
+        let errors = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                // A second, separate mistake after the deep one. It is not
+                // reported, because the parse stopped: that is what the guard
+                // does, and asserting the count alone would not show it.
+                let source = format!(
+                    "let deep = {}{}\nlet ok = 1\nlet = 2\n",
+                    "[".repeat(Parser::MAX_NESTING + 5),
+                    "]".repeat(Parser::MAX_NESTING + 5)
+                );
+                all_errors(&source)
+            })
+            .expect("the operating system can start a thread")
+            .join()
+            .expect("the test body did not panic");
+        assert_eq!(
+            errors.len(),
+            1,
+            "the parse should stop rather than recover: {errors:?}"
+        );
+        assert!(errors[0].message.contains("nested too deeply"));
+    }
+
+    /// A wall of errors is as unhelpful as one, so the count is capped. Each
+    /// mistake here is separated by a working statement, so nothing else stops
+    /// the parse first.
+    #[test]
+    fn the_number_of_errors_is_capped() {
+        let mut source = String::new();
+        for i in 0..40 {
+            source.push_str(&format!("let = {i}\nlet ok{i} = {i}\n"));
+        }
+        assert_eq!(all_errors(&source).len(), Parser::MAX_ERRORS);
+    }
+
     fn parse_expr(source: &str) -> Expr {
         let mut statements = parse_program(source);
         assert_eq!(statements.len(), 1, "expected a single statement");
@@ -923,7 +1182,7 @@ mod tests {
     fn syntax_error_carries_a_column() {
         // 'let' must be followed by a name; the '=' sits at column 5.
         let tokens = Lexer::tokenize("let = 1").expect("source should tokenize");
-        let err = Parser::parse(tokens).unwrap_err();
+        let err = first_error_from(tokens);
         assert_eq!(err.line, 1);
         assert_eq!(err.column, 5);
     }
@@ -1097,7 +1356,7 @@ mod tests {
     #[test]
     fn reports_missing_expression() {
         let tokens = Lexer::tokenize("let x =").expect("lexes");
-        let err = Parser::parse(tokens).unwrap_err();
+        let err = first_error_from(tokens);
         assert!(err.message.contains("expected an expression"));
     }
 
@@ -1125,7 +1384,7 @@ mod tests {
     #[test]
     fn break_outside_a_loop_is_an_error() {
         let tokens = Lexer::tokenize("break").expect("lexes");
-        let err = Parser::parse(tokens).unwrap_err();
+        let err = first_error_from(tokens);
         assert!(err.message.contains("break outside of a loop"));
     }
 
@@ -1133,7 +1392,7 @@ mod tests {
     fn break_cannot_target_a_loop_outside_a_function() {
         let tokens =
             Lexer::tokenize("for i in [1] {\n  fn f() {\n    break\n  }\n}").expect("lexes");
-        let err = Parser::parse(tokens).unwrap_err();
+        let err = first_error_from(tokens);
         assert!(err.message.contains("break outside of a loop"));
     }
 

@@ -166,11 +166,24 @@ fn eval_source(args: &[String]) -> ExitCode {
         // every destructor on the way still runs. The cast is exact: `exit`
         // refuses anything outside 0 through 255.
         Ok(code) => ExitCode::from(code as u8),
-        Err(err) => {
-            eprintln!("miru: {}", err.render(source));
-            ExitCode::FAILURE
-        }
+        Err(errors) => report(&errors, source),
     }
+}
+
+/// Print every error a run produced, and give back the failing code.
+///
+/// One error prints exactly as it always did. Several print the same way, one
+/// after another, with a count at the end so the reader knows the list is
+/// complete rather than cut off by their terminal. Only a syntax error can be
+/// more than one: a run stops at the first thing that goes wrong.
+fn report(errors: &[miruscriptx::MiruError], source: &str) -> ExitCode {
+    for error in errors {
+        eprintln!("miru: {}", error.render(source));
+    }
+    if errors.len() > 1 {
+        eprintln!("miru: {} errors", errors.len());
+    }
+    ExitCode::FAILURE
 }
 
 fn run_file(args: &[String]) -> ExitCode {
@@ -219,10 +232,7 @@ fn run_file(args: &[String]) -> ExitCode {
     match miruscriptx::run_source_from(&source, Some(std::path::Path::new(path)), out, host(system))
     {
         Ok(code) => ExitCode::from(code as u8),
-        Err(err) => {
-            eprintln!("miru: {}", err.render(&source));
-            ExitCode::FAILURE
-        }
+        Err(errors) => report(&errors, &source),
     }
 }
 
