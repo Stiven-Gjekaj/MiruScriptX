@@ -8,6 +8,47 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## Unreleased
+
+### Changed
+
+- **Every syntax error is reported, not only the first.** A file with four
+  mistakes took four runs to fix, one error at a time.
+
+  ```
+  $ miru run broken.miru
+  miru: error (line 1, column 5): expected an identifier after 'let' but found '='
+      let = 1
+          ^
+  miru: error (line 3, column 12): expected an expression but found end of line
+      let y = 3 +
+                 ^
+  miru: 4 errors
+  ```
+
+  Each keeps the shape section 2.5 of the guarantee promises: its own source
+  line and caret. A program with a syntax error still does not run, and the
+  exit code is still 1. One mistake still reports one error with no count line.
+  The browser playground shows all of them too.
+
+  Three rules limit the report, and section 6.2.1 of the specification is new
+  and gives them. Two errors at one position are one error, a run reports at
+  most 20, and the report stops after three statements fail in a row with none
+  between them that parsed.
+
+  **That last rule exists for a case the issue did not anticipate.** The lexer
+  makes no newline token inside `(` or `[`, so that an expression can span
+  lines. An unclosed bracket therefore removes every statement separator in the
+  rest of the file, nothing after it can end a statement, and one missing paren
+  produced twenty errors that buried the real one. The information is gone
+  before the parser runs, so recovery cannot restore it; what it can do is
+  notice that it is not recovering.
+
+  **A failure to lex is still one error**, because the lexer runs before the
+  parser and a program that does not lex is never parsed at all.
+
+  Closes #10.
+
 ## 1.6.0 (2026-08-05)
 
 ### Added
