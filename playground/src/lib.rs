@@ -132,7 +132,13 @@ impl miruscriptx::value::Clock for BrowserClock {
 /// Run a program and return everything it printed.
 #[wasm_bindgen]
 pub fn run(source: &str) -> Outcome {
-    match miruscriptx::run_capture_all_with(source, &[], Box::new(BrowserClock)) {
+    let host = miruscriptx::Host {
+        clock: Box::new(BrowserClock),
+        // No file system and no keyboard. A page has neither, and both refuse
+        // with a sentence rather than failing in a way the reader cannot read.
+        ..miruscriptx::Host::none()
+    };
+    match miruscriptx::run_capture_all_with(source, &[], host) {
         Ok(captured) => Outcome::ran(captured),
         Err(error) => Outcome::failed(&error, source),
     }
@@ -184,7 +190,9 @@ pub fn version() -> String {
 ///
 /// `now`, `random`, `random_int`, and `seed` are all fine here. The page has a
 /// clock, which it supplies through `BrowserClock`, and the generator is the
-/// language's own.
+/// language's own. **`read_key` is not**: a page has no keyboard buffer to take
+/// a key from, so it refuses, and an example that called it would fail
+/// `every_bundled_example_runs`.
 const EXAMPLES: &[(&str, &str)] = &[
     ("greet", include_str!("../../examples/greet.miru")),
     ("fib", include_str!("../../examples/fib.miru")),

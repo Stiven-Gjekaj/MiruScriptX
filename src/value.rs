@@ -162,6 +162,43 @@ impl Clock for NoClock {
     }
 }
 
+/// The host's keyboard, read one key at a time rather than one line at a time.
+///
+/// A third capability beside [`System`] and [`Clock`], and absent by default
+/// like both of them. The three are separate because a host can have any of
+/// them without the others: the browser playground has a clock, no file system,
+/// and no keyboard buffer to read a key from.
+///
+/// **Reading a key means the terminal stops buffering a line**, which is a
+/// change to the terminal itself and not to this program. Whoever implements
+/// this owns putting the terminal back, however the program ends. `miru` does
+/// it in a `Drop`, which runs on a normal end, on an error, and on `exit`.
+pub trait Keyboard {
+    /// The next key, or `None` when there are no more.
+    ///
+    /// The name is one of the words section 8.11 of the specification lists, or
+    /// the character itself when the key produced one.
+    fn read_key(&mut self) -> Result<Option<String>, String>;
+}
+
+/// A [`Keyboard`] with no keys.
+///
+/// It refuses rather than giving `None`, which would say "the person stopped
+/// typing" about a host that never had a keyboard at all. `input()` gives `nil`
+/// at end of input and that is right for a missing line; this is the difference
+/// between a program that has read everything and one that cannot read.
+pub struct NoKeyboard;
+
+impl NoKeyboard {
+    const REFUSAL: &'static str = "this program is running where there is no keyboard";
+}
+
+impl Keyboard for NoKeyboard {
+    fn read_key(&mut self) -> Result<Option<String>, String> {
+        Err(NoKeyboard::REFUSAL.to_string())
+    }
+}
+
 /// What a program can ask for that its own source does not determine.
 ///
 /// One bundle rather than one argument per capability, because the builtins
@@ -171,17 +208,31 @@ impl Clock for NoClock {
 /// one from somewhere.
 pub struct Ambient<'a> {
     clock: &'a mut dyn Clock,
+    keyboard: &'a mut dyn Keyboard,
     rng: &'a mut Option<Rng>,
 }
 
 impl<'a> Ambient<'a> {
-    pub fn new(clock: &'a mut dyn Clock, rng: &'a mut Option<Rng>) -> Ambient<'a> {
-        Ambient { clock, rng }
+    pub fn new(
+        clock: &'a mut dyn Clock,
+        keyboard: &'a mut dyn Keyboard,
+        rng: &'a mut Option<Rng>,
+    ) -> Ambient<'a> {
+        Ambient {
+            clock,
+            keyboard,
+            rng,
+        }
     }
 
     /// The host's clock, or its refusal.
     pub fn now_millis(&mut self) -> Result<i64, String> {
         self.clock.now_millis()
+    }
+
+    /// The next key from the host's keyboard, or its refusal.
+    pub fn read_key(&mut self) -> Result<Option<String>, String> {
+        self.keyboard.read_key()
     }
 
     /// The generator, seeded from the clock the first time a program asks for

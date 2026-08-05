@@ -24,8 +24,8 @@ use crate::globals::{Globals, ModuleId, ROOT_MODULE};
 use crate::random::Rng;
 use crate::suggest::with_suggestion;
 use crate::value::{
-    Ambient, Clock, Closure, CompiledFunction, EmptyInput, Input, NativeFn, NoClock, NoSystem,
-    Output, System, Upvalue, Value,
+    Ambient, Clock, Closure, CompiledFunction, EmptyInput, Input, Keyboard, NativeFn, NoClock,
+    NoKeyboard, NoSystem, Output, System, Upvalue, Value,
 };
 use crate::MiruError;
 
@@ -178,6 +178,9 @@ pub struct Vm {
     /// The host's wall clock, on the same terms as `system`: absent until an
     /// embedder supplies one, so no program reads a time the host never gave.
     clock: Box<dyn Clock>,
+    /// The host's keyboard, on the same terms again: absent until an embedder
+    /// supplies one, so no program reads a key the host never had.
+    keyboard: Box<dyn Keyboard>,
     /// The random number generator, or `None` until a program asks for a
     /// number or sets a seed.
     ///
@@ -244,6 +247,7 @@ impl Vm {
             input: Box::new(EmptyInput),
             system: Box::new(NoSystem),
             clock: Box::new(NoClock),
+            keyboard: Box::new(NoKeyboard),
             rng: None,
             exit: None,
             line: 0,
@@ -294,6 +298,15 @@ impl Vm {
     /// playground does supply, since a page has `Date.now`.
     pub fn set_clock(&mut self, clock: Box<dyn Clock>) {
         self.clock = clock;
+    }
+
+    /// Give this VM a keyboard, which `read_key` reads.
+    ///
+    /// On the same terms as [`Vm::set_clock`]. Unlike a clock, this one the
+    /// browser playground does not supply: a page has no keyboard buffer to
+    /// take a key from.
+    pub fn set_keyboard(&mut self, keyboard: Box<dyn Keyboard>) {
+        self.keyboard = keyboard;
     }
 
     /// Flush any buffered output.
@@ -1081,7 +1094,7 @@ impl Vm {
         // program never dealt with into a line of output that looks
         // deliberate.
         //
-        // Checking here covers forty-eight at once: every builtin that arrives
+        // Checking here covers forty-nine at once: every builtin that arrives
         // as a `Value::Builtin`, which is the plain ones, the system ones, and
         // the ambient ones.
         // It does not cover the four higher-order builtins, because those
@@ -1133,9 +1146,10 @@ impl Vm {
                     // An ambient builtin is handed neither the output sink nor
                     // the input source, so borrowing the field it does need is
                     // an ordinary field borrow and nothing has to be moved out.
-                    NativeFn::Ambient(func) => {
-                        func(&mut Ambient::new(&mut *self.clock, &mut self.rng), args)
-                    }
+                    NativeFn::Ambient(func) => func(
+                        &mut Ambient::new(&mut *self.clock, &mut *self.keyboard, &mut self.rng),
+                        args,
+                    ),
                 };
                 result.map_err(|message| MiruError::with_column(line, column, message))
             }

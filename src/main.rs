@@ -1,5 +1,6 @@
 //! The `miru` command line interface: run a file or start the REPL.
 
+mod keyboard;
 mod repl;
 
 use std::process::ExitCode;
@@ -140,6 +141,16 @@ impl miruscriptx::value::Clock for RealClock {
     }
 }
 
+/// Everything `miru` gives a program: the file system it was asked for, plus
+/// the clock and the keyboard, which are the same for every run.
+fn host(system: Box<RealSystem>) -> miruscriptx::Host {
+    miruscriptx::Host {
+        system,
+        clock: Box::new(RealClock),
+        keyboard: Box::new(keyboard::RealKeyboard::new()),
+    }
+}
+
 fn eval_source(args: &[String]) -> ExitCode {
     let Some((source, rest)) = args.split_first() else {
         return usage_error("the '-e' command needs a program");
@@ -149,12 +160,7 @@ fn eval_source(args: &[String]) -> ExitCode {
         arguments: rest.to_vec(),
     });
 
-    match miruscriptx::run_source(
-        source,
-        Box::new(std::io::stdout()),
-        system,
-        Box::new(RealClock),
-    ) {
+    match miruscriptx::run_source(source, Box::new(std::io::stdout()), host(system)) {
         // `ExitCode` rather than `std::process::exit`, so the code still
         // travels back through the join from the interpreter's own thread and
         // every destructor on the way still runs. The cast is exact: `exit`
@@ -210,13 +216,8 @@ fn run_file(args: &[String]) -> ExitCode {
 
     let out = Box::new(std::io::stdout());
     let system = Box::new(RealSystem { arguments });
-    match miruscriptx::run_source_from(
-        &source,
-        Some(std::path::Path::new(path)),
-        out,
-        system,
-        Box::new(RealClock),
-    ) {
+    match miruscriptx::run_source_from(&source, Some(std::path::Path::new(path)), out, host(system))
+    {
         Ok(code) => ExitCode::from(code as u8),
         Err(err) => {
             eprintln!("miru: {}", err.render(&source));

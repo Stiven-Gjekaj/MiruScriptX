@@ -523,15 +523,18 @@ way: real standard input in the binary, a scripted buffer in
 
 ### A capability the host may not have is a value, not a `cfg`
 
-`Output` and `Input` are always there. `System` and `Clock` are not, and they
-are the two traits an embedder decides about: `System` is the file system and
-the command line, and `Clock` is the wall clock that `now()` reads. A VM that is
-given neither refuses both, so nothing gains file access or a time by accident.
+`Output` and `Input` are always there. `System`, `Clock`, and `Keyboard` are
+not, and they are the three traits an embedder decides about: the file system
+and command line, the wall clock that `now()` reads, and the keyboard that
+`read_key()` reads. A VM given none of them refuses all three, so nothing gains
+file access, a time, or a keypress by accident. `Host` in `src/lib.rs` carries
+the three together, because a call site holding three positional boxes says
+nothing about which is which.
 
-They are separate traits because a host can have one and not the other. The
-browser playground is exactly that case: a page can answer `Date.now()` and
-cannot open a file, so it supplies a `Clock` and no `System`, and `read_file`
-still refuses there.
+They are separate traits because a host can have one and not the others. The
+browser playground is exactly that case: a page can answer `Date.now()`, cannot
+open a file, and has no keyboard buffer, so it supplies a `Clock` and neither of
+the others.
 
 **Neither is conditional compilation, and this is the reason.** `std::fs` in a
 WebAssembly build has no file system and no way to say so; `SystemTime::now`
@@ -574,7 +577,7 @@ loop it replaced was a plain Rust `for`, and that costs more than the nested
 call it removed. Closing the remaining gap would mean either duplicating all
 three builtins' semantics or changing `BuiltinFn` across the forty
 builtins that use it. That is the number of `define` calls and not the number
-of builtins, which is fifty-two; the other twelve take a different signature
+of builtins, which is fifty-three; the other thirteen take a different signature
 and would not be touched.
 
 It is kept for the limit below, which is a correctness fix rather than a speed
@@ -789,8 +792,8 @@ few of those.
 
 That signature is `BuiltinFn`, and there are three others. `SystemFn` is handed
 the file system, `AmbientFn` is handed what a program can ask for that its own
-source does not determine, which is the clock, and `HostFn` is the higher-order
-shape described below. The first
+source does not determine, which is the clock, the keyboard, and the random
+number generator, and `HostFn` is the higher-order shape described below. The first
 three are called identically and differ only in what they receive, so the choice
 is only ever the question of what the builtin needs. Registration says which:
 `define`, `define_system`, `define_ambient`, `define_host`.

@@ -728,7 +728,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 52 builtins. A program can use each of them without an import.
+There are 53 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -944,6 +944,54 @@ random number that repeats is still a number in the correct range.
 **Which numbers follow from a given start is not defined by this document.** A
 later 1.x can change the generator. Section 3.8 of the
 [stability guarantee](stability.md) states this.
+
+### 8.11 The keyboard
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `read_key()` | 0 | The next key, as a string. `nil` when there are no more. |
+
+`input()` waits for a whole line. `read_key()` waits for one key and gives it
+back immediately.
+
+A key that makes a character gives that character: `"a"`, `"A"`, `" "`, `"é"`.
+One character, not one byte.
+
+Another key gives its name from this table:
+
+| Name | Key |
+| ---- | --- |
+| `up` `down` `left` `right` | The arrow keys |
+| `enter` | Enter, or Return |
+| `tab` | Tab |
+| `backspace` | Backspace |
+| `escape` | Escape |
+| `delete` `insert` `home` `end` `pageup` `pagedown` | The editing keys |
+| `f1` to `f12` | The function keys |
+| `ctrl+a` to `ctrl+z` | A letter held with Control |
+| `ctrl+space` | The space bar held with Control |
+| `unknown` | A key this implementation does not have a name for |
+
+`tab` and `enter` and `backspace` have their own names. A terminal sends the
+same value for Tab as for Ctrl-I, for Enter as for Ctrl-M, and for Backspace as
+for Ctrl-H. The name of the key wins. A program does not have to know this.
+
+An unrecognised key gives `"unknown"` and not an error, so a program in a loop
+can ignore it.
+
+`read_key` gives an error if the host has no keyboard, and `try` catches it.
+The browser playground has no keyboard, and has a clock. Section 8.9 gives the
+same rule for the clock.
+
+**Reading a key changes the terminal.** The terminal stops collecting a line
+before it gives the program anything, and stops showing what is typed. The host
+puts the terminal back when the program ends, for all three ways a program can
+end: the last statement, an error, and `exit`.
+
+> **Warning.** While a program reads keys, **Control-C does not stop it**. The
+> terminal gives `"ctrl+c"` to the program instead. A program that reads keys in
+> a loop must decide what to do with that key. A program that ignores it cannot
+> be stopped from the keyboard.
 
 ---
 

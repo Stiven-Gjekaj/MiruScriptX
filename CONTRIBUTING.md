@@ -44,7 +44,7 @@ project has hit.
 | Change | Files |
 | ------ | ----- |
 | A builtin | `src/builtins.rs` (the function, `register` with the right `define`, `BUILTIN_NAMES`), `docs/specification.md` section 8, `docs/stability.md` section 2.3, `wiki/13-builtins.md` |
-| A host capability | the trait and its refusing default in `src/value.rs`, the field and setter on `Vm`, the parameter on `run_source_from` in `src/lib.rs`, the real one in `src/main.rs`, the browser's in `playground/src/lib.rs`, `docs/architecture.md` |
+| A host capability | the trait and its refusing default in `src/value.rs`, the field and setter on `Vm`, a field on `Host` in `src/lib.rs`, the real one in `src/main.rs`, the browser's in `playground/src/lib.rs`, `docs/architecture.md` |
 | Syntax | `src/lexer.rs` or `src/parser.rs`, `src/ast.rs`, `src/compiler.rs`, `src/formatter.rs`, `docs/specification.md` sections 2 and 3 |
 | A new opcode | `src/chunk.rs` (the enum, the `OPCODES` table, the disassembler), `src/compiler.rs`, `src/vm.rs` |
 | An error message | wherever it is raised, and `docs/specification.md` **only if that message is quoted there**. Section 3.1 of `docs/stability.md` leaves the words of a message free |
@@ -131,9 +131,13 @@ five percent is unmeasured rather than small.
 - Match the surrounding code. The project favors small, focused functions and
   clear names over cleverness.
 - Add dependencies sparingly. MiruScriptX keeps a small, curated dependency set:
-  rustyline for REPL history at runtime, and criterion for benchmarks as a
-  dev-dependency (it never ships to anyone running a MiruScriptX program). The
-  README badge counts both, so a viewer sees the real total. A pull request that
+  rustyline for REPL history at runtime, `nix` on unix and `windows-sys` on
+  windows for the raw terminal mode `read_key` needs, and criterion for
+  benchmarks as a dev-dependency (it never ships to anyone running a
+  MiruScriptX program). The README badge counts them, so a viewer sees the real
+  total. The two platform crates were already in the tree through rustyline
+  before they were declared, so **they added no crate to it**; that is the
+  standard a new dependency should try to meet. A pull request that
   adds a dependency should justify the need and prefer the standard library
   where practical.
 - Write documentation and comments in plain prose. Do not use em-dashes or

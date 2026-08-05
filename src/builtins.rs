@@ -63,6 +63,7 @@ pub fn register(globals: &mut Globals) {
     define_ambient(globals, "random", random);
     define_ambient(globals, "random_int", random_int);
     define_ambient(globals, "seed", seed);
+    define_ambient(globals, "read_key", read_key);
     define_host(globals, "sort", sort);
     define_host(globals, "map", map);
     define_host(globals, "filter", filter);
@@ -1128,6 +1129,22 @@ fn seed(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
     }
 }
 
+/// `read_key()` gives the next key, without waiting for a line.
+///
+/// A string, which is the character itself for a key that produced one and a
+/// name from section 8.11 of the specification otherwise. `nil` at end of
+/// input, matching what `input()` gives there.
+///
+/// It refuses where the host has no keyboard, as `now` refuses where there is
+/// no clock, and `try` catches that.
+fn read_key(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("read_key", &args, 0)?;
+    Ok(match ambient.read_key()? {
+        Some(key) => Value::Str(Rc::new(key)),
+        None => Value::Nil,
+    })
+}
+
 /// `input()` reads one line from the input source and returns it as a string,
 /// or `nil` at end of input. `input(prompt)` writes the prompt string first.
 fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
@@ -1199,8 +1216,8 @@ impl Args {
     ///
     /// Forty is the count of `define` calls, not the count of builtins. The
     /// two were the same figure until 1.1 and are not any more: there are
-    /// fifty-two builtins, of which four take a `SystemFn`, four take an
-    /// `AmbientFn`, and four take a `HostFn`, and none of those twelve would
+    /// fifty-three builtins, of which four take a `SystemFn`, five take an
+    /// `AmbientFn`, and four take a `HostFn`, and none of those thirteen would
     /// be touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
@@ -2237,21 +2254,21 @@ mod count {
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
-            ambient, 4,
-            "{ambient} builtins take an AmbientFn, not 4. This kind arrived in \
+            ambient, 5,
+            "{ambient} builtins take an AmbientFn, not 5. This kind arrived in \
              1.5 and is quoted by `Args::into_vec` above."
         );
         assert_eq!(
             plain + system + ambient,
-            48,
-            "{} builtins reach `call_native`, not 48. Quoted by the caught-error \
+            49,
+            "{} builtins reach `call_native`, not 49. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
         assert_eq!(
             host, 4,
             "{host} builtins are higher-order, not 4. Quoted by the same two \
-             places, which say the other twelve take a different signature."
+             places, which say the other thirteen take a different signature."
         );
         assert_eq!(
             plain + system + ambient + host,
@@ -2264,7 +2281,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 52] = [
+pub const BUILTIN_NAMES: [&str; 53] = [
     "print",
     "eprint",
     "exit",
@@ -2313,6 +2330,7 @@ pub const BUILTIN_NAMES: [&str; 52] = [
     "random",
     "random_int",
     "seed",
+    "read_key",
     "sort",
     "map",
     "filter",

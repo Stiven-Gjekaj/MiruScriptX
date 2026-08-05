@@ -2019,6 +2019,32 @@ fn now_refuses_where_there_is_no_clock() {
     ]);
 }
 
+/// `read_key` refuses where the host has no keyboard.
+///
+/// Golden cases grant nothing, which is the state the playground and any
+/// embedder is in. The refusal is an error rather than `nil`, because `nil`
+/// means "no more keys" and a host with no keyboard has not run out of them.
+/// What `read_key` gives when there *is* a keyboard is tested in `src/lib.rs`,
+/// against a scripted one.
+#[test]
+fn read_key_refuses_where_there_is_no_keyboard() {
+    check_all(&[
+        (
+            "read_key()",
+            "err this program is running where there is no keyboard @ 1:1",
+        ),
+        ("is_error(try read_key())", "ok true"),
+        (
+            "let r = try read_key()\nr.message",
+            "ok \"this program is running where there is no keyboard\"",
+        ),
+        (
+            "read_key(1)",
+            "err read_key expects 0 argument(s) but got 1 @ 1:1",
+        ),
+    ]);
+}
+
 /// `random` is asserted by its properties, never by its value.
 ///
 /// A golden case that pinned a number would be pinning something the guarantee

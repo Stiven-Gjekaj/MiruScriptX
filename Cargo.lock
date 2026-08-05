@@ -260,7 +260,9 @@ name = "miruscriptx"
 version = "1.5.0"
 dependencies = [
  "criterion",
+ "nix",
  "rustyline",
+ "windows-sys",
 ]
 
 [[package]]

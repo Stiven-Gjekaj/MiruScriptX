@@ -34,6 +34,27 @@ exclude = [
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rustyline = "18"
 
+# Raw terminal mode, which `read_key` needs and which is the one thing in this
+# project that cannot be written portably.
+#
+# **Neither of these adds a crate to the tree.** rustyline already depends on
+# `nix` with the `term` and `poll` features on unix, and on `windows-sys` with
+# `Win32_System_Console` on windows, at these same versions. Declaring them here
+# makes explicit what already compiles, and it is why `crossterm`, which does
+# the same job and brings eight or so crates of its own, was not used.
+#
+# The gates are `cfg(unix)` and `cfg(windows)` rather than the target_arch gate
+# above, because they say what the code actually needs. Both are false for
+# wasm32-unknown-unknown, so the playground gets neither.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["term", "poll"], default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+] }
+
 [lib]
 name = "miruscriptx"
 path = "src/lib.rs"

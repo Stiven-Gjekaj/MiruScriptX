@@ -78,13 +78,44 @@ pub fn format_source(source: &str) -> Result<String, MiruError> {
 /// Gives the code the program stopped with: `0` unless it called `exit`.
 /// Diagnostics go to standard error unless the caller redirects them with
 /// [`vm::Vm::set_error_output`].
-pub fn run_source(
-    source: &str,
-    out: Box<dyn Write>,
-    system: Box<dyn value::System>,
-    clock: Box<dyn value::Clock>,
-) -> Result<i32, MiruError> {
-    run_source_from(source, None, out, system, clock)
+pub fn run_source(source: &str, out: Box<dyn Write>, host: Host) -> Result<i32, MiruError> {
+    run_source_from(source, None, out, host)
+}
+
+/// Everything a program is allowed to reach outside itself.
+///
+/// One struct rather than one parameter each, because there are three of them
+/// now and a call site holding three positional boxes says nothing about which
+/// is which. Each field is separate rather than one "allow everything" flag,
+/// because a host really can have one and not the others: the browser
+/// playground has a clock, no file system, and no keyboard.
+pub struct Host {
+    pub system: Box<dyn value::System>,
+    pub clock: Box<dyn value::Clock>,
+    pub keyboard: Box<dyn value::Keyboard>,
+}
+
+impl Host {
+    /// A host that grants nothing. Every capability refuses.
+    pub fn none() -> Host {
+        Host {
+            system: Box::new(value::NoSystem),
+            clock: Box::new(value::NoClock),
+            keyboard: Box::new(value::NoKeyboard),
+        }
+    }
+
+    fn give_to(self, vm: &mut vm::Vm) {
+        vm.set_system(self.system);
+        vm.set_clock(self.clock);
+        vm.set_keyboard(self.keyboard);
+    }
+}
+
+impl Default for Host {
+    fn default() -> Host {
+        Host::none()
+    }
 }
 
 /// Like [`run_source`], but for a program that came from `path`, which is what
@@ -95,26 +126,19 @@ pub fn run_source(
 /// the forty-odd existing callers did not have to change: a wrapper that is
 /// literally `f(source, None, out)` cannot drift from what it wraps.
 ///
-/// `system` is what the program is allowed to do with files, and it is a
-/// parameter rather than a default so that granting file access is a decision
-/// somebody wrote down. Pass [`value::NoSystem`] to grant none.
-///
-/// `clock` is the same arrangement for the wall clock, which `now` reads.
-/// [`value::NoClock`] grants none. It is a second parameter rather than a fifth
-/// method on `System` because a host can have one capability without the other:
-/// the browser playground has a clock and no file system.
+/// `host` is what the program is allowed to reach outside itself, and it is a
+/// parameter rather than a default so that granting any of it is a decision
+/// somebody wrote down. [`Host::none`] grants nothing.
 pub fn run_source_from(
     source: &str,
     path: Option<&std::path::Path>,
     out: Box<dyn Write>,
-    system: Box<dyn value::System>,
-    clock: Box<dyn value::Clock>,
+    host: Host,
 ) -> Result<i32, MiruError> {
     let program = parse_program(source)?;
     let mut vm = vm::Vm::with_output(out);
     vm.set_input(Box::new(StdinInput));
-    vm.set_system(system);
-    vm.set_clock(clock);
+    host.give_to(&mut vm);
     let result = vm.run_from(&program, path);
     // Flushed on both arms, not only on success. A program that failed still
     // printed whatever it printed before it failed, and this used to drop that
@@ -229,20 +253,21 @@ pub fn run_capture_all(source: &str) -> Result<Capture, MiruError> {
 
 /// Like [`run_capture_all`], but feeds the given lines to `input()` in order.
 pub fn run_capture_all_with_input(source: &str, input: &[&str]) -> Result<Capture, MiruError> {
-    run_capture_all_with(source, input, Box::new(value::NoClock))
+    run_capture_all_with(source, input, Host::none())
 }
 
-/// Like [`run_capture_all_with_input`], and with a clock for `now()` to read.
+/// Like [`run_capture_all_with_input`], and with a host behind it.
 ///
-/// The spellings above keep granting none, which is what every golden case
-/// wants: `now` is the one builtin whose result the source does not determine,
-/// so a capture that had a real clock behind it could not assert an answer.
-/// This entry point exists for the two callers that do supply one, which are
-/// the browser playground and the tests of the clock itself.
+/// The spellings above keep granting nothing, which is what every golden case
+/// wants: the ambient builtins are the ones whose results the source does not
+/// determine, so a capture with a real clock or keyboard behind it could not
+/// assert an answer. This entry point exists for the callers that do supply
+/// one, which are the browser playground and the tests of the capabilities
+/// themselves.
 pub fn run_capture_all_with(
     source: &str,
     input: &[&str],
-    clock: Box<dyn value::Clock>,
+    host: Host,
 ) -> Result<Capture, MiruError> {
     let program = parse_program(source)?;
     let out = Rc::new(RefCell::new(Vec::<u8>::new()));
@@ -250,7 +275,7 @@ pub fn run_capture_all_with(
     let mut vm = vm::Vm::with_output(Box::new(SharedBuffer(Rc::clone(&out))));
     vm.set_error_output(Box::new(SharedBuffer(Rc::clone(&err))));
     vm.set_input(Box::new(ScriptedInput::new(input)));
-    vm.set_clock(clock);
+    host.give_to(&mut vm);
     let result = vm.run(&program);
     // Flushed before either arm returns, and the code read before the error is
     // reported, for the same reasons as `run_source_from`.
@@ -312,6 +337,31 @@ impl ScriptedInput {
 impl Input for ScriptedInput {
     fn read_line(&mut self) -> Option<String> {
         self.lines.next()
+    }
+}
+
+/// A [`value::Keyboard`] backed by a fixed list of key names.
+///
+/// The only way to test `read_key` without a terminal. Raw mode itself has no
+/// automated test on any platform, so what this covers is everything above the
+/// syscalls: that the builtin gives back what the host handed it, that it gives
+/// `nil` when the keys run out, and that a program can loop on it.
+pub struct ScriptedKeyboard {
+    keys: std::vec::IntoIter<String>,
+}
+
+impl ScriptedKeyboard {
+    pub fn new(keys: &[&str]) -> ScriptedKeyboard {
+        let keys: Vec<String> = keys.iter().map(|key| key.to_string()).collect();
+        ScriptedKeyboard {
+            keys: keys.into_iter(),
+        }
+    }
+}
+
+impl value::Keyboard for ScriptedKeyboard {
+    fn read_key(&mut self) -> Result<Option<String>, String> {
+        Ok(self.keys.next())
     }
 }
 
@@ -538,8 +588,15 @@ mod tests {
 
     #[test]
     fn now_gives_back_exactly_what_the_host_clock_said() {
-        let captured = run_capture_all_with("print(now())", &[], Box::new(FixedClock(1_234_567)))
-            .expect("the program runs");
+        let captured = run_capture_all_with(
+            "print(now())",
+            &[],
+            Host {
+                clock: Box::new(FixedClock(1_234_567)),
+                ..Host::none()
+            },
+        )
+        .expect("the program runs");
         assert_eq!(captured.out, "1234567\n");
     }
 
@@ -560,10 +617,48 @@ mod tests {
         let captured = run_capture_all_with(
             "let a = now()\nlet b = now()\nprint(b - a)",
             &[],
-            Box::new(Ticking(0)),
+            Host {
+                clock: Box::new(Ticking(0)),
+                ..Host::none()
+            },
         )
         .expect("the program runs");
         assert_eq!(captured.out, "5\n");
+    }
+
+    #[test]
+    fn read_key_gives_back_what_the_host_handed_it() {
+        let captured = run_capture_all_with(
+            "print(read_key())\nprint(read_key())\nprint(read_key())",
+            &[],
+            Host {
+                keyboard: Box::new(ScriptedKeyboard::new(&["up", "a"])),
+                ..Host::none()
+            },
+        )
+        .expect("the program runs");
+        // The third call is past the end, which is `nil` rather than a refusal:
+        // the host had a keyboard and there is nothing more to read from it.
+        assert_eq!(captured.out, "up\na\nnil\n");
+    }
+
+    /// A loop over `read_key` ends at the end of input rather than spinning,
+    /// which is the shape every program using it will have.
+    #[test]
+    fn a_loop_over_read_key_ends() {
+        let captured = run_capture_all_with(
+            "let seen = 0\nwhile true {\n  let k = read_key()\n  if k == nil { break }\n  \
+             if k == \"ctrl+c\" { break }\n  seen = seen + 1\n}\nprint(seen)",
+            &[],
+            Host {
+                keyboard: Box::new(ScriptedKeyboard::new(&["a", "b", "ctrl+c", "d"])),
+                ..Host::none()
+            },
+        )
+        .expect("the program runs");
+        // Two, not three: `ctrl+c` breaks before the counter moves, and the
+        // `d` after it is never read.
+        assert_eq!(captured.out, "2\n");
     }
 
     /// The captures that everything else uses grant no clock, which is what

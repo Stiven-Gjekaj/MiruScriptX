@@ -8,8 +8,8 @@ _Compiled to bytecode, run on a stack virtual machine_
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
-  <img src="https://img.shields.io/badge/dependencies-2_(57),_1_dev-007ec6?style=for-the-badge" alt="The language has 2 direct dependencies and 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-428_passing-427819?style=for-the-badge" alt="428 tests passing"/>
+  <img src="https://img.shields.io/badge/dependencies-4_(57),_1_dev-007ec6?style=for-the-badge" alt="The language declares 4 direct dependencies, two of them platform-specific, over 57 total crates, 1 of them a dev dependency"/>
+  <img src="https://img.shields.io/badge/tests-440_passing-427819?style=for-the-badge" alt="440 tests passing"/>
 </p>
 
 <p align="center">
@@ -94,7 +94,8 @@ for name in people {
 - A disassembler (`miru disasm`) that prints the bytecode for a program
 - Errors with a line, a column, and an underline under the token at fault
 - Errors you can catch as values, carrying the call path they came through
-- Minimal dependencies: rustyline at runtime, criterion for benchmarks
+- Minimal dependencies: rustyline at runtime, nix or windows-sys for raw-mode
+  key reading, criterion for benchmarks
 - A WebAssembly build and an in-browser playground, in a separate crate
 - Unit, golden, session, and end-to-end tests, benchmarks, and CI
 
@@ -211,15 +212,15 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | ----- | ----- | ----- | -------------- |
 | **Lexer** | token.rs, lexer.rs | 1333 | Source text to tokens, with line, column, and span tracking |
 | **Parser** | ast.rs, parser.rs | 1383 | Recursive descent plus a Pratt expression parser |
-| **Runtime model** | value.rs, ops.rs, builtins.rs, random.rs | 3857 | Values, operator and indexing rules, the builtin library |
-| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4177 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
+| **Runtime model** | value.rs, ops.rs, builtins.rs, random.rs | 3926 | Values, operator and indexing rules, the builtin library |
+| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4191 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Diagnostics** | suggest.rs | 220 | Chooses the name an error offers back when a program misspells one |
 | **Formatter** | formatter.rs | 701 | Reprints a program in canonical form (`miru fmt`) |
-| **CLI and REPL** | main.rs, repl.rs | 475 | File runner, `fmt` and `disasm` commands, and the REPL |
-| **Library** | lib.rs | 823 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **17 files** | **12969** | Written from scratch in Rust |
+| **CLI and REPL** | main.rs, repl.rs, keyboard.rs | 917 | File runner, `fmt` and `disasm` commands, the REPL, and raw-mode key reading |
+| **Library** | lib.rs | 918 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
+| **Total** | **18 files** | **13589** | Written from scratch in Rust |
 
-The playground is a separate crate: 555 lines of Rust binding the language to
+The playground is a separate crate: 563 lines of Rust binding the language to
 WebAssembly, and 602 of hand-written HTML, CSS, and JavaScript. It is counted
 apart because it is not the language, and neither its code nor its dependencies
 are involved in running a `.miru` file.
