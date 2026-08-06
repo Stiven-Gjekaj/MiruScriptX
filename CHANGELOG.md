@@ -12,6 +12,23 @@ semantic versioning.
 
 ### Added
 
+- **Three games**: [`life.miru`](examples/life.miru),
+  [`snake.miru`](examples/snake.miru), and [`pong.miru`](examples/pong.miru).
+
+  Snake is the program this release was built from. Everything in it that was
+  impossible in 1.7 is one of the things below.
+
+  Pong is the one that shows the point: its ball moves every tick whether or
+  not anything is pressed. Its test holds standard input open and silent for
+  700ms and counts frames — it drew eleven. Built on `read_key` alone it would
+  have drawn one and stopped dead inside the read, which is the shape every
+  game had before this release.
+
+  **They run in a terminal, not in the playground**, which refuses `sleep`,
+  `key_ready`, and `clear`. Making a paced loop work in a browser needs a
+  virtual machine that yields to the event loop, which is a redesign rather
+  than a builtin.
+
 - **`+` joins two arrays**, and **`insert(array, index, value)`** puts a value
   anywhere rather than only at the end.
 
