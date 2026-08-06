@@ -437,38 +437,62 @@ mod platform {
 
     /// Whether a read of standard input would return without waiting.
     ///
-    /// **This is the one place where counting would be a defect rather than an
-    /// approximation.** `GetNumberOfConsoleInputEvents` counts every input
-    /// record: mouse movement, a window resize, a focus change, and a key being
-    /// *released* as well as pressed. None of those produce a byte to read. A
-    /// count above zero would therefore say "ready", the caller would call
-    /// `read_key`, and the program would stop dead inside a blocking read
-    /// because the mouse moved. So this peeks at the records and looks for one
-    /// that will actually yield a byte: a key-down carrying a character.
+    /// **Windows has no one call that answers this for every kind of handle**,
+    /// which is the whole difficulty: `read_bytes_soon` above says the same
+    /// thing about its own problem. `poll` on unix answers for a console, a
+    /// pipe, and a file alike; here each has to be asked in its own way, so the
+    /// first thing to establish is which one this is.
+    ///
+    /// An earlier version answered `true` for everything that was not a
+    /// console, on the reasoning that a pipe or a file reads promptly. **That
+    /// was wrong, and it made every game freeze under a pipe.** A pipe whose
+    /// writer is still open and has written nothing does not read promptly: it
+    /// blocks until something arrives. A game polls, is told it can read, calls
+    /// `read_key`, and stops dead — which is exactly the state this builtin
+    /// exists to prevent. `pong_keeps_moving_while_nothing_is_pressed` holds a
+    /// pipe open and silent and is what caught it.
+    fn stdin_is_ready() -> Result<bool, String> {
+        use windows_sys::Win32::Storage::FileSystem::{
+            GetFileType, FILE_TYPE_CHAR, FILE_TYPE_PIPE,
+        };
+
+        let handle = stdin_handle()?;
+        // SAFETY: `handle` is a valid standard-input handle from `stdin_handle`.
+        match unsafe { GetFileType(handle) } {
+            FILE_TYPE_CHAR => {
+                // A console, or a character device such as `NUL`. Only the
+                // first has an input buffer to peek at; `GetConsoleMode`
+                // separates them, which is the same question `RawMode::enter`
+                // asks to decide whether there is a terminal at all.
+                let mut mode = 0u32;
+                // SAFETY: `handle` is valid and `mode` is live for the call.
+                if unsafe { GetConsoleMode(handle, &mut mode) } == 0 {
+                    // `NUL` and its like read zero bytes at once, which is end
+                    // of input, which is ready.
+                    return Ok(true);
+                }
+                console_has_a_key(handle)
+            }
+            FILE_TYPE_PIPE => pipe_has_bytes(handle),
+            // A disk file, or a type this does not know. A file read returns
+            // at once with bytes or with end of input, so it is always ready.
+            _ => Ok(true),
+        }
+    }
+
+    /// Whether the console's input buffer holds a record that will yield a byte.
+    ///
+    /// **Counting would be a defect here rather than an approximation.**
+    /// `GetNumberOfConsoleInputEvents` counts every input record: mouse
+    /// movement, a window resize, a focus change, and a key being *released* as
+    /// well as pressed. None of those produce a byte to read. A count above zero
+    /// would say "ready", the caller would call `read_key`, and the program
+    /// would stop dead inside a blocking read because the mouse moved.
     ///
     /// `PeekConsoleInputW` leaves the records in the buffer, so the read that
     /// follows still sees them.
-    ///
-    /// When standard input is not a console — a pipe or a file — this answers
-    /// `true`. A read there returns promptly with either bytes or end of input,
-    /// which is what the caller needs to know. The case this gets wrong is a
-    /// pipe whose writer is slow and still open, where the read can block after
-    /// all; that costs a paused frame rather than a wrong answer, and a game
-    /// driven down a slow pipe is not a thing anybody does. `poll` on unix has
-    /// no such gap, so the two platforms differ here and this comment is why.
-    pub fn bytes_waiting() -> Result<bool, String> {
+    fn console_has_a_key(handle: HANDLE) -> Result<bool, String> {
         use windows_sys::Win32::System::Console::{PeekConsoleInputW, INPUT_RECORD, KEY_EVENT};
-
-        let handle = stdin_handle()?;
-
-        // A console has a mode; a pipe does not. This is the same question
-        // `RawMode::enter` asks to decide whether there is a terminal at all.
-        let mut mode = 0u32;
-        // SAFETY: `handle` is a valid standard-input handle from
-        // `stdin_handle`, and `mode` is a live u32 for the duration.
-        if unsafe { GetConsoleMode(handle, &mut mode) } == 0 {
-            return Ok(true);
-        }
 
         // Sixteen is enough that a burst of held keys does not hide a real one
         // behind a run of mouse records, and small enough to sit on the stack.
@@ -501,6 +525,49 @@ mod platform {
             }
         }
         Ok(false)
+    }
+
+    /// Whether a pipe has bytes waiting, without taking them.
+    ///
+    /// **A closed pipe is ready**, and that is the case worth stating. When the
+    /// writer has gone, `PeekNamedPipe` fails with `ERROR_BROKEN_PIPE`; the
+    /// read that follows returns nothing at once, which is end of input. Saying
+    /// `false` there would be the ruinous answer: `read_key` would never be
+    /// called, so the program would never learn that no key is coming, and a
+    /// loop guarded by `key_ready` would spin forever. `poll` on unix reports a
+    /// closed stream as readable for the same reason, and section 8.11 of the
+    /// specification states the rule for both.
+    fn pipe_has_bytes(handle: HANDLE) -> Result<bool, String> {
+        use windows_sys::Win32::Foundation::{GetLastError, ERROR_BROKEN_PIPE};
+        use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+
+        let mut available = 0u32;
+        // SAFETY: `handle` is a valid pipe handle and `available` is live. The
+        // null arguments are the optional buffer, byte count, and message
+        // length, none of which are wanted: this asks only how much is there.
+        let ok = unsafe {
+            PeekNamedPipe(
+                handle,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                &mut available,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            // SAFETY: read immediately after the failing call, as documented.
+            let error = unsafe { GetLastError() };
+            if error == ERROR_BROKEN_PIPE {
+                return Ok(true);
+            }
+            return Err(format!("cannot check the keyboard: error {error}"));
+        }
+        Ok(available > 0)
+    }
+
+    pub fn bytes_waiting() -> Result<bool, String> {
+        stdin_is_ready()
     }
 }
 

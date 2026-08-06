@@ -52,7 +52,16 @@ nix = { version = "0.31", features = ["term", "poll"], default-features = false 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    # Raw mode, and peeking the console input buffer for `key_ready`.
     "Win32_System_Console",
+    # `GetFileType`, which tells `key_ready` whether standard input is a
+    # console, a pipe, or a file. Each answers "would a read block?"
+    # differently, and answering for the wrong one is what made every game
+    # freeze on Windows.
+    "Win32_Storage_FileSystem",
+    # `PeekNamedPipe`, the only way to ask a pipe how many bytes are waiting
+    # without reading it. Windows has no `poll` over standard input.
+    "Win32_System_Pipes",
 ] }
 
 [lib]
