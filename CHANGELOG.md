@@ -10,6 +10,9 @@ semantic versioning.
 
 ## 1.8.0 (2026-08-06)
 
+> Folded in before this version was ever released: the entries below describe
+> 1.8.0 as it ships, not a later correction to it.
+
 ### Added
 
 - **Three games**: [`life.miru`](examples/life.miru),

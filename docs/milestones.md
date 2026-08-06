@@ -466,13 +466,48 @@ Three things worth carrying forward.
   and three turns between two steps walks it into its own neck without that ever
   being drawn.
 
-**The risk that could not be closed from here is the Windows half of
+**Both CI failures after the release were in this same corner**, and both were
+mine. The Windows half of `key_ready` answered `true` for anything that was not
+a console, on the reasoning that a pipe reads promptly; the comment saying so
+even named the case it got wrong and called it something nobody does. `pong`
+does exactly that on purpose, and Windows CI failed on it: the ball drew zero
+frames, because `key_ready` said ready and `read_key` then blocked. **A comment
+admitting a gap is not a decision to leave it**, especially when a test in the
+same commit walks into it. `GetFileType` now decides which question to ask, and
+a pipe is asked with `PeekNamedPipe`.
+
+The second was a race in a test I wrote: a loop bounded by three turns, against
+a write from the parent that nothing ordered it with. It passed locally every
+time and failed on Linux CI often enough to be worse than a plain failure. The
+bound was there so a broken `key_ready` would fail rather than hang, which was
+right; counting *turns* was the wrong bound, and a deadline keeps the property
+without the race. **A bound meant to stop a hang should be measured in time,
+because time is what a hang is made of.**
+
+**The risk that could not be closed from here was the Windows half of
 `key_ready`.** `GetNumberOfConsoleInputEvents` counts mouse movement, resizes,
 focus changes, and key releases, none of which yield a byte — so counting would
 report ready and the following read would block, hanging the game on a mouse
 twitch. It peeks for a key-down record carrying a character instead. That path
 has no test that runs on Linux and rests on the Windows leg of CI, which found
-two faults in `read_key` in 1.6.
+two faults in `read_key` in 1.6 and found this one too. What *can* be done from
+Linux, and is worth doing before pushing, is `cargo check` and `cargo clippy`
+against `x86_64-pc-windows-msvc`: no linker is needed, and it catches every
+compile error and lint in code that cannot otherwise be built here.
+
+**Releasing stopped depending on a `git push` of a tag.** Pushing `v1.8.0` from
+one environment returned `send-pack: unexpected disconnect` on every retry while
+branch pushes went through, which left a finished release with no way to publish
+it. The release workflow now takes a version through `workflow_dispatch` and
+drafts from it. No tag is pushed by anybody: `gh release create` against a tag
+that does not exist yet records the name and the commit, and creates the ref
+when a person publishes the draft — so a draft that turns out to be wrong is
+deleted and nothing happened.
+
+Splitting that into a workflow that tags and a workflow that releases is the
+obvious tidy-up and does not work: **a tag pushed with `GITHUB_TOKEN` does not
+trigger `on: push`**, because GitHub suppresses that to stop workflows setting
+each other off. The tag would be made and the release would never run.
 
 ## 1.7: every error at once, a link to a program, and colour in an editor
 

@@ -6,22 +6,48 @@ name: Release
 # v1.0.0, so this workflow and the first tag arrive together: there is no
 # history of releases for it to be inconsistent with.
 #
-# `workflow_dispatch` is here so the whole thing can be proven without creating
-# a tag. A tag is a public, permanent-looking thing to create by accident, and
-# a release workflow that can only be tested by tagging gets tested in
-# production. On a manual run the release step is skipped and the archives are
-# left as workflow artifacts to be downloaded and checked by hand.
+# `workflow_dispatch` does two jobs. With no `version`, it proves the whole
+# thing builds without creating anything: a release workflow that can only be
+# tested by tagging gets tested in production. With a `version`, it cuts the
+# draft release itself.
+#
+# **The dispatch path exists because a tag cannot always be pushed.** Pushing
+# `v1.8.0` from one environment returned `send-pack: unexpected disconnect` on
+# every retry while branch pushes went through, which left a finished release
+# with no way to publish it. Anything that can only be started by a `git push`
+# of a tag has that single point of failure; this does not.
+#
+# **No tag is pushed here, by this workflow or by anybody.** `gh release create`
+# against a tag that does not exist yet records the name and the commit and
+# creates the ref only when a person publishes the draft. So a draft that turns
+# out to be wrong is deleted and nothing happened — which is the same argument
+# the draft itself rests on, applied one step earlier. A tag is a public,
+# permanent-looking thing to create by accident.
+#
+# **Do not split this into a workflow that tags and a workflow that releases.**
+# It is the obvious tidy-up and it does not work: a tag pushed with
+# `GITHUB_TOKEN` does not trigger `on: push`, because GitHub suppresses that to
+# stop workflows setting each other off. The tag workflow would succeed, the
+# release workflow would never run, and the failure would look like nothing
+# happening at all.
 #
 # One catch, found the hard way: GitHub only offers `workflow_dispatch` for a
 # workflow that exists on the *default* branch. Dispatching this file while it
-# lived only on a feature branch returned a 404 that named nothing. So the
-# order is: merge to main first, dispatch to prove all five platforms build,
-# and only then push the version tag.
+# lived only on a feature branch returned a 404 that named nothing. So this file
+# has to reach `main` before it can be dispatched from anywhere.
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Cut a draft release for this version, for example 1.8.0. No leading
+          v. Must match the version in Cargo.toml. Leave empty to build the
+          five platforms and stop, creating nothing.
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -136,9 +162,10 @@ jobs:
     name: Publish the release
     needs: build
     runs-on: ubuntu-latest
-    # Only a tag publishes. A manual run stops after `build`, having proven
-    # every platform compiles and runs, and leaves the archives as artifacts.
-    if: startsWith(github.ref, 'refs/tags/v')
+    # A tag publishes, and so does a dispatch that named a version. A dispatch
+    # that named none stops after `build`, having proven every platform compiles
+    # and runs, and leaves the archives as artifacts.
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
     steps:
       # Before the download, not after. `actions/checkout` defaults to
       # `clean: true`, which runs `git clean -ffdx` over the workspace, and that
@@ -150,6 +177,33 @@ jobs:
       # ref being built is the tag, so the file is the one that release ships.
       - name: Check out the code
         uses: actions/checkout@v5
+
+      # A dispatched version is typed by hand into a form, and a typo would
+      # otherwise mint a draft labelled for a version the binaries inside it are
+      # not. The tag path needs no such check: the tag was cut from a commit
+      # whose `Cargo.toml` already said so, and this same comparison would then
+      # be checking that commit against itself.
+      #
+      # The cost of finding out here rather than before `build` is a few minutes
+      # of platform builds on a typo. That is worth paying to keep the job graph
+      # readable: a guard job would have to be `needs`-ed by `build`, and a
+      # `needs` on a job that is skipped skips its dependents too, so the tag
+      # path would stop working.
+      - name: The dispatched version must be the one in Cargo.toml
+        if: inputs.version != ''
+        env:
+          DISPATCHED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # The first `version =` under `[package]`, which is the crate's own
+          # and not one belonging to a dependency further down the file.
+          declared="$(awk -F'"' '/^version = "/ { print $2; exit }' Cargo.toml)"
+          if [ "${DISPATCHED}" != "${declared}" ]; then
+            echo "::error::Dispatched ${DISPATCHED}, but Cargo.toml says ${declared}."
+            echo "The binaries built above are ${declared}. Release that, or bump Cargo.toml first."
+            exit 1
+          fi
+          echo "Dispatched ${DISPATCHED}, which is what Cargo.toml says."
 
       - name: Collect the archives
         uses: actions/download-artifact@v4
@@ -186,9 +240,25 @@ jobs:
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          DISPATCHED: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+
+          # A tag push names itself; a dispatch names a version and the tag is
+          # that with a `v`. `--target` goes with the second, because there is
+          # no ref yet to say which commit the release belongs to: the tag is
+          # created from this commit when somebody publishes the draft.
+          if [ -n "${DISPATCHED}" ]; then
+            tag="v${DISPATCHED}"
+            target=(--target "${GITHUB_SHA}")
+            echo "Dispatched. Drafting ${tag} against ${GITHUB_SHA}; the tag appears on publish."
+          else
+            tag="${GITHUB_REF_NAME}"
+            target=()
+            echo "Tagged. Drafting ${tag}, which already exists as a ref."
+          fi
+
+          version="${tag#v}"
           notes="${RUNNER_TEMP}/release-notes.md"
 
           # Each `.` becomes `[.]` rather than being escaped with a backslash,
@@ -227,10 +297,11 @@ jobs:
           # what this passed for 1.0.1 and 1.1.0, and both were renamed by hand
           # on the Releases page before publishing. A default that gets
           # corrected every time is the wrong default.
-          gh release create "${GITHUB_REF_NAME}" \
+          gh release create "${tag}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "MiruScriptX Release ${GITHUB_REF_NAME}" \
+            --title "MiruScriptX Release ${tag}" \
             "${body[@]}" \
+            "${target[@]}" \
             --draft \
             dist/*
           echo "Draft release created. Review and publish it from the Releases page."
