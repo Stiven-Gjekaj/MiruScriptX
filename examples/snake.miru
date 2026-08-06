@@ -1,0 +1,146 @@
+// snake.miru
+// The usual game. Arrow keys turn, q quits.
+// Run with: miru run examples/snake.miru
+//
+// This is the program that 1.8 was built for, and every piece of it is
+// one of the things that release added:
+//
+// key_ready()  so the snake keeps moving while you hold still
+// clear()      so each picture replaces the last instead of scrolling
+// sleep()      so it moves at a speed somebody chose
+// +           so the new body is the head followed by all but the tail
+//
+// The board is fixed at 30 by 15 rather than asked for with term_size(),
+// which is what lets this run with its keys piped in from a test.
+
+let width = 30
+let height = 15
+
+// The head is first. Growing means keeping the tail that would otherwise
+// be dropped.
+let snake = [[15, 7], [14, 7], [13, 7]]
+let heading = [1, 0]
+let food = [22, 7]
+let score = 0
+let alive = true
+
+// Seeded from the clock, so two games differ. A test that pipes keys in
+// never reaches the first random call, so this does not make the output
+// unpredictable there.
+seed(now())
+
+fn head_of(body) {
+  return body[0]
+}
+
+fn covers(body, x, y) {
+  for part in body {
+    if part[0] == x && part[1] == y {
+      return true
+    }
+  }
+  return false
+}
+
+fn place_food(body) {
+  // Try until it lands somewhere the snake is not. The board is far
+  // larger than the snake, so this finishes quickly.
+  while true {
+    let x = random_int(0, width - 1)
+    let y = random_int(0, height - 1)
+    if !covers(body, x, y) {
+      return [x, y]
+    }
+  }
+}
+
+fn draw(body, food, score, width, height) {
+  let out = ""
+  for y in range(0, height) {
+    for x in range(0, width) {
+      if x == food[0] && y == food[1] {
+        out = out + "*"
+      } else if covers(body, x, y) {
+        out = out + "#"
+      } else {
+        out = out + "."
+      }
+    }
+    out = out + "\n"
+  }
+  print(out + "score " + str(score) + "   arrows turn, q quits")
+}
+
+hide_cursor()
+
+while alive {
+  // **One key per tick, not every key waiting.**
+  //
+  // A snake turns once per step, so taking three keys in one frame would
+  // throw two of them away. Worse, it would let you turn up and then left
+  // between one step and the next, which walks you into your own neck
+  // without ever being drawn.
+  //
+  // Something where every press counts, like a typing game, should drain
+  // instead: `while key_ready() { ... }`.
+  if key_ready() {
+    let pressed = read_key()
+
+    // No more keys. At a terminal this does not happen; with keys piped
+    // in it happens when they run out, which is how this file is tested.
+    if pressed == nil {
+      alive = false
+      break
+    }
+    // Always check for this. While a program is reading keys the terminal
+    // hands Control-C over as an ordinary key, so without this the game
+    // cannot be stopped.
+    if pressed == "q" || pressed == "ctrl+c" || pressed == "escape" {
+      alive = false
+      break
+    }
+
+    // A snake cannot turn back on itself: that would run it straight into
+    // its own neck.
+    if pressed == "up" && heading[1] == 0 {
+      heading = [0, -1]
+    } else if pressed == "down" && heading[1] == 0 {
+      heading = [0, 1]
+    } else if pressed == "left" && heading[0] == 0 {
+      heading = [-1, 0]
+    } else if pressed == "right" && heading[0] == 0 {
+      heading = [1, 0]
+    }
+  }
+
+  let here = head_of(snake)
+  let next = [here[0] + heading[0], here[1] + heading[1]]
+
+  // A wall or its own body ends the game.
+  if next[0] < 0 || next[0] >= width || next[1] < 0 || next[1] >= height {
+    alive = false
+    break
+  }
+  if covers(snake, next[0], next[1]) {
+    alive = false
+    break
+  }
+
+  if next[0] == food[0] && next[1] == food[1] {
+    // Eating keeps the whole body and adds the new head, so it grows.
+    score = score + 1
+    snake = [next] + snake
+    food = place_food(snake)
+  } else {
+    // Moving is the new head followed by everything except the last
+    // segment. This one line is why arrays needed to be joinable.
+    snake = [next] + slice(snake, 0, len(snake) - 1)
+  }
+
+  clear()
+  draw(snake, food, score, width, height)
+  sleep(120)
+}
+
+show_cursor()
+print("game over, score " + str(score))

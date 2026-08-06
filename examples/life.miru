@@ -1,0 +1,86 @@
+// life.miru
+// Conway's Game of Life, drawn in place.
+// Run with: miru run examples/life.miru
+//
+// The simplest thing that animates: no input at all, just a picture, a
+// pause, and the next picture. Everything else in this file is the rules
+// of Life; the three lines that make it move are clear(), print(), and
+// sleep().
+//
+// The board is fixed at 20 by 12 rather than asked for with term_size(),
+// so this still runs when the output is a file instead of a screen.
+
+let width = 20
+let height = 12
+let generations = 24
+
+// A glider, which walks diagonally down and right forever.
+let alive = {"1,0": true, "2,1": true, "0,2": true, "1,2": true, "2,2": true}
+
+fn key(x, y) {
+  return str(x) + "," + str(y)
+}
+
+fn living(cells, x, y) {
+  // Off the edge is empty rather than an error, so the rules below do not
+  // each need to check.
+  if x < 0 || x >= width || y < 0 || y >= height {
+    return false
+  }
+  return has(cells, key(x, y))
+}
+
+fn neighbours(cells, x, y) {
+  let count = 0
+  for dy in range(-1, 2) {
+    for dx in range(-1, 2) {
+      // A cell is not its own neighbour.
+      if dx == 0 && dy == 0 {
+        continue
+      }
+      if living(cells, x + dx, y + dy) {
+        count = count + 1
+      }
+    }
+  }
+  return count
+}
+
+fn step(cells) {
+  let next = {}
+  for y in range(0, height) {
+    for x in range(0, width) {
+      let n = neighbours(cells, x, y)
+      // Three neighbours make a cell; two keep a living one alive.
+      if n == 3 || n == 2 && living(cells, x, y) {
+        next[key(x, y)] = true
+      }
+    }
+  }
+  return next
+}
+
+// Built as one string and printed once. A row at a time works and can be
+// seen working: the terminal draws each row as it arrives, and the eye
+// catches the sweep down the screen.
+fn draw(cells, generation) {
+  let out = ""
+  for y in range(0, height) {
+    for x in range(0, width) {
+      if living(cells, x, y) {
+        out = out + "#"
+      } else {
+        out = out + "."
+      }
+    }
+    out = out + "\n"
+  }
+  print(out + "generation " + str(generation))
+}
+
+for generation in range(0, generations) {
+  clear()
+  draw(alive, generation)
+  alive = step(alive)
+  sleep(80)
+}

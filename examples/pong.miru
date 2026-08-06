@@ -1,0 +1,104 @@
+// pong.miru
+// One paddle, one ball. Up and down move it, q quits.
+// Run with: miru run examples/pong.miru
+//
+// Where snake shows a world that changes only when it steps, this shows
+// one that never stops: the ball moves every tick whether or not you
+// touch anything. That is the whole reason key_ready() exists. Built on
+// read_key() alone, the ball would hang in the air until you pressed
+// something, because the program would be sitting inside the read.
+//
+// Fixed at 34 by 16 rather than asked for with term_size(), so it runs
+// with its keys piped in.
+
+let width = 34
+let height = 16
+let paddle_height = 4
+
+let ball_x = 16
+let ball_y = 8
+let ball_dx = -1
+let ball_dy = 1
+let paddle_y = 6
+let score = 0
+let alive = true
+
+fn draw(ball_x, ball_y, paddle_y, score, width, height, paddle_height) {
+  let out = ""
+  for y in range(0, height) {
+    let row = ""
+    for x in range(0, width) {
+      if x == ball_x && y == ball_y {
+        row = row + "o"
+      } else if x == 0 && y >= paddle_y && y < paddle_y + paddle_height {
+        row = row + "|"
+      } else {
+        row = row + "."
+      }
+    }
+    out = out + row + "\n"
+  }
+  print(out + "score " + str(score) + "   up and down move, q quits")
+}
+
+hide_cursor()
+
+while alive {
+  // One key per tick. The paddle moves one row per step, so a burst of
+  // presses handled all at once would teleport it.
+  if key_ready() {
+    let pressed = read_key()
+    if pressed == nil {
+      alive = false
+      break
+    }
+    if pressed == "q" || pressed == "ctrl+c" || pressed == "escape" {
+      alive = false
+      break
+    }
+    if pressed == "up" && paddle_y > 0 {
+      paddle_y = paddle_y - 1
+    } else if pressed == "down" && paddle_y + paddle_height < height {
+      paddle_y = paddle_y + 1
+    }
+  }
+
+  // The ball moves whether or not anything was pressed. This is the line
+  // that read_key() alone could not reach.
+  ball_x = ball_x + ball_dx
+  ball_y = ball_y + ball_dy
+
+  // Bounce off the top and bottom.
+  if ball_y <= 0 {
+    ball_y = 0
+    ball_dy = 1
+  } else if ball_y >= height - 1 {
+    ball_y = height - 1
+    ball_dy = -1
+  }
+
+  // Bounce off the right wall.
+  if ball_x >= width - 1 {
+    ball_x = width - 1
+    ball_dx = -1
+  }
+
+  // The paddle is the left wall, and only where it is.
+  if ball_x <= 0 {
+    if ball_y >= paddle_y && ball_y < paddle_y + paddle_height {
+      ball_x = 0
+      ball_dx = 1
+      score = score + 1
+    } else {
+      alive = false
+      break
+    }
+  }
+
+  clear()
+  draw(ball_x, ball_y, paddle_y, score, width, height, paddle_height)
+  sleep(90)
+}
+
+show_cursor()
+print("game over, score " + str(score))

@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-4_(57),_1_dev-007ec6?style=for-the-badge" alt="The language declares 4 direct dependencies, two of them platform-specific, over 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-472_passing-427819?style=for-the-badge" alt="472 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-477_passing-427819?style=for-the-badge" alt="477 tests passing"/>
 </p>
 
 <p align="center">
@@ -96,6 +96,8 @@ for name in people {
 - Errors you can catch as values, carrying the call path they came through
 - Minimal dependencies: rustyline at runtime, nix or windows-sys for raw-mode
   key reading, criterion for benchmarks
+- A terminal to draw on: `clear`, `move_to`, and the cursor, for programs that
+  animate rather than print
 - A WebAssembly build and an in-browser playground, in a separate crate
 - Unit, golden, session, and end-to-end tests, benchmarks, and CI
 
@@ -181,6 +183,9 @@ Runnable programs live in [examples/](examples):
 | [words.miru](examples/words.miru) | Word frequency: `read_file`, `split`, and counting in a map |
 | [dice.miru](examples/dice.miru) | Ten thousand rolls, drawn as a histogram |
 | [keys.miru](examples/keys.miru) | Arrow keys: `read_key` without waiting for a line |
+| [life.miru](examples/life.miru) | Conway's Life, redrawn in place: `clear` and `sleep` |
+| [snake.miru](examples/snake.miru) | Snake: `key_ready`, joining arrays, and a paced loop |
+| [pong.miru](examples/pong.miru) | Pong: a ball that keeps moving while you hold still |
 
 Run one with `miru run examples/contacts.miru`.
 
@@ -221,7 +226,7 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | **Library** | lib.rs | 1190 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
 | **Total** | **19 files** | **15119** | Written from scratch in Rust |
 
-The playground is a separate crate: 760 lines of Rust binding the language to
+The playground is a separate crate: 775 lines of Rust binding the language to
 WebAssembly, and 1672 of hand-written HTML, CSS, and JavaScript. It is counted
 apart because it is not the language, and neither its code nor its dependencies
 are involved in running a `.miru` file.

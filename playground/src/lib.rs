@@ -221,6 +221,21 @@ pub fn version() -> String {
 /// a key from, so it refuses, and an example that called it would fail
 /// `every_bundled_example_runs`.
 ///
+/// **No game can go in this list, and 1.8 is the release that made that
+/// permanent.** `life.miru`, `snake.miru`, and `pong.miru` each call `sleep`,
+/// and the two with input also call `key_ready` and `clear`. A page refuses all
+/// three, for reasons that are not oversights:
+///
+/// - `sleep` blocks, and a browser paints between turns of its event loop, so a
+///   paced loop would freeze the tab rather than animate it. Running one here
+///   needs a virtual machine that yields to that loop, which is a redesign and
+///   not a builtin.
+/// - `key_ready` and `read_key` need a keyboard buffer, which a page has not.
+/// - `clear` needs a terminal, which a page is not.
+///
+/// So the playground shows the language and a terminal runs the games. That is
+/// where `keys.miru` already sat, and now it has company.
+///
 /// The tag and the description live here rather than in the page, because they
 /// say what a program in this language demonstrates and the page should not be
 /// the thing deciding that. The page asks; this answers.

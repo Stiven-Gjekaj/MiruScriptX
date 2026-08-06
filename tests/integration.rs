@@ -356,6 +356,189 @@ fn keys_example_moves_with_the_arrow_keys() {
     );
 }
 
+/// Life runs its generations and the glider ends where the rules put it.
+///
+/// No input at all, so this is the simplest end-to-end proof that `clear` and
+/// `sleep` work through the real binary. The board is fixed rather than read
+/// from `term_size`, which is what lets it run with its output in a pipe.
+#[test]
+fn life_example_walks_the_glider() {
+    let output = miru()
+        .arg("run")
+        .arg("examples/life.miru")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("failed to launch the miru binary");
+
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("output should be valid utf-8");
+
+    // A glider walks one cell down and one right every four generations. After
+    // twenty-four it has moved six of each, from the top left corner it started
+    // in, and this is what that looks like.
+    assert!(
+        text.ends_with(
+            "....................\n\
+             ....................\n\
+             ....................\n\
+             ....................\n\
+             ....................\n\
+             ....................\n\
+             ......#.............\n\
+             .......##...........\n\
+             ......##............\n\
+             ....................\n\
+             ....................\n\
+             ....................\n\
+             generation 23\n"
+        ),
+        "the last frame was:\n{}",
+        text.lines().rev().take(14).collect::<Vec<_>>().join("\n")
+    );
+}
+
+/// **No escape sequence reaches a pipe.**
+///
+/// `clear` draws on a terminal and does nothing to a file. Were it to write
+/// through `Output` instead, or to skip the check, this output would be full of
+/// `\x1b[2J` and every golden test of every drawing program would be too.
+#[test]
+fn a_drawing_example_puts_no_control_codes_in_a_pipe() {
+    let output = miru()
+        .arg("run")
+        .arg("examples/life.miru")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("failed to launch the miru binary");
+
+    let text = String::from_utf8(output.stdout).expect("output should be valid utf-8");
+    assert!(
+        !text.contains('\x1b'),
+        "an escape sequence reached the pipe"
+    );
+}
+
+/// Snake takes one key per tick, and ends when the keys run out.
+///
+/// Three arrow keys means three ticks, then the fourth read finds the end of
+/// input and stops the game. That is `key_ready` being true at end of input;
+/// were it false, this would hang rather than fail, which is why the assertion
+/// below is on what was drawn rather than only on the exit code.
+#[test]
+fn snake_example_turns_once_per_tick() {
+    use std::io::Write;
+
+    let mut child = miru()
+        .arg("run")
+        .arg("examples/snake.miru")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+    // Right, right, down.
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(b"\x1b[C\x1b[C\x1b[B")
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("wait for miru");
+
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("output should be valid utf-8");
+
+    // Three ticks: two east, then one south. The head is below the body's
+    // right-hand end, which is what turning down looks like.
+    assert!(
+        text.contains("................##....*.......\n.................#............"),
+        "the snake did not turn down; the last frame was:\n{}",
+        text.lines().rev().take(17).collect::<Vec<_>>().join("\n")
+    );
+    assert!(
+        text.ends_with("game over, score 0\n"),
+        "ended with: {text:?}"
+    );
+}
+
+/// Quitting works, and the cursor is put back on the way out.
+#[test]
+fn snake_example_stops_on_q() {
+    use std::io::Write;
+
+    let mut child = miru()
+        .arg("run")
+        .arg("examples/snake.miru")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(b"q")
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("wait for miru");
+
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("output should be valid utf-8");
+    assert!(
+        text.ends_with("game over, score 0\n"),
+        "ended with: {text:?}"
+    );
+}
+
+/// **The one test that proves what 1.8 is for: the world moves with nobody
+/// pressing anything.**
+///
+/// Standard input is a pipe that stays open and stays silent, which is the
+/// closest a test can get to a person sitting still at a terminal. `key_ready`
+/// answers false, the read is never made, and the ball keeps going.
+///
+/// Built on `read_key` alone this would draw its first frame and then stop dead
+/// inside the read until something arrived — which is exactly the shape every
+/// game had before this release.
+///
+/// The bound is loose on purpose. A loaded machine draws fewer frames in a
+/// second, and the claim being tested is "more than one", not any particular
+/// number. What matters is that it is not one.
+#[test]
+fn pong_keeps_moving_while_nothing_is_pressed() {
+    use std::io::Write;
+
+    let mut child = miru()
+        .arg("run")
+        .arg("examples/pong.miru")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+
+    // Held open and silent, then closed, which ends the game.
+    let mut stdin = child.stdin.take().expect("child stdin");
+    std::thread::sleep(std::time::Duration::from_millis(700));
+    stdin.flush().expect("flush child stdin");
+    drop(stdin);
+
+    let output = child.wait_with_output().expect("wait for miru");
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("output should be valid utf-8");
+
+    let frames = text
+        .lines()
+        .filter(|line| line.starts_with("score "))
+        .count();
+    assert!(
+        frames > 1,
+        "the ball drew {frames} frame(s) in 700ms with nothing pressed; \
+         it should keep moving on its own"
+    );
+    assert!(
+        text.ends_with("game over, score 0\n"),
+        "ended with: {text:?}"
+    );
+}
+
 /// `key_ready` through the real binary, against a real pipe.
 ///
 /// The unit tests use a scripted keyboard, which cannot exercise `poll` on unix
