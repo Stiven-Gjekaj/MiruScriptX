@@ -12,6 +12,32 @@ semantic versioning.
 
 ### Added
 
+- **A terminal to draw on**: `clear`, `move_to`, `hide_cursor`, `show_cursor`,
+  and `term_size`. A fourth capability beside the file system, the clock, and
+  the keyboard.
+
+  `print` puts a line below the last one, which is right for a program that
+  reports and wrong for one that draws: a picture printed every frame gives a
+  column of pictures scrolling past rather than one that appears to move.
+  `clear()` empties the screen and homes the cursor, so each frame replaces the
+  last.
+
+  `move_to` counts from zero, matching how the language indexes an array, so
+  `move_to(0, 0)` is the corner `grid[0][0]` draws at.
+
+  **The cursor comes back when the program ends**, however it ends — the same
+  promise `read_key` already makes about the terminal settings it changes.
+
+  **Where the output is not a terminal, the four drawing calls do nothing.**
+  Redirect a game to a file and the file holds the text, not a mess of control
+  codes. `term_size` is the exception and fails, because a file has no width
+  and a program handed 80 would draw a board that does not fit — the same
+  reasoning that makes `now()` refuse rather than answer 1970. The bundled
+  games fix their own size for that reason, which is also what makes them
+  testable by piping keys in.
+
+  All five refuse in the playground, which is not a terminal.
+
 - **`key_ready()`**, which says whether `read_key()` would answer without
   waiting.
 
