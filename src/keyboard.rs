@@ -141,6 +141,29 @@ impl miruscriptx::value::Keyboard for RealKeyboard {
             }
         })
     }
+
+    fn key_ready(&mut self) -> Result<bool, String> {
+        // Bytes already read and not yet used mean the next `read_key` needs no
+        // terminal at all. Checking this first is not an optimisation: the tail
+        // of an unrecognised escape sequence lives here, and asking the platform
+        // whether *more* has arrived would say no while a whole key sat in
+        // this buffer waiting to be decoded.
+        if !self.pending.is_empty() {
+            return Ok(true);
+        }
+        // Raw mode is entered on the first read, and a program that asks
+        // whether a key is ready is about to read one. Entering here as well
+        // keeps the two calls agreeing about what standard input is; without
+        // it, the first `key_ready` of a run would poll a terminal that is
+        // still line-buffered and answer about a line rather than a key.
+        if matches!(self.raw, Raw::Untried) {
+            self.raw = match RawMode::enter()? {
+                Some(mode) => Raw::On(mode),
+                None => Raw::NotATerminal,
+            };
+        }
+        bytes_waiting()
+    }
 }
 
 /// Turn one byte, and whatever follows it, into a key name.
@@ -317,6 +340,24 @@ mod platform {
         }
         read_bytes()
     }
+
+    /// Whether a read of standard input would return without waiting.
+    ///
+    /// `poll` with no timeout at all answers exactly that question, and answers
+    /// it correctly for a terminal, a pipe, and a file alike. **A closed stream
+    /// polls as readable**, which is the behaviour `Keyboard::key_ready`
+    /// requires: the read that follows gives nothing and the caller's loop ends,
+    /// rather than waiting for a key that will never come.
+    pub fn bytes_waiting() -> Result<bool, String> {
+        use nix::poll::{PollFd, PollFlags, PollTimeout};
+        use std::os::fd::AsFd;
+
+        let stdin = std::io::stdin();
+        let mut fds = [PollFd::new(stdin.as_fd(), PollFlags::POLLIN)];
+        let ready = nix::poll::poll(&mut fds, PollTimeout::ZERO)
+            .map_err(|err| format!("cannot check the keyboard: {err}"))?;
+        Ok(ready != 0)
+    }
 }
 
 #[cfg(windows)]
@@ -393,9 +434,77 @@ mod platform {
     pub fn read_bytes_soon() -> Result<Vec<u8>, String> {
         Ok(Vec::new())
     }
+
+    /// Whether a read of standard input would return without waiting.
+    ///
+    /// **This is the one place where counting would be a defect rather than an
+    /// approximation.** `GetNumberOfConsoleInputEvents` counts every input
+    /// record: mouse movement, a window resize, a focus change, and a key being
+    /// *released* as well as pressed. None of those produce a byte to read. A
+    /// count above zero would therefore say "ready", the caller would call
+    /// `read_key`, and the program would stop dead inside a blocking read
+    /// because the mouse moved. So this peeks at the records and looks for one
+    /// that will actually yield a byte: a key-down carrying a character.
+    ///
+    /// `PeekConsoleInputW` leaves the records in the buffer, so the read that
+    /// follows still sees them.
+    ///
+    /// When standard input is not a console — a pipe or a file — this answers
+    /// `true`. A read there returns promptly with either bytes or end of input,
+    /// which is what the caller needs to know. The case this gets wrong is a
+    /// pipe whose writer is slow and still open, where the read can block after
+    /// all; that costs a paused frame rather than a wrong answer, and a game
+    /// driven down a slow pipe is not a thing anybody does. `poll` on unix has
+    /// no such gap, so the two platforms differ here and this comment is why.
+    pub fn bytes_waiting() -> Result<bool, String> {
+        use windows_sys::Win32::System::Console::{PeekConsoleInputW, INPUT_RECORD, KEY_EVENT};
+
+        let handle = stdin_handle()?;
+
+        // A console has a mode; a pipe does not. This is the same question
+        // `RawMode::enter` asks to decide whether there is a terminal at all.
+        let mut mode = 0u32;
+        // SAFETY: `handle` is a valid standard-input handle from
+        // `stdin_handle`, and `mode` is a live u32 for the duration.
+        if unsafe { GetConsoleMode(handle, &mut mode) } == 0 {
+            return Ok(true);
+        }
+
+        // Sixteen is enough that a burst of held keys does not hide a real one
+        // behind a run of mouse records, and small enough to sit on the stack.
+        let mut records: [INPUT_RECORD; 16] = unsafe { std::mem::zeroed() };
+        let mut read = 0u32;
+        // SAFETY: `records` is a live array of `records.len()` elements and
+        // `read` is a live u32. `PeekConsoleInputW` writes at most that many.
+        let ok = unsafe {
+            PeekConsoleInputW(
+                handle,
+                records.as_mut_ptr(),
+                records.len() as u32,
+                &mut read,
+            )
+        };
+        if ok == 0 {
+            return Err("cannot check the console".to_string());
+        }
+
+        for record in records.iter().take(read as usize) {
+            if record.EventType != KEY_EVENT as u16 {
+                continue;
+            }
+            // SAFETY: the union is read as the variant `EventType` names.
+            let key = unsafe { record.Event.KeyEvent };
+            // A release produces no byte, and neither does a bare modifier,
+            // which arrives as a key-down whose character is zero.
+            if key.bKeyDown != 0 && unsafe { key.uChar.UnicodeChar } != 0 {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
 }
 
-use platform::{read_bytes, read_bytes_soon};
+use platform::{bytes_waiting, read_bytes, read_bytes_soon};
 
 /// How many bytes one read asks for.
 ///

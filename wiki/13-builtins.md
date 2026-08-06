@@ -381,6 +381,45 @@ if is_error(k) {
 }
 ```
 
+## key_ready()
+
+`read_key()` waits. That is usually what you want, and for anything that moves
+it is exactly what you do not: **your program only gets to do something when
+somebody presses a key.** A ball cannot fall while you sit still, because your
+program is not running — it is waiting inside `read_key()`.
+
+`key_ready()` tells you whether `read_key()` would answer straight away, so you
+can look without committing to a wait:
+
+```
+while true {
+  while key_ready() {
+    let k = read_key()
+    if k == nil { return }
+    if k == "q" || k == "ctrl+c" { return }
+    turn(k)
+  }
+  fall()          // happens whether or not anybody pressed anything
+  draw()
+  sleep(50)
+}
+```
+
+The inner loop takes **everything** pressed since the last picture, rather than
+one key. Somebody who presses three keys quickly gets all three handled now,
+instead of one now and the others over the next two pictures.
+
+**It answers `true` when the keys have run out**, which sounds wrong and is the
+useful part. It is telling you the read will not make you wait — and a read at
+the end does not, it gives `nil` at once. That is what lets the loop above
+notice the end and stop. If it said `false` there instead, the loop would go
+round forever waiting for a key that is never coming.
+
+So `key_ready()` means *"will reading make me wait?"*, not *"is a key down?"*.
+
+Where there is no keyboard at all it fails rather than saying `false`, because
+"nothing is pressed" would be a lie about a keyboard that does not exist.
+
 ## now()
 
 `now()` gives the number of milliseconds since the start of 1970, as an integer.

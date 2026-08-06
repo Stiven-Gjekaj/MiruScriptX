@@ -202,6 +202,33 @@ pub trait Keyboard {
     /// The name is one of the words section 8.11 of the specification lists, or
     /// the character itself when the key produced one.
     fn read_key(&mut self) -> Result<Option<String>, String>;
+
+    /// Whether [`Keyboard::read_key`] would return without waiting.
+    ///
+    /// **This is not "a key is waiting", and the difference is the whole point
+    /// of the method.** At the end of input it is `true`, because a read there
+    /// returns `None` immediately rather than blocking. A loop can therefore
+    /// use it as its only guard and still stop:
+    ///
+    /// ```text
+    /// while key_ready() {
+    ///     let k = read_key()
+    ///     if k == nil { break }   // reached the end, and got there at once
+    ///     ...
+    /// }
+    /// ```
+    ///
+    /// Saying "a key is waiting" instead would make that loop never terminate
+    /// on a closed stream, because it would answer `false` forever while the
+    /// caller waited for a key that is never coming. It is also what makes a
+    /// game testable: piping a script of keys in runs exactly that many frames
+    /// and then ends.
+    ///
+    /// A host that gets this wrong in the other direction is worse. Answering
+    /// `true` when a read *would* block hangs the program inside `read_key`
+    /// with nothing arriving, which is why the Windows implementation looks for
+    /// a key-down record rather than counting console events.
+    fn key_ready(&mut self) -> Result<bool, String>;
 }
 
 /// A [`Keyboard`] with no keys.
@@ -218,6 +245,16 @@ impl NoKeyboard {
 
 impl Keyboard for NoKeyboard {
     fn read_key(&mut self) -> Result<Option<String>, String> {
+        Err(NoKeyboard::REFUSAL.to_string())
+    }
+
+    /// Refused rather than answered `false`.
+    ///
+    /// `false` would be the reading "no key is waiting", which is true of a
+    /// host with no keyboard and is exactly the wrong thing to tell a program:
+    /// a loop guarded by it would spin forever waiting for a keyboard that does
+    /// not exist. The refusal says the difference, and `try` catches it.
+    fn key_ready(&mut self) -> Result<bool, String> {
         Err(NoKeyboard::REFUSAL.to_string())
     }
 }
@@ -261,6 +298,11 @@ impl<'a> Ambient<'a> {
     /// The next key from the host's keyboard, or its refusal.
     pub fn read_key(&mut self) -> Result<Option<String>, String> {
         self.keyboard.read_key()
+    }
+
+    /// Whether reading a key would return without waiting.
+    pub fn key_ready(&mut self) -> Result<bool, String> {
+        self.keyboard.key_ready()
     }
 
     /// The generator, seeded from the clock the first time a program asks for

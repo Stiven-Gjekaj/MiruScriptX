@@ -754,7 +754,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 54 builtins. A program can use each of them without an import.
+There are 55 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -990,9 +990,32 @@ later 1.x can change the generator. Section 3.8 of the
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
 | `read_key()` | 0 | The next key, as a string. `nil` when there are no more. |
+| `key_ready()` | 0 | `true` if `read_key()` gives an answer without waiting. |
 
 `input()` waits for a whole line. `read_key()` waits for one key and gives it
 back immediately.
+
+**`key_ready()` says whether a read waits. It does not say whether a key is
+pressed.** The two are different at the end of input, where `read_key()` gives
+`nil` immediately: `key_ready()` is `true` there.
+
+This is the rule that makes a loop end. A program that reads only when a key is
+ready must still be able to learn that no key is ever coming:
+
+```
+while key_ready() {
+  let k = read_key()
+  if k == nil { break }
+  handle(k)
+}
+```
+
+If `key_ready()` were `false` at the end of input, the loop above would stop,
+but a program that asks again on each turn would ask forever.
+
+`key_ready()` gives an error where the host has no keyboard, and `try` catches
+it. It does not give `false`. `false` means "no key is waiting now", which is a
+statement about a keyboard that exists.
 
 A key that makes a character gives that character: `"a"`, `"A"`, `" "`, `"é"`.
 One character, not one byte.

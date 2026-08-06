@@ -356,6 +356,73 @@ fn keys_example_moves_with_the_arrow_keys() {
     );
 }
 
+/// `key_ready` through the real binary, against a real pipe.
+///
+/// The unit tests use a scripted keyboard, which cannot exercise `poll` on unix
+/// or `PeekConsoleInputW` on windows. This is the only test that reaches the
+/// platform code, so it is the one that would catch a `key_ready` which said
+/// "no" forever — the shape of failure that makes every game freeze.
+///
+/// The loop is bounded so that a wrong answer fails the suite by giving the
+/// wrong count rather than by hanging it.
+#[test]
+fn key_ready_reports_a_pipe_as_readable_and_the_loop_drains_it() {
+    use std::io::Write;
+
+    let program = "let seen = 0\nlet frames = 0\nlet stop = false\n\
+                   while frames < 3 && !stop {\n  \
+                     while key_ready() {\n    \
+                       let k = read_key()\n    \
+                       if k == nil {\n      stop = true\n      break\n    }\n    \
+                       seen = seen + 1\n  }\n  \
+                     frames = frames + 1\n}\n\
+                   print(seen, stop)";
+
+    let mut child = miru()
+        .arg("-e")
+        .arg(program)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(b"abcd")
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("wait for miru");
+
+    assert!(output.status.success());
+    // Four keys, all taken in the first frame, and then the closed pipe read as
+    // ready so the `nil` arrived and stopped the loop.
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("output should be valid utf-8"),
+        "4 true\n"
+    );
+}
+
+/// A closed input is *ready*, which is the property a game depends on.
+///
+/// Were end of input reported as "not ready", this program would run its three
+/// frames and report `false`, and a real game would go round forever with no
+/// way to learn that its input had gone.
+#[test]
+fn key_ready_is_true_at_end_of_input_rather_than_false() {
+    let output = miru()
+        .arg("-e")
+        .arg("print(key_ready())")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("failed to launch the miru binary");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("output should be valid utf-8"),
+        "true\n"
+    );
+}
+
 /// With nothing piped in, the loop ends at the first `nil` rather than spinning.
 #[test]
 fn keys_example_ends_at_end_of_input() {

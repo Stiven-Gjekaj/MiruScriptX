@@ -409,6 +409,18 @@ impl value::Keyboard for ScriptedKeyboard {
     fn read_key(&mut self) -> Result<Option<String>, String> {
         Ok(self.keys.next())
     }
+
+    /// Always ready, which is the honest answer for a scripted keyboard and not
+    /// a shortcut.
+    ///
+    /// A read here never waits: either a key is left, or the script has run out
+    /// and the read gives `None` at once. Both are "a read will not block", so
+    /// this is `true` even when the script is empty — the same answer a real
+    /// keyboard gives at end of input, and the reason a loop guarded by it ends
+    /// instead of spinning.
+    fn key_ready(&mut self) -> Result<bool, String> {
+        Ok(true)
+    }
 }
 
 /// Remove a single trailing newline (and any preceding carriage return).
@@ -720,6 +732,65 @@ mod tests {
         // Two, not three: `ctrl+c` breaks before the counter moves, and the
         // `d` after it is never read.
         assert_eq!(captured.out, "2\n");
+    }
+
+    /// A drain loop takes everything pressed since the last frame, in one frame.
+    ///
+    /// This is the shape the wiki teaches, and the property it has that reading
+    /// one key per turn does not: four keys pressed while a frame was being
+    /// drawn are all handled on the next frame, rather than arriving one per
+    /// frame over the four frames after that.
+    #[test]
+    fn a_frame_drains_every_key_pressed_since_the_last_one() {
+        let captured = run_capture_all_with(
+            "let seen = []\nwhile key_ready() {\n  let k = read_key()\n  \
+             if k == nil { break }\n  push(seen, k)\n}\nprint(len(seen))",
+            &[],
+            Host {
+                keyboard: Box::new(ScriptedKeyboard::new(&["a", "b", "c", "d"])),
+                ..Host::none()
+            },
+        )
+        .expect("the program runs");
+        assert_eq!(captured.out, "4\n");
+    }
+
+    /// **The property that keeps a drain loop from spinning forever.**
+    ///
+    /// `key_ready` reports that a read will not wait, not that a key exists, so
+    /// it stays `true` once the keys have run out. The read then gives `nil`
+    /// and the loop breaks. Were it `false` at the end instead, this program
+    /// would still terminate — but a game's outer loop, which asks again every
+    /// frame, would never learn that the input had closed.
+    #[test]
+    fn key_ready_stays_true_at_the_end_so_the_read_can_report_it() {
+        let captured = run_capture_all_with(
+            "print(key_ready())\nprint(read_key())\nprint(key_ready())\nprint(read_key())",
+            &[],
+            Host {
+                keyboard: Box::new(ScriptedKeyboard::new(&["a"])),
+                ..Host::none()
+            },
+        )
+        .expect("the program runs");
+        assert_eq!(captured.out, "true\na\ntrue\nnil\n");
+    }
+
+    /// A host with no keyboard refuses rather than answering `false`.
+    ///
+    /// `false` reads as "nothing is pressed", which would send a game round its
+    /// loop forever waiting for a keyboard that does not exist. The playground
+    /// is that host.
+    #[test]
+    fn key_ready_refuses_where_there_is_no_keyboard() {
+        let Err(error) = run_capture_all("key_ready()") else {
+            panic!("a host with no keyboard answered whether a key was ready");
+        };
+        assert!(
+            error.message.contains("there is no keyboard"),
+            "the message was {:?}",
+            error.message
+        );
     }
 
     /// The captures that everything else uses grant no clock, which is what

@@ -65,6 +65,7 @@ pub fn register(globals: &mut Globals) {
     define_ambient(globals, "random_int", random_int);
     define_ambient(globals, "seed", seed);
     define_ambient(globals, "read_key", read_key);
+    define_ambient(globals, "key_ready", key_ready);
     define_host(globals, "sort", sort);
     define_host(globals, "map", map);
     define_host(globals, "filter", filter);
@@ -1183,6 +1184,36 @@ fn read_key(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
     })
 }
 
+/// `key_ready()` says whether `read_key()` would answer without waiting.
+///
+/// **This is what lets a loop go round when nobody has pressed anything.**
+/// `read_key` on its own waits, so a loop built from it only advances once per
+/// key: a program cannot move something across the screen while the person
+/// holds still, because it never gets control back to do it. Guarding the read
+/// turns that inside out, and the world advances whether a key came or not.
+///
+/// ```text
+/// while true {
+///   while key_ready() { handle(read_key()) }   // take everything pressed
+///   advance()                                  // whether or not any was
+///   draw()
+///   sleep(50)
+/// }
+/// ```
+///
+/// The inner loop drains rather than reading one, so a burst of keys pressed
+/// inside one frame is all seen in that frame instead of arriving one per
+/// frame for the next several.
+///
+/// **It is `true` at end of input**, because a read there answers at once. That
+/// is what stops the drain loop above from spinning forever on a closed stream:
+/// the read gives `nil` and the program can stop. It reports whether a read
+/// will wait, not whether a key exists, and the two differ exactly there.
+fn key_ready(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("key_ready", &args, 0)?;
+    ambient.key_ready().map(Value::Bool)
+}
+
 /// `input()` reads one line from the input source and returns it as a string,
 /// or `nil` at end of input. `input(prompt)` writes the prompt string first.
 fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
@@ -1254,8 +1285,8 @@ impl Args {
     ///
     /// Forty is the count of `define` calls, not the count of builtins. The
     /// two were the same figure until 1.1 and are not any more: there are
-    /// fifty-four builtins, of which four take a `SystemFn`, six take an
-    /// `AmbientFn`, and four take a `HostFn`, and none of those fourteen would
+    /// fifty-five builtins, of which four take a `SystemFn`, seven take an
+    /// `AmbientFn`, and four take a `HostFn`, and none of those fifteen would
     /// be touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
@@ -2292,21 +2323,21 @@ mod count {
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
-            ambient, 6,
-            "{ambient} builtins take an AmbientFn, not 6. This kind arrived in \
+            ambient, 7,
+            "{ambient} builtins take an AmbientFn, not 7. This kind arrived in \
              1.5 and is quoted by `Args::into_vec` above."
         );
         assert_eq!(
             plain + system + ambient,
-            50,
-            "{} builtins reach `call_native`, not 50. Quoted by the caught-error \
+            51,
+            "{} builtins reach `call_native`, not 51. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
         assert_eq!(
             host, 4,
             "{host} builtins are higher-order, not 4. Quoted by the same two \
-             places, which say the other fourteen take a different signature."
+             places, which say the other fifteen take a different signature."
         );
         assert_eq!(
             plain + system + ambient + host,
@@ -2319,7 +2350,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 54] = [
+pub const BUILTIN_NAMES: [&str; 55] = [
     "print",
     "eprint",
     "exit",
@@ -2370,6 +2401,7 @@ pub const BUILTIN_NAMES: [&str; 54] = [
     "random_int",
     "seed",
     "read_key",
+    "key_ready",
     "sort",
     "map",
     "filter",
