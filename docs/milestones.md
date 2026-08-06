@@ -509,14 +509,22 @@ obvious tidy-up and does not work: **a tag pushed with `GITHUB_TOKEN` does not
 trigger `on: push`**, because GitHub suppresses that to stop workflows setting
 each other off. The tag would be made and the release would never run.
 
-**A Pages deploy that times out cannot be fixed by re-running it**, and the
-reason is worth writing down because the obvious response to a red deploy is to
-press the button again. Three deploys in a row sat at `deployment_queued` and
-hit `actions/deploy-pages`'s ten-minute limit, and a timing-out job ends with
-`Canceling Pages deployment...`. **The deployment ID is the commit SHA.** So a
-re-run of that same run creates a deployment with an ID that is already in a
-cancelled state, and GitHub answers `Deployment cancelled.` in seven seconds.
-Only a new commit, with a new SHA, can deploy.
+**A Pages deploy stuck at `deployment_queued` is an environment waiting for
+approval**, and the logs never say so. Four deploys in a row hit
+`actions/deploy-pages`'s ten-minute limit reporting nothing but
+`Current status: deployment_queued`. The cause was a protection rule on the
+`github-pages` environment: every deployment sat pending a reviewer, and the
+action has no way to report that, because from where it stands a queued
+deployment and an unapproved one look identical. **The Actions run page says it
+in one line — `is waiting for github-pages deployment approval` — and the job
+log never will.** Read the run page before the log.
+
+**Such a deploy cannot be fixed by re-running it either**, which is worth
+writing down because pressing the button again is the obvious response. A
+timing-out job ends with `Canceling Pages deployment...`, and **the deployment
+ID is the commit SHA**, so a re-run asks for an ID already in a cancelled state
+and GitHub answers `Deployment cancelled.` in seven seconds. Even with the gate
+cleared, that particular SHA is spent; only a new commit can deploy.
 
 That is also why a red Pages deploy is not automatically a broken site. The
 build half of the workflow is separate and kept passing, and nothing under
