@@ -12,6 +12,25 @@ semantic versioning.
 
 ### Added
 
+- **`+` joins two arrays**, and **`insert(array, index, value)`** puts a value
+  anywhere rather than only at the end.
+
+  ```
+  print([1, 2] + [3])       // [1, 2, 3]
+
+  let queue = ["b", "c"]
+  insert(queue, 0, "a")     // ["a", "b", "c"]
+  ```
+
+  Adding gives a **new** array and changes neither operand — `push` remains the
+  spelling for growing an array you already have. Only array with array; every
+  other pairing stays the error it was.
+
+  `insert` takes an index from `0` to the length, where the length appends.
+  Past that is an error rather than a quiet append, following indexing rather
+  than `slice`: `slice` clamps because a range asking for more than exists can
+  give what exists, but a position past the end is arithmetic that went wrong.
+
 - **A terminal to draw on**: `clear`, `move_to`, `hide_cursor`, `show_cursor`,
   and `term_size`. A fourth capability beside the file system, the clock, and
   the keyboard.
