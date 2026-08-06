@@ -132,6 +132,7 @@ pub struct Host {
     pub system: Box<dyn value::System>,
     pub clock: Box<dyn value::Clock>,
     pub keyboard: Box<dyn value::Keyboard>,
+    pub screen: Box<dyn value::Screen>,
 }
 
 impl Host {
@@ -141,6 +142,7 @@ impl Host {
             system: Box::new(value::NoSystem),
             clock: Box::new(value::NoClock),
             keyboard: Box::new(value::NoKeyboard),
+            screen: Box::new(value::NoScreen),
         }
     }
 
@@ -148,6 +150,7 @@ impl Host {
         vm.set_system(self.system);
         vm.set_clock(self.clock);
         vm.set_keyboard(self.keyboard);
+        vm.set_screen(self.screen);
     }
 }
 
@@ -732,6 +735,109 @@ mod tests {
         // Two, not three: `ctrl+c` breaks before the counter moves, and the
         // `d` after it is never read.
         assert_eq!(captured.out, "2\n");
+    }
+
+    /// A screen that records what it was asked to do, rather than doing it.
+    struct ScriptedScreen {
+        done: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    }
+
+    impl value::Screen for ScriptedScreen {
+        fn clear(&mut self) -> Result<(), String> {
+            self.done.borrow_mut().push("clear".to_string());
+            Ok(())
+        }
+
+        fn move_to(&mut self, column: i64, row: i64) -> Result<(), String> {
+            self.done
+                .borrow_mut()
+                .push(format!("move_to {column} {row}"));
+            Ok(())
+        }
+
+        fn hide_cursor(&mut self) -> Result<(), String> {
+            self.done.borrow_mut().push("hide".to_string());
+            Ok(())
+        }
+
+        fn show_cursor(&mut self) -> Result<(), String> {
+            self.done.borrow_mut().push("show".to_string());
+            Ok(())
+        }
+
+        fn size(&mut self) -> Result<(i64, i64), String> {
+            Ok((80, 24))
+        }
+    }
+
+    /// Every screen builtin reaches the host, with the arguments it was given.
+    #[test]
+    fn the_screen_builtins_reach_the_host() {
+        let done = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let captured = run_capture_all_with(
+            "hide_cursor()\nclear()\nmove_to(3, 7)\nprint(term_size())\nshow_cursor()",
+            &[],
+            Host {
+                screen: Box::new(ScriptedScreen {
+                    done: std::rc::Rc::clone(&done),
+                }),
+                ..Host::none()
+            },
+        )
+        .expect("the program runs");
+        assert_eq!(captured.out, "[80, 24]\n");
+        assert_eq!(
+            done.borrow().as_slice(),
+            ["hide", "clear", "move_to 3 7", "show"]
+        );
+    }
+
+    /// **Drawing does not go into the program's output.**
+    ///
+    /// `clear` reaches the screen capability, never `Output::write`. Were the
+    /// escape sequence written to the output stream instead, this capture would
+    /// hold control codes, and so would every golden test of every program that
+    /// happened to clear.
+    #[test]
+    fn clearing_the_screen_puts_nothing_in_the_programs_output() {
+        let done = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let captured = run_capture_all_with(
+            "clear()\nprint(\"only this\")",
+            &[],
+            Host {
+                screen: Box::new(ScriptedScreen {
+                    done: std::rc::Rc::clone(&done),
+                }),
+                ..Host::none()
+            },
+        )
+        .expect("the program runs");
+        assert_eq!(captured.out, "only this\n");
+        assert_eq!(done.borrow().as_slice(), ["clear"]);
+    }
+
+    /// A host with no terminal refuses, rather than quietly doing nothing.
+    ///
+    /// The playground is that host. Doing nothing would let a program there
+    /// draw every frame on top of the last one and never say why.
+    #[test]
+    fn the_screen_builtins_refuse_where_there_is_no_terminal() {
+        for program in [
+            "clear()",
+            "move_to(0, 0)",
+            "hide_cursor()",
+            "show_cursor()",
+            "term_size()",
+        ] {
+            let Err(error) = run_capture_all(program) else {
+                panic!("{program} worked on a host with no terminal");
+            };
+            assert!(
+                error.message.contains("there is no terminal"),
+                "{program} gave {:?}",
+                error.message
+            );
+        }
     }
 
     /// A drain loop takes everything pressed since the last frame, in one frame.

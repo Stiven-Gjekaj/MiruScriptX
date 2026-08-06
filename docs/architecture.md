@@ -523,18 +523,28 @@ way: real standard input in the binary, a scripted buffer in
 
 ### A capability the host may not have is a value, not a `cfg`
 
-`Output` and `Input` are always there. `System`, `Clock`, and `Keyboard` are
-not, and they are the three traits an embedder decides about: the file system
-and command line, the wall clock that `now()` reads, and the keyboard that
-`read_key()` reads. A VM given none of them refuses all three, so nothing gains
-file access, a time, or a keypress by accident. `Host` in `src/lib.rs` carries
-the three together, because a call site holding three positional boxes says
-nothing about which is which.
+`Output` and `Input` are always there. `System`, `Clock`, `Keyboard`, and
+`Screen` are not, and they are the four traits an embedder decides about: the
+file system and command line, the wall clock that `now()` reads, the keyboard
+that `read_key()` reads, and the terminal that `clear()` draws on. A VM given
+none of them refuses all four, so nothing gains file access, a time, a keypress,
+or a screen by accident. `Host` in `src/lib.rs` carries the four together,
+because a call site holding four positional boxes says nothing about which is
+which.
 
 They are separate traits because a host can have one and not the others. The
 browser playground is exactly that case: a page can answer `Date.now()`, cannot
-open a file, and has no keyboard buffer, so it supplies a `Clock` and neither of
-the others.
+open a file, has no keyboard buffer, and is not a terminal, so it supplies a
+`Clock` and none of the others.
+
+**`Screen` is not `Output`, and that distinction is load-bearing.**
+`Output::write` is the program's *result*, which a caller may capture, pipe, or
+compare against an expected string. Clearing the screen is an effect on a
+device. Sending `\x1b[2J` through `Output` would put control codes inside every
+`run_capture` string, so a golden test of any program that happened to clear
+would be asserting on them. `src/screen.rs` writes to standard output directly,
+and does nothing at all when standard output is not a terminal — which is what
+keeps a game's output comparable when it is piped into a test.
 
 **Neither is conditional compilation, and this is the reason.** `std::fs` in a
 WebAssembly build has no file system and no way to say so; `SystemTime::now`

@@ -2,6 +2,7 @@
 
 mod keyboard;
 mod repl;
+mod screen;
 
 use std::process::ExitCode;
 
@@ -155,6 +156,7 @@ fn host(system: Box<RealSystem>) -> miruscriptx::Host {
         system,
         clock: Box::new(RealClock),
         keyboard: Box::new(keyboard::RealKeyboard::new()),
+        screen: Box::new(screen::RealScreen::new()),
     }
 }
 

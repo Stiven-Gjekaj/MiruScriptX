@@ -25,7 +25,7 @@ use crate::random::Rng;
 use crate::suggest::with_suggestion;
 use crate::value::{
     Ambient, Clock, Closure, CompiledFunction, EmptyInput, Input, Keyboard, NativeFn, NoClock,
-    NoKeyboard, NoSystem, Output, System, Upvalue, Value,
+    NoKeyboard, NoScreen, NoSystem, Output, Screen, System, Upvalue, Value,
 };
 use crate::MiruError;
 
@@ -181,6 +181,9 @@ pub struct Vm {
     /// The host's keyboard, on the same terms again: absent until an embedder
     /// supplies one, so no program reads a key the host never had.
     keyboard: Box<dyn Keyboard>,
+    /// The host's terminal, on the same terms: absent until an embedder
+    /// supplies one, so no program draws on a screen the host never had.
+    screen: Box<dyn Screen>,
     /// The random number generator, or `None` until a program asks for a
     /// number or sets a seed.
     ///
@@ -248,6 +251,7 @@ impl Vm {
             system: Box::new(NoSystem),
             clock: Box::new(NoClock),
             keyboard: Box::new(NoKeyboard),
+            screen: Box::new(NoScreen),
             rng: None,
             exit: None,
             line: 0,
@@ -307,6 +311,14 @@ impl Vm {
     /// take a key from.
     pub fn set_keyboard(&mut self, keyboard: Box<dyn Keyboard>) {
         self.keyboard = keyboard;
+    }
+
+    /// Give this VM a terminal, which `clear` and the rest draw on.
+    ///
+    /// On the same terms as [`Vm::set_keyboard`], and absent in the playground
+    /// for the same reason: a page is not a terminal.
+    pub fn set_screen(&mut self, screen: Box<dyn Screen>) {
+        self.screen = screen;
     }
 
     /// Flush any buffered output.
@@ -1094,7 +1106,7 @@ impl Vm {
         // program never dealt with into a line of output that looks
         // deliberate.
         //
-        // Checking here covers fifty-one at once: every builtin that arrives
+        // Checking here covers fifty-six at once: every builtin that arrives
         // as a `Value::Builtin`, which is the plain ones, the system ones, and
         // the ambient ones.
         // It does not cover the four higher-order builtins, because those
@@ -1147,7 +1159,12 @@ impl Vm {
                     // the input source, so borrowing the field it does need is
                     // an ordinary field borrow and nothing has to be moved out.
                     NativeFn::Ambient(func) => func(
-                        &mut Ambient::new(&mut *self.clock, &mut *self.keyboard, &mut self.rng),
+                        &mut Ambient::new(
+                            &mut *self.clock,
+                            &mut *self.keyboard,
+                            &mut *self.screen,
+                            &mut self.rng,
+                        ),
                         args,
                     ),
                 };

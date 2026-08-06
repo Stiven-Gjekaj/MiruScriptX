@@ -1292,6 +1292,55 @@ if is_error(waited) {
 That is why anything that moves is a program for a terminal, and why you will
 not find one in the playground.
 
+## clear(), move_to(column, row), and the cursor
+
+`print` puts a line below the last one. That is right for a program that reports
+what it did and wrong for one that draws, because a picture printed every frame
+gives you a column of pictures scrolling past rather than one that moves.
+
+`clear()` empties the screen and puts the cursor back at the top left, so the
+next picture lands where the last one was:
+
+```
+let at = 0
+while at < 20 {
+  clear()
+  print(repeat_dots(at) + "#")
+  at = at + 1
+  sleep(100)
+}
+```
+
+**Build the whole picture as one string and print it once.** Printing it a row
+at a time works, and you can see it happening: the terminal draws each row as it
+arrives, and the eye catches the sweep down the screen.
+
+`move_to(column, row)` puts the cursor somewhere without clearing. It counts
+from zero, so `move_to(0, 0)` is the top left — the same corner `grid[0][0]`
+means.
+
+`hide_cursor()` stops the terminal drawing the cursor, which otherwise sits
+blinking wherever your last character went. `show_cursor()` puts it back, and
+**so does the end of your program**, however it ends. You do not have to pair
+them, just as you do not have to put the terminal back after `read_key()`.
+
+`term_size()` gives `[columns, rows]`.
+
+### When your output is not a terminal
+
+Send a program's output to a file and there is no screen to draw on. `clear()`,
+`move_to()`, and the two cursor calls **do nothing** in that case, which is what
+you want: your file holds the text you printed instead of a mess of control
+characters.
+
+`term_size()` is the exception and **fails**, because there is no honest answer.
+A file is not eighty columns wide; it has no columns. Giving you a number would
+make you draw a picture sized for a screen that is not there.
+
+That is why the games in `examples/` pick their own size rather than asking. It
+also means you can pipe keys into one and compare what it prints, which is how
+they are tested.
+
 ## random(), random_int(low, high), and seed(n)
 
 `random()` gives a number from 0 up to but not including 1. `random_int(low,

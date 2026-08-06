@@ -754,7 +754,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 55 builtins. A program can use each of them without an import.
+There are 60 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -1055,6 +1055,47 @@ end: the last statement, an error, and `exit`.
 > terminal gives `"ctrl+c"` to the program instead. A program that reads keys in
 > a loop must decide what to do with that key. A program that ignores it cannot
 > be stopped from the keyboard.
+
+### 8.12 The terminal
+
+| Builtin | Arguments | Result |
+| ------- | --------- | ------ |
+| `clear()` | 0 | Clears the screen. Puts the cursor at the top left. Gives `nil`. |
+| `move_to(column, row)` | 2 | Puts the cursor there. Gives `nil`. |
+| `hide_cursor()` | 0 | Stops the terminal from drawing the cursor. Gives `nil`. |
+| `show_cursor()` | 0 | Draws the cursor again. Gives `nil`. |
+| `term_size()` | 0 | An array of two integers: the columns, then the rows. |
+
+The terminal is a capability. Section 8.2 gives the rule for the file system,
+8.9 for the clock, and 8.11 for the keyboard. The terminal is the fourth. A host
+can have any of these without the others.
+
+**`move_to` counts from zero.** `move_to(0, 0)` is the top left corner. This
+matches how the language indexes an array. A negative column or row is an error.
+
+**The cursor returns when the program ends.** This happens for all three ways a
+program can end: the last statement, an error, and `exit`. A program does not
+have to call `show_cursor`. Section 8.11 gives the same rule for the terminal
+settings that `read_key` changes.
+
+#### Where the output is not a terminal
+
+`clear`, `move_to`, `hide_cursor`, and `show_cursor` **do nothing** if the
+program's output is not a terminal. This happens when the output goes to a file
+or to another program. There is no screen, so there is nothing to do, and the
+program continues. The output of the program does not contain the control
+characters that a terminal needs.
+
+`term_size` is different. It gives an **error**, and `try` catches it. There is
+no correct number of columns for a file. A program that receives a wrong size
+draws a picture of the wrong size. Section 8.9 gives the same rule for the
+clock: a wrong answer is worse than a refusal.
+
+A program that must run with its output in a file therefore must not call
+`term_size`, or must catch the error.
+
+All five give an error where the host has no terminal at all, such as the
+browser playground.
 
 ---
 

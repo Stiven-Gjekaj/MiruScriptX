@@ -66,6 +66,11 @@ pub fn register(globals: &mut Globals) {
     define_ambient(globals, "seed", seed);
     define_ambient(globals, "read_key", read_key);
     define_ambient(globals, "key_ready", key_ready);
+    define_ambient(globals, "clear", clear);
+    define_ambient(globals, "move_to", move_to);
+    define_ambient(globals, "hide_cursor", hide_cursor);
+    define_ambient(globals, "show_cursor", show_cursor);
+    define_ambient(globals, "term_size", term_size);
     define_host(globals, "sort", sort);
     define_host(globals, "map", map);
     define_host(globals, "filter", filter);
@@ -1214,6 +1219,81 @@ fn key_ready(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
     ambient.key_ready().map(Value::Bool)
 }
 
+/// `clear()` empties the screen and puts the cursor at the top left.
+///
+/// **This is what turns printing into drawing.** Without it a program that
+/// prints a picture every frame produces a column of pictures scrolling
+/// upwards; with it, each one replaces the last and the thing appears to move.
+///
+/// The whole frame should be built as one string and printed once. Printing it
+/// a row at a time works and can be seen doing it, because the terminal draws
+/// each row as it arrives and the eye catches the sweep.
+///
+/// Where standard output is not a terminal — a pipe, a file — this does
+/// nothing, because there is no screen to clear. That is what keeps a game's
+/// output readable when it is redirected, and comparable in a test.
+fn clear(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("clear", &args, 0)?;
+    ambient.screen().clear().map(|()| Value::Nil)
+}
+
+/// `move_to(column, row)` puts the cursor there, counting from zero.
+///
+/// From zero because the language indexes arrays from zero, and a program
+/// drawing a grid is indexing one: `move_to(0, 0)` is the top left, matching
+/// `grid[0][0]`. The escape sequence underneath counts from one, which is the
+/// implementation's business.
+fn move_to(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("move_to", &args, 2)?;
+    let coordinate = |value: &Value, which: &str| match value {
+        Value::Int(n) => Ok(*n),
+        other => Err(format!(
+            "move_to expects an int {which} but got a {}",
+            other.type_name()
+        )),
+    };
+    let column = coordinate(&args[0], "column")?;
+    let row = coordinate(&args[1], "row")?;
+    ambient.screen().move_to(column, row).map(|()| Value::Nil)
+}
+
+/// `hide_cursor()` stops the terminal drawing the cursor.
+///
+/// Worth doing in anything that animates: the cursor sits wherever the last
+/// character was written, which in a redrawn frame is the bottom right, and it
+/// blinks there through the whole game.
+///
+/// **The cursor comes back by itself when the program ends**, however it ends —
+/// normally, on an error, or through `exit`. A program does not have to pair
+/// this with `show_cursor`, for the same reason it does not have to put the
+/// terminal back after `read_key`.
+fn hide_cursor(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("hide_cursor", &args, 0)?;
+    ambient.screen().hide_cursor().map(|()| Value::Nil)
+}
+
+/// `show_cursor()` draws the cursor again.
+fn show_cursor(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("show_cursor", &args, 0)?;
+    ambient.screen().show_cursor().map(|()| Value::Nil)
+}
+
+/// `term_size()` gives `[columns, rows]` for the terminal.
+///
+/// **It refuses where there is no terminal**, rather than answering with the
+/// traditional 80 by 24. That would be a wrong answer and not an absent one,
+/// and a program handed it draws a board that does not fit — the same reasoning
+/// that makes `now()` refuse rather than answering 1970.
+///
+/// The consequence is worth stating: a program that calls this cannot run under
+/// a pipe unless it catches the refusal. The bundled games fix their own size
+/// instead, which is why they can be tested by piping keys into them.
+fn term_size(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("term_size", &args, 0)?;
+    let (columns, rows) = ambient.screen().size()?;
+    Ok(Value::array(vec![Value::Int(columns), Value::Int(rows)]))
+}
+
 /// `input()` reads one line from the input source and returns it as a string,
 /// or `nil` at end of input. `input(prompt)` writes the prompt string first.
 fn input(out: &mut dyn Output, input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
@@ -1285,8 +1365,8 @@ impl Args {
     ///
     /// Forty is the count of `define` calls, not the count of builtins. The
     /// two were the same figure until 1.1 and are not any more: there are
-    /// fifty-five builtins, of which four take a `SystemFn`, seven take an
-    /// `AmbientFn`, and four take a `HostFn`, and none of those fifteen would
+    /// sixty builtins, of which four take a `SystemFn`, twelve take an
+    /// `AmbientFn`, and four take a `HostFn`, and none of those twenty would
     /// be touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
@@ -2323,21 +2403,21 @@ mod count {
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
-            ambient, 7,
-            "{ambient} builtins take an AmbientFn, not 7. This kind arrived in \
+            ambient, 12,
+            "{ambient} builtins take an AmbientFn, not 12. This kind arrived in \
              1.5 and is quoted by `Args::into_vec` above."
         );
         assert_eq!(
             plain + system + ambient,
-            51,
-            "{} builtins reach `call_native`, not 51. Quoted by the caught-error \
+            56,
+            "{} builtins reach `call_native`, not 56. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
         assert_eq!(
             host, 4,
             "{host} builtins are higher-order, not 4. Quoted by the same two \
-             places, which say the other fifteen take a different signature."
+             places, which say the other twenty take a different signature."
         );
         assert_eq!(
             plain + system + ambient + host,
@@ -2350,7 +2430,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 55] = [
+pub const BUILTIN_NAMES: [&str; 60] = [
     "print",
     "eprint",
     "exit",
@@ -2402,6 +2482,11 @@ pub const BUILTIN_NAMES: [&str; 55] = [
     "seed",
     "read_key",
     "key_ready",
+    "clear",
+    "move_to",
+    "hide_cursor",
+    "show_cursor",
+    "term_size",
     "sort",
     "map",
     "filter",

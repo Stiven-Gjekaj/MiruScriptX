@@ -259,6 +259,81 @@ impl Keyboard for NoKeyboard {
     }
 }
 
+/// The terminal a program can draw on, as distinct from the stream it writes to.
+///
+/// **This is not [`Output`], and the difference is the reason it is a fourth
+/// capability rather than three more methods there.** `Output::write` is
+/// documented as the program's *result*: the text it produced, which a caller
+/// may capture, pipe, or compare against an expected string. Clearing the
+/// screen is not a result. It is an effect on a device. Sending the escape
+/// sequence through `Output` would put `\x1b[2J` inside the string that
+/// `run_capture` hands back, so every golden test of a program that happened to
+/// clear would be asserting on control codes.
+///
+/// A fourth capability beside [`System`], [`Clock`], and [`Keyboard`], and
+/// absent by default like all three. A host can have any of them without the
+/// others, and the browser playground is the case in point: a clock, no file
+/// system, no keyboard, and no terminal to draw on.
+///
+/// **Whoever hides the cursor owns showing it again**, however the program
+/// ends. This is the rule [`Keyboard`] already states about raw mode, and it
+/// matters more here: a program that fails with the cursor hidden leaves a
+/// terminal that looks broken long after the program is gone. `miru` restores
+/// it in a `Drop`, which runs on a normal end, on an error, and on `exit`.
+pub trait Screen {
+    /// Clear the screen and put the cursor at the top left.
+    fn clear(&mut self) -> Result<(), String>;
+
+    /// Move the cursor, counting from zero at the top left.
+    ///
+    /// Zero-based because the language indexes arrays from zero and a program
+    /// that draws a grid is indexing it. The escape sequence counts from one;
+    /// converting is the implementation's business, not the program's.
+    fn move_to(&mut self, column: i64, row: i64) -> Result<(), String>;
+
+    /// Stop drawing the cursor. See the note on the trait about putting it back.
+    fn hide_cursor(&mut self) -> Result<(), String>;
+
+    /// Draw the cursor again.
+    fn show_cursor(&mut self) -> Result<(), String>;
+
+    /// How many columns and rows the terminal has.
+    fn size(&mut self) -> Result<(i64, i64), String>;
+}
+
+/// A [`Screen`] with nothing to draw on.
+///
+/// Every operation refuses, for the reason [`NoSystem`] and [`NoClock`] refuse:
+/// a program that asked to clear a screen and was told nothing goes on to draw
+/// a frame on top of the last one.
+pub struct NoScreen;
+
+impl NoScreen {
+    const REFUSAL: &'static str = "this program is running where there is no terminal";
+}
+
+impl Screen for NoScreen {
+    fn clear(&mut self) -> Result<(), String> {
+        Err(NoScreen::REFUSAL.to_string())
+    }
+
+    fn move_to(&mut self, _column: i64, _row: i64) -> Result<(), String> {
+        Err(NoScreen::REFUSAL.to_string())
+    }
+
+    fn hide_cursor(&mut self) -> Result<(), String> {
+        Err(NoScreen::REFUSAL.to_string())
+    }
+
+    fn show_cursor(&mut self) -> Result<(), String> {
+        Err(NoScreen::REFUSAL.to_string())
+    }
+
+    fn size(&mut self) -> Result<(i64, i64), String> {
+        Err(NoScreen::REFUSAL.to_string())
+    }
+}
+
 /// What a program can ask for that its own source does not determine.
 ///
 /// One bundle rather than one argument per capability, because the builtins
@@ -269,6 +344,7 @@ impl Keyboard for NoKeyboard {
 pub struct Ambient<'a> {
     clock: &'a mut dyn Clock,
     keyboard: &'a mut dyn Keyboard,
+    screen: &'a mut dyn Screen,
     rng: &'a mut Option<Rng>,
 }
 
@@ -276,11 +352,13 @@ impl<'a> Ambient<'a> {
     pub fn new(
         clock: &'a mut dyn Clock,
         keyboard: &'a mut dyn Keyboard,
+        screen: &'a mut dyn Screen,
         rng: &'a mut Option<Rng>,
     ) -> Ambient<'a> {
         Ambient {
             clock,
             keyboard,
+            screen,
             rng,
         }
     }
@@ -303,6 +381,11 @@ impl<'a> Ambient<'a> {
     /// Whether reading a key would return without waiting.
     pub fn key_ready(&mut self) -> Result<bool, String> {
         self.keyboard.key_ready()
+    }
+
+    /// The host's terminal, for the five builtins that draw on one.
+    pub fn screen(&mut self) -> &mut dyn Screen {
+        self.screen
     }
 
     /// The generator, seeded from the clock the first time a program asks for
