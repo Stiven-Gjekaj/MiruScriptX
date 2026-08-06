@@ -12,6 +12,37 @@ semantic versioning.
 
 ### Added
 
+- **`key_ready()`**, which says whether `read_key()` would answer without
+  waiting.
+
+  `read_key` waits, so a loop built from it advances once per key and not
+  otherwise: nothing can move while the person holds still, because the program
+  is not running, it is sitting inside a read. Guarding the read turns that
+  inside out.
+
+  ```
+  while true {
+    while key_ready() {          // take everything pressed since the last frame
+      let k = read_key()
+      if k == nil { break }
+      handle(k)
+    }
+    advance()                    // happens whether or not a key came
+    draw()
+    sleep(50)
+  }
+  ```
+
+  **It reports whether a read will wait, not whether a key is down**, and the
+  two differ at the end of input, where a read answers `nil` at once — so
+  `key_ready()` is `true` there. That is what lets a loop discover that no key
+  is ever coming instead of going round forever on a closed stream, and it is
+  what makes a game testable: piping a script of keys runs exactly that many
+  frames and then ends.
+
+  Where there is no keyboard it refuses rather than answering `false`, because
+  "nothing is pressed" would be a claim about a keyboard that exists.
+
 - **`sleep(ms)`**, which does nothing for that many milliseconds.
 
   This is what lets a loop run at a speed somebody chose. A loop with nothing
