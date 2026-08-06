@@ -20,6 +20,7 @@ pub fn register(globals: &mut Globals) {
     define(globals, "exit", exit);
     define(globals, "len", len);
     define(globals, "push", push);
+    define(globals, "insert", insert);
     define(globals, "str", to_str);
     define(globals, "type", type_of);
     define(globals, "is_error", is_error);
@@ -228,6 +229,61 @@ fn push(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resu
         }
         other => Err(format!(
             "push expects an array as its first argument but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `insert(array, index, value)` puts a value at a position, in place, and
+/// returns the array.
+///
+/// The companion of `push`, which can only append. Putting something at the
+/// front is the common case — a queue, or the new head of a snake — and without
+/// this it takes a fresh array and a loop.
+///
+/// **The index must be from 0 to the length, and anything else is an error.**
+/// `insert(a, len(a), v)` appends, which is the one past-the-end position that
+/// means something: it is where a new last element goes.
+///
+/// This follows indexing rather than `slice`. `slice` clamps, because a range
+/// asking for more than exists can sensibly give what exists. A position is not
+/// a range: `insert(a, 99, v)` on an array of three is a mistake in the caller's
+/// arithmetic, and quietly appending would hide it. `a[99]` is an error for the
+/// same reason, and the message here is shaped like that one.
+fn insert(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    check_arity("insert", &args, 3)?;
+    let index = match &args[1] {
+        Value::Int(n) => *n,
+        other => {
+            return Err(format!(
+                "insert expects an integer index but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    match &args[0] {
+        Value::Array(items) => {
+            let mut items = items.borrow_mut();
+            if index < 0 {
+                return Err(format!("index {index} is out of range (negative)"));
+            }
+            // Equal to the length is allowed and appends; past it is not.
+            if index as usize > items.len() {
+                return Err(format!(
+                    "index {index} is out of range for inserting into an array of length {}",
+                    items.len()
+                ));
+            }
+            items.insert(index as usize, args[2].clone());
+            drop(items);
+            Ok(args[0].clone())
+        }
+        other => Err(format!(
+            "insert expects an array as its first argument but got a {}",
             other.type_name()
         )),
     }
@@ -1363,9 +1419,9 @@ impl Args {
     /// they are handed, which is a larger change than it looks and is left for
     /// later.
     ///
-    /// Forty is the count of `define` calls, not the count of builtins. The
+    /// Forty-one is the count of `define` calls, not the count of builtins. The
     /// two were the same figure until 1.1 and are not any more: there are
-    /// sixty builtins, of which four take a `SystemFn`, twelve take an
+    /// sixty-one builtins, of which four take a `SystemFn`, twelve take an
     /// `AmbientFn`, and four take a `HostFn`, and none of those twenty would
     /// be touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
@@ -2092,6 +2148,46 @@ mod tests {
     }
 
     #[test]
+    fn insert_places_a_value_at_a_position() {
+        assert_eq!(
+            out("let a = [2, 3]\ninsert(a, 0, 1)\nprint(a)"),
+            "[1, 2, 3]\n"
+        );
+        assert_eq!(
+            out("let a = [1, 3]\ninsert(a, 1, 2)\nprint(a)"),
+            "[1, 2, 3]\n"
+        );
+    }
+
+    /// The one past-the-end position that means something: where a new last
+    /// element goes. `insert(a, len(a), v)` is `push(a, v)`.
+    #[test]
+    fn insert_at_the_length_appends() {
+        assert_eq!(
+            out("let a = [1, 2]\ninsert(a, 2, 3)\nprint(a)"),
+            "[1, 2, 3]\n"
+        );
+        assert_eq!(out("let a = []\ninsert(a, 0, 1)\nprint(a)"), "[1]\n");
+    }
+
+    /// **`insert` follows indexing, not `slice`.**
+    ///
+    /// `slice` clamps, because a range that asks for more than exists can
+    /// sensibly give what exists. A position is not a range: an index past the
+    /// end is arithmetic that went wrong, and appending quietly would hide it.
+    #[test]
+    fn insert_past_the_end_is_an_error_rather_than_an_append() {
+        assert_eq!(
+            err("insert([1], 99, 0)"),
+            "index 99 is out of range for inserting into an array of length 1"
+        );
+        assert_eq!(
+            err("insert([1], -1, 0)"),
+            "index -1 is out of range (negative)"
+        );
+    }
+
+    #[test]
     fn sort_orders_numbers_and_strings() {
         assert_eq!(out("print(sort([3, 1, 2]))"), "[1, 2, 3]\n");
         assert_eq!(
@@ -2398,8 +2494,8 @@ mod count {
         }
 
         assert_eq!(
-            plain, 40,
-            "{plain} builtins take a BuiltinFn, not 40. Quoted by `Args::into_vec` \
+            plain, 41,
+            "{plain} builtins take a BuiltinFn, not 41. Quoted by `Args::into_vec` \
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
@@ -2409,8 +2505,8 @@ mod count {
         );
         assert_eq!(
             plain + system + ambient,
-            56,
-            "{} builtins reach `call_native`, not 56. Quoted by the caught-error \
+            57,
+            "{} builtins reach `call_native`, not 57. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
@@ -2430,12 +2526,13 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 60] = [
+pub const BUILTIN_NAMES: [&str; 61] = [
     "print",
     "eprint",
     "exit",
     "len",
     "push",
+    "insert",
     "str",
     "type",
     "is_error",

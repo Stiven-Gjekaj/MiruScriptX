@@ -76,6 +76,25 @@ push(a, 2)
 print(a)   // [1, 2]
 ```
 
+## insert(array, index, value)
+
+Puts `value` at `index`, moving everything from there onwards along. Changes the
+array in place and returns it.
+
+```
+let a = [2, 3]
+insert(a, 0, 1)
+print(a)   // [1, 2, 3]
+```
+
+`push` can only add to the end; this is how you add anywhere else, and adding to
+the front is much the commonest.
+
+The index counts from zero and can be anything from `0` to `len(array)`.
+`insert(a, len(a), v)` appends, exactly like `push`. Anything past that is an
+error, not a quiet append: an index beyond the end almost always means the sum
+that produced it was wrong, and you would rather hear about it.
+
 ## str(value)
 
 Converts any value to its display string. Useful for building messages.

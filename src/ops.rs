@@ -116,13 +116,29 @@ pub fn binary(op: BinaryOp, left: Value, right: Value) -> Result<Value, String> 
     }
 }
 
-/// Addition doubles as string concatenation when both operands are strings.
+/// Addition doubles as concatenation when both operands are strings, or both
+/// are arrays.
 fn add(left: Value, right: Value) -> Result<Value, String> {
     if let (Value::Str(a), Value::Str(b)) = (&left, &right) {
         let mut joined = String::with_capacity(a.len() + b.len());
         joined.push_str(a);
         joined.push_str(b);
         return Ok(Value::Str(Rc::new(joined)));
+    }
+    if let (Value::Array(a), Value::Array(b)) = (&left, &right) {
+        // A new array, never either operand extended in place. `push` is the
+        // spelling for growing an array you already have; this one is an
+        // expression, and an expression that quietly modified one of its
+        // operands would make `let joined = front + back` change `front`.
+        //
+        // Borrowed separately, and `a + a` is why. One `borrow_mut` and one
+        // `borrow` of the same array would panic at runtime, so both are shared
+        // borrows and the result is built from scratch.
+        let (a, b) = (a.borrow(), b.borrow());
+        let mut joined = Vec::with_capacity(a.len() + b.len());
+        joined.extend(a.iter().cloned());
+        joined.extend(b.iter().cloned());
+        return Ok(Value::array(joined));
     }
     match numeric_pair(&left, &right, "add")? {
         Num::Ints(a, b) => a
@@ -301,6 +317,78 @@ mod tests {
         assert!(joined
             .equals(&Value::Str(Rc::new("ab".to_string())))
             .unwrap());
+    }
+
+    #[test]
+    fn adding_two_arrays_joins_them() {
+        let joined = binary(
+            BinaryOp::Add,
+            Value::array(vec![Value::Int(1), Value::Int(2)]),
+            Value::array(vec![Value::Int(3)]),
+        )
+        .unwrap();
+        assert!(joined
+            .equals(&Value::array(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3)
+            ]))
+            .unwrap());
+    }
+
+    /// **The result is new, and neither operand is touched.**
+    ///
+    /// `+` is an expression. One that grew its left operand in place would make
+    /// `let joined = front + back` quietly change `front`, which is the kind of
+    /// thing a program only finds out about several lines later. `push` is the
+    /// spelling for growing an array you already have.
+    #[test]
+    fn adding_arrays_leaves_both_operands_alone() {
+        let front = Value::array(vec![Value::Int(1)]);
+        let back = Value::array(vec![Value::Int(2)]);
+        let joined = binary(BinaryOp::Add, front.clone(), back.clone()).unwrap();
+
+        let Value::Array(items) = &joined else {
+            panic!("adding two arrays gave a {}", joined.type_name());
+        };
+        items.borrow_mut().push(Value::Int(3));
+
+        assert!(front.equals(&Value::array(vec![Value::Int(1)])).unwrap());
+        assert!(back.equals(&Value::array(vec![Value::Int(2)])).unwrap());
+    }
+
+    /// An array added to itself. Two `borrow`s of one `RefCell`, which is fine,
+    /// where a `borrow` and a `borrow_mut` would panic — so this is the case
+    /// that would catch an implementation that tried to extend in place.
+    #[test]
+    fn an_array_can_be_added_to_itself() {
+        let a = Value::array(vec![Value::Int(1)]);
+        let joined = binary(BinaryOp::Add, a.clone(), a).unwrap();
+        assert!(joined
+            .equals(&Value::array(vec![Value::Int(1), Value::Int(1)]))
+            .unwrap());
+    }
+
+    /// Only array with array. Mixing one with anything else stays the error it
+    /// has always been, so nothing that used to fail now quietly succeeds.
+    #[test]
+    fn an_array_still_cannot_be_added_to_anything_else() {
+        assert_eq!(
+            binary(BinaryOp::Add, Value::array(vec![]), Value::Int(1))
+                .err()
+                .unwrap(),
+            "cannot add a array and a int"
+        );
+        assert_eq!(
+            binary(
+                BinaryOp::Add,
+                Value::Str(Rc::new("a".to_string())),
+                Value::array(vec![])
+            )
+            .err()
+            .unwrap(),
+            "cannot add a string and a array"
+        );
     }
 
     #[test]

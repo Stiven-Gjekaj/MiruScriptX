@@ -494,6 +494,25 @@ A string holds Unicode characters. Every builtin counts characters, not bytes.
 A string does not support the index operator. `"abc"[0]` gives the error
 `cannot index a string`. Use the `slice` builtin.
 
+### 5.6.1 Adding two arrays
+
+The `+` operator joins two arrays. The result is a **new** array. The operator
+does not change either operand.
+
+```
+let front = [1, 2]
+let back = [3]
+print(front + back)   // [1, 2, 3]
+print(front)          // [1, 2]
+```
+
+An array added to a value that is not an array is an error. `[1] + 2` gives
+`cannot add a array and a int`.
+
+The elements are not copied. An array that contains another array gives a result
+that refers to the same inner array. Section 5.4 gives the rule for what an
+array is.
+
 ### 5.7 A value that contains itself
 
 An array can contain itself. A map can contain itself.
@@ -754,7 +773,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 60 builtins. A program can use each of them without an import.
+There are 61 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -817,6 +836,7 @@ honest answer to the question is then no. `try` catches the error.
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
 | `push(a, v)` | 2 | Adds `v` to the end of `a`. Changes `a`. Gives `a`. |
+| `insert(a, i, v)` | 3 | Puts `v` at position `i`. Changes `a`. Gives `a`. |
 | `pop(a)` | 1 | Removes the last element and gives it. Refuses an empty array. |
 | `index_of(a, v)` | 2 | The index of the first equal element, or `-1`. |
 | `slice(v, s, e)` | 3 | A new array or string, from `s` to `e`. The language limits `s` and `e` to the length. |
