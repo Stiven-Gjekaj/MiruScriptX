@@ -1,6 +1,6 @@
 # The MiruScriptX Stability Guarantee
 
-Version 1.7
+Version 1.8
 
 This document tells you what will not change while MiruScriptX has the version
 number 1. It is short on purpose. A promise that nobody can check is not a
@@ -59,11 +59,26 @@ refused rather than silently given nothing. `miru` gives both. A host that
 embeds the language decides for itself, and the browser playground gives
 neither.
 
-`now` needs the host's clock and `read_key` needs its keyboard, on the same
-terms. These are separate capabilities rather than more file operations, and a
-host can have any of them without the others: the playground has a clock, no
-file system, and no keyboard. What is stable is what each gives **when the host
-has the thing it needs**, and that a host without it is refused.
+`now` and `sleep` need the host's clock, `read_key` and `key_ready` need its
+keyboard, and `clear`, `move_to`, `hide_cursor`, `show_cursor`, and `term_size`
+need a terminal, on the same terms. These are separate capabilities rather than
+more file operations, and a host can have any of them without the others: the
+playground has a clock, no file system, no keyboard, and no terminal. What is
+stable is what each gives **when the host has the thing it needs**, and that a
+host without it is refused.
+
+**A host can have a clock and still refuse `sleep`**, which is the one place two
+builtins on one capability part company. A page can say what the time is and
+cannot spend it: a browser paints between turns of its event loop, so blocking
+would freeze the tab rather than pace anything. That split is stable — `now`
+working somewhere is not a promise that `sleep` does.
+
+**Where the output is not a terminal, the four drawing builtins do nothing and
+`term_size` refuses.** That difference is deliberate and stable. Nothing is the
+honest result of "clear the screen" when the output is a file, and it is what
+keeps a program's output free of control characters when it is redirected.
+`term_size` has a number to give back and no true one to give, so it refuses
+rather than inventing eighty columns.
 
 **The key names `read_key` gives are stable.** Section 8.11 of the
 specification lists them. A later 1.x can add a name for a key that gives

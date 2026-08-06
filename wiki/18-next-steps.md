@@ -1,6 +1,6 @@
 # Next steps
 
-You now know all of MiruScriptX 1.7. Here is where to go from here.
+You now know all of MiruScriptX 1.8. Here is where to go from here.
 
 ## Try it without installing anything
 
@@ -62,4 +62,4 @@ The [roadmap](../docs/milestones.md) lists what has shipped, milestone by
 milestone, and what is planned next.
 
 ---
-Previous: [Handling errors](16-handling-errors.md)
+Previous: [Writing a game](17-writing-a-game.md)

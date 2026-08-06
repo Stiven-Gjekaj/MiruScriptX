@@ -248,8 +248,8 @@ function buildCards() {
   wiki.innerHTML =
     '<span class="card-tag">Keep going</span>' +
     '<span class="card-name">The wiki teaches the rest</span>' +
-    '<span class="card-about">Seventeen short lessons, read in order.</span>' +
-    '<span class="card-lines">17 lessons →</span>';
+    '<span class="card-about">Eighteen short lessons, read in order.</span>' +
+    '<span class="card-lines">18 lessons →</span>';
   fragment.append(wiki);
 
   cards.replaceChildren(fragment);

@@ -169,4 +169,4 @@ rows handled: 3 of 4
 Without `try`, that program prints one line and stops.
 
 ---
-Previous: [When a program stops](15-errors.md) | Next: [Next steps](17-next-steps.md)
+Previous: [When a program stops](15-errors.md) | Next: [Writing a game](17-writing-a-game.md)

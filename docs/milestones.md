@@ -422,6 +422,58 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.8: pace a loop, poll a key, draw a frame
+
+The language could compute anything and could not show it happening. 1.8 is the
+release that lets you write a small game and run it in a terminal.
+
+**The gap was found by writing the program, not by listing features.** Snake was
+attempted in 1.7 and the four places it broke, in the order it broke, became the
+release:
+
+| What happened | What was missing |
+| ------------- | ---------------- |
+| `[[nx,ny]] + slice(...)` failed | joining two arrays |
+| every frame scrolled instead of redrawing | a screen to clear |
+| an unpaced loop ran 7,918,493 turns a second | a way to sleep |
+| three keys piped in ran the loop exactly three times | a way to poll |
+
+Nothing else went in. A feature list drawn up in advance would have had colour
+on it, and colour would have been the largest thing in the release and the least
+necessary.
+
+Three things worth carrying forward.
+
+- **The obvious API was wrong, and the reason was an existing meaning.** The
+  natural way to poll is a timeout on `read_key`. But `read_key` already gives
+  `nil` for end of input, and a timeout would make `nil` mean "nothing yet" as
+  well; a loop cannot tell those apart and spins forever on a closed stream. A
+  second builtin keeps the old meaning intact. **`key_ready` reports that a read
+  will not wait, not that a key exists**, and it is therefore `true` at end of
+  input — which reads oddly and is the property the whole design rests on.
+
+- **A capability is not an output stream.** `clear` writes an escape sequence,
+  and the short way to ship it was through `Output`. That would have put
+  `\x1b[2J` inside every `run_capture` string, so a golden test of any program
+  that happened to clear would assert on control codes. It is a fourth
+  capability instead, and the four drawing calls do nothing when the output is
+  not a terminal — which is exactly what makes the games testable by piping.
+
+- **One key per tick was a game design decision that looked like a testing
+  compromise.** Snake drained its input queue at first, which made it untestable
+  under a pipe because every key arrived in the first frame. Taking one per tick
+  fixed the test, and it was also simply correct: a snake turns once per step,
+  and three turns between two steps walks it into its own neck without that ever
+  being drawn.
+
+**The risk that could not be closed from here is the Windows half of
+`key_ready`.** `GetNumberOfConsoleInputEvents` counts mouse movement, resizes,
+focus changes, and key releases, none of which yield a byte — so counting would
+report ready and the following read would block, hanging the game on a mouse
+twitch. It peeks for a key-down record carrying a character instead. That path
+has no test that runs on Linux and rests on the Windows leg of CI, which found
+two faults in `read_key` in 1.6.
+
 ## 1.7: every error at once, a link to a program, and colour in an editor
 
 Shipped. Three issues with nothing in common, which is why they could be built
