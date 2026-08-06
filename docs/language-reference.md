@@ -2058,7 +2058,7 @@ while playing {
 show_cursor()
 ```
 
-## Three to read
+## Four to read
 
 - **[life.miru](../examples/life.miru)** — no input at all, so it is nothing but
   the drawing half. Start here.
@@ -2066,8 +2066,14 @@ show_cursor()
   an array at the front.
 - **[pong.miru](../examples/pong.miru)** — a ball that never stops, which is the
   clearest demonstration of why `key_ready()` exists.
+- **[tetris.miru](../examples/tetris.miru)** — a board it both reads and writes,
+  which is the shape most games with a grid actually have. Read it for two
+  things. Turning a piece is not trigonometry: on a grid a quarter turn sends
+  the cell at `(x, y)` to `(box - 1 - y, x)`, and that is the whole of it.
+  Clearing a full row is array work — keep the rows with a gap, build as many
+  empty rows as went away, and join the two with `+`.
 
-## Two things that will catch you
+## Three things that will catch you
 
 **Your game will not run in the playground.** A page cannot pause: it draws
 between one piece of work and the next, so a program that waited would freeze
@@ -2076,8 +2082,20 @@ there. Games are for a terminal.
 
 **Do not call `term_size()` in a game you want to test.** It fails when the
 output is not a screen, which is exactly the situation when you pipe a program's
-output somewhere to check it. All three examples pick their own size for that
+output somewhere to check it. All four examples pick their own size for that
 reason, and it is why you can pipe keys into snake and compare what it drew.
+
+**A game that draws random numbers cannot be checked unless you can fix the
+seed.** `seed(n)` gives the same stream every time, so a test can say what the
+game must do; `seed(now())` gives a different game every run, which is what a
+player wants. Tetris takes the seed from the command line and falls back to the
+clock, so it is both:
+
+```
+miru run examples/tetris.miru 7
+```
+
+The same pieces arrive in the same order every time you run that.
 
 
 # Next steps

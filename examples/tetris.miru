@@ -1,0 +1,239 @@
+// tetris.miru
+// Falling blocks. Left and right move, up turns, down nudges it a row,
+// space drops it the rest of the way, q quits.
+// Run with: miru run examples/tetris.miru
+//
+// Where snake keeps a list of cells and pong keeps two numbers, this
+// keeps a grid it both reads and writes, which is the shape most games
+// with a board actually have. Two things in it are worth reading for:
+//
+// Turning a piece needs no trigonometry. On a grid a quarter turn is
+// not an angle, it is a swap, and rotate() below is that swap in three
+// lines.
+//
+// Clearing a line is array work. Keep the rows with a gap, put back as
+// many empty rows on top as went away, and join them with +, which is
+// the array concatenation this release added.
+//
+// Fixed at 10 by 18 rather than asked for with term_size(), so it runs
+// with its keys piped in.
+//
+// The seed comes from the command line if you give it one, so
+// `miru run examples/tetris.miru 7` deals the same pieces every time.
+// Without one the clock decides and each game is different.
+
+let width = 10
+let height = 18
+
+// Each piece is a box size and the cells filled inside that box, as
+// [column, row] pairs. Rotation is a rule about the box, so the box has
+// to be square and has to travel with the piece.
+let shapes = [
+  {"box": 4, "cells": [[0, 1], [1, 1], [2, 1], [3, 1]]},
+  {"box": 2, "cells": [[0, 0], [1, 0], [0, 1], [1, 1]]},
+  {"box": 3, "cells": [[1, 0], [0, 1], [1, 1], [2, 1]]},
+  {"box": 3, "cells": [[1, 0], [2, 0], [0, 1], [1, 1]]},
+  {"box": 3, "cells": [[0, 0], [1, 0], [1, 1], [2, 1]]},
+  {"box": 3, "cells": [[0, 0], [0, 1], [1, 1], [2, 1]]},
+  {"box": 3, "cells": [[2, 0], [0, 1], [1, 1], [2, 1]]}
+]
+
+// The cell at (x, y) lands at (box - 1 - y, x). That is the whole of it.
+// Any other angle would need sin and cos, and would need somewhere other
+// than a grid to land on.
+fn rotate(piece) {
+  let box = piece["box"]
+  let turned = []
+  for cell in piece["cells"] {
+    turned = push(turned, [box - 1 - cell[1], cell[0]])
+  }
+  return {"box": box, "cells": turned}
+}
+
+fn empty_row(width) {
+  let row = []
+  for x in range(0, width) {
+    row = push(row, false)
+  }
+  return row
+}
+
+// Where a piece's cells are once it sits at x, y.
+fn cells_at(piece, x, y) {
+  let placed = []
+  for cell in piece["cells"] {
+    placed = push(placed, [x + cell[0], y + cell[1]])
+  }
+  return placed
+}
+
+fn fits(well, piece, x, y, width, height) {
+  for cell in cells_at(piece, x, y) {
+    let cx = cell[0]
+    let cy = cell[1]
+    if cx < 0 || cx >= width || cy < 0 || cy >= height {
+      return false
+    }
+    if well[cy][cx] {
+      return false
+    }
+  }
+  return true
+}
+
+fn freeze(well, piece, x, y) {
+  for cell in cells_at(piece, x, y) {
+    well[cell[1]][cell[0]] = true
+  }
+  return well
+}
+
+fn is_full(row) {
+  for filled in row {
+    if !filled {
+      return false
+    }
+  }
+  return true
+}
+
+// Keep every row with a gap in it, then put back the rows that went, as
+// empty ones on top. Gives the new well and how many were taken.
+fn sweep(well, width, height) {
+  let kept = filter(well, fn(row) { return !is_full(row) })
+  let cleared = height - len(kept)
+  let fresh = []
+  for i in range(0, cleared) {
+    fresh = push(fresh, empty_row(width))
+  }
+  return {"well": fresh + kept, "cleared": cleared}
+}
+
+fn draw(well, piece, x, y, score, lines, width) {
+  // Copy each row before drawing on it, so laying the falling piece over
+  // the picture never touches what has already landed.
+  let frame = map(well, fn(row) { return slice(row, 0, width) })
+  for cell in cells_at(piece, x, y) {
+    frame[cell[1]][cell[0]] = true
+  }
+
+  let out = ""
+  for row in frame {
+    let line = "|"
+    for filled in row {
+      if filled {
+        line = line + "[]"
+      } else {
+        line = line + " ."
+      }
+    }
+    out = out + line + "|\n"
+  }
+  let floor = "+"
+  for i in range(0, width) {
+    floor = floor + "--"
+  }
+  print(out + floor + "+\n" +
+        "score " + str(score) + "   lines " + str(lines) +
+        "   left/right move, up turns, space drops, q quits")
+}
+
+let given = args()
+if len(given) > 0 {
+  seed(int(given[0]))
+} else {
+  seed(now())
+}
+
+let well = []
+for y in range(0, height) {
+  well = push(well, empty_row(width))
+}
+
+let piece = shapes[random_int(0, len(shapes) - 1)]
+let x = 3
+let y = 0
+let score = 0
+let lines = 0
+let alive = true
+let landed = false
+
+// Gravity is counted in ticks rather than measured against the clock, so
+// that the same keys produce the same game whether they come from a
+// person or from a pipe.
+let tick = 0
+let fall_every = 8
+
+hide_cursor()
+
+while alive {
+  // One key per tick. A burst handled all at once would slide a piece
+  // across the well inside a single frame.
+  if key_ready() {
+    let pressed = read_key()
+    if pressed == nil || pressed == "q" || pressed == "ctrl+c" || pressed == "escape" {
+      alive = false
+      break
+    }
+    if pressed == "left" && fits(well, piece, x - 1, y, width, height) {
+      x = x - 1
+    } else if pressed == "right" && fits(well, piece, x + 1, y, width, height) {
+      x = x + 1
+    } else if pressed == "up" {
+      let turned = rotate(piece)
+      // A turn that would not fit is refused rather than shoved into
+      // place, which is a rule a player can predict.
+      if fits(well, turned, x, y, width, height) {
+        piece = turned
+      }
+    } else if pressed == "down" && fits(well, piece, x, y + 1, width, height) {
+      y = y + 1
+      tick = 0
+    } else if pressed == " " {
+      while fits(well, piece, x, y + 1, width, height) {
+        y = y + 1
+        score = score + 1
+      }
+      landed = true
+    }
+  }
+
+  // The piece falls whether or not anything was pressed. This is the
+  // line read_key() alone could not reach.
+  tick = tick + 1
+  if tick >= fall_every {
+    tick = 0
+    if fits(well, piece, x, y + 1, width, height) {
+      y = y + 1
+    } else {
+      landed = true
+    }
+  }
+
+  if landed {
+    landed = false
+    well = freeze(well, piece, x, y)
+    let swept = sweep(well, width, height)
+    well = swept["well"]
+    if swept["cleared"] > 0 {
+      lines = lines + swept["cleared"]
+      // Four rows at once is worth far more than four rows one at a time.
+      score = score + swept["cleared"] * swept["cleared"] * 100
+    }
+    piece = shapes[random_int(0, len(shapes) - 1)]
+    x = 3
+    y = 0
+    // The one way to lose: the next piece has nowhere to appear.
+    if !fits(well, piece, x, y, width, height) {
+      alive = false
+      break
+    }
+  }
+
+  clear()
+  draw(well, piece, x, y, score, lines, width)
+  sleep(40)
+}
+
+show_cursor()
+print("game over, score " + str(score) + ", lines " + str(lines))

@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-4_(57),_1_dev-007ec6?style=for-the-badge" alt="The language declares 4 direct dependencies, two of them platform-specific, over 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-477_passing-427819?style=for-the-badge" alt="477 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-479_passing-427819?style=for-the-badge" alt="479 tests passing"/>
 </p>
 
 <p align="center">
@@ -186,6 +186,7 @@ Runnable programs live in [examples/](examples):
 | [life.miru](examples/life.miru) | Conway's Life, redrawn in place: `clear` and `sleep` |
 | [snake.miru](examples/snake.miru) | Snake: `key_ready`, joining arrays, and a paced loop |
 | [pong.miru](examples/pong.miru) | Pong: a ball that keeps moving while you hold still |
+| [tetris.miru](examples/tetris.miru) | Tetris: turning a piece without trigonometry, and clearing a row |
 
 Run one with `miru run examples/contacts.miru`.
 

@@ -539,6 +539,124 @@ fn pong_keeps_moving_while_nothing_is_pressed() {
     );
 }
 
+/// Tetris turns a piece, and a quarter turn needs no trigonometry.
+///
+/// The seed argument makes the piece order the same on every machine, so this
+/// knows the first piece is the T. Rotating maps the cell at `(x, y)` to
+/// `(box - 1 - y, x)`, which turns a T pointing up into one pointing right —
+/// and that is the whole of the arithmetic. The language has no `sin` and no
+/// `cos`, and on a grid it needs neither.
+///
+/// The leading key is one the game ignores, and it is there to buy a frame.
+/// The loop draws *after* it has handled a key, so the piece as it arrives is
+/// never printed unless something harmless is pressed first.
+#[test]
+fn tetris_example_turns_a_piece() {
+    use std::io::Write;
+
+    let mut child = miru()
+        .arg("run")
+        .arg("examples/tetris.miru")
+        .arg("1")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(b"x\x1b[A")
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("wait for miru");
+
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("output should be valid utf-8");
+
+    // Pointing up, which is how it arrives.
+    assert!(
+        text.contains(
+            "| . . . .[] . . . . .|\n\
+             | . . .[][][] . . . .|\n"
+        ),
+        "the T did not arrive pointing up; the first frame was:\n{}",
+        text.lines().take(4).collect::<Vec<_>>().join("\n")
+    );
+    // Pointing right, one quarter turn later.
+    assert!(
+        text.contains(
+            "| . . . .[] . . . . .|\n\
+             | . . . .[][] . . . .|\n\
+             | . . . .[] . . . . .|\n"
+        ),
+        "the T did not turn; the last frame was:\n{}",
+        text.lines().rev().take(21).collect::<Vec<_>>().join("\n")
+    );
+}
+
+/// **A full row disappears, and the rows above it come down.**
+///
+/// This is the one mechanic no other example has. It exercises the array
+/// concatenation this release added: `sweep` keeps the rows with a gap, builds
+/// as many empty rows as went away, and joins the two with `+`.
+///
+/// The seed fixes the piece order, exactly as `guess.miru` and `dice.miru` fix
+/// theirs, so the fifteen keys below place four pieces the same way every run.
+///
+/// **The assertion is on the board and the line count, not on the score, and
+/// that is a fix rather than an oversight.** A pipe does not promise when its
+/// bytes arrive, so a `key_ready` that answers false for one turn shifts
+/// gravity's phase against the keys and changes how far each piece falls before
+/// its hard drop — worth one or two points, and nothing else. Every placement
+/// ends in a hard drop, which lands a piece on the stack whatever height it
+/// fell from, so the board is the part that holds. Checked against all eight
+/// phases before it was written down: the score came out 160, 161, or 162, and
+/// the board and the line were the same every time.
+#[test]
+fn tetris_example_clears_a_line() {
+    use std::io::Write;
+
+    let mut child = miru()
+        .arg("run")
+        .arg("examples/tetris.miru")
+        .arg("1")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+    // Drop, three right and drop, two left and drop, then turn, five left,
+    // and drop. The fourth piece completes the bottom row.
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(b" \x1b[C\x1b[C\x1b[C \x1b[D\x1b[D \x1b[A\x1b[D\x1b[D\x1b[D\x1b[D\x1b[D ")
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("wait for miru");
+
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("output should be valid utf-8");
+
+    // What is left after the full row went: three rows, not four, and the
+    // two cells that had been sitting on top of the cleared one have come
+    // down a row.
+    assert!(
+        text.contains(
+            "|[] . . . . . . . . .|\n\
+             |[] . . . . . . . . .|\n\
+             |[][][] .[] . . . . .|\n\
+             +--------------------+\n"
+        ),
+        "the rows above the cleared one did not come down; the last frame was:\n{}",
+        text.lines().rev().take(21).collect::<Vec<_>>().join("\n")
+    );
+    assert!(
+        text.ends_with("lines 1\n"),
+        "expected exactly one line cleared, ended with: {:?}",
+        text.lines().last()
+    );
+}
+
 /// `key_ready` through the real binary, against a real pipe.
 ///
 /// The unit tests use a scripted keyboard, which cannot exercise `poll` on unix

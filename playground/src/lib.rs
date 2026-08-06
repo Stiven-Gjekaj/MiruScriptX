@@ -222,9 +222,9 @@ pub fn version() -> String {
 /// `every_bundled_example_runs`.
 ///
 /// **No game can go in this list, and 1.8 is the release that made that
-/// permanent.** `life.miru`, `snake.miru`, and `pong.miru` each call `sleep`,
-/// and the two with input also call `key_ready` and `clear`. A page refuses all
-/// three, for reasons that are not oversights:
+/// permanent.** `life.miru`, `snake.miru`, `pong.miru`, and `tetris.miru` each
+/// call `sleep`, and the three with input also call `key_ready` and `clear`. A
+/// page refuses all three, for reasons that are not oversights:
 ///
 /// - `sleep` blocks, and a browser paints between turns of its event loop, so a
 ///   paced loop would freeze the tab rather than animate it. Running one here

@@ -8,6 +8,29 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## Unreleased
+
+### Added
+
+- **A fourth game**: [`tetris.miru`](examples/tetris.miru). It needed no change
+  to the language — 1.8 had already shipped everything it uses — and it is
+  here because it demonstrates two things the other three do not.
+
+  **Turning a piece needs no trigonometry.** On a grid a quarter turn is not an
+  angle, it is a swap: the cell at `(x, y)` lands at `(box - 1 - y, x)`. That
+  is three lines, and it is worth knowing before reaching for the `sin` and
+  `cos` the language does not have.
+
+  **Clearing a full row is array work**, and it uses the `+` this release added:
+  keep the rows with a gap, build as many empty rows as went away, and join the
+  two. It is also the first example whose board is a grid it both reads and
+  writes, rather than a list of cells or a pair of coordinates.
+
+  It takes its seed from the command line — `miru run examples/tetris.miru 7`
+  deals the same pieces every time — and falls back to the clock without one,
+  which is what lets a test say what fifteen keypresses must produce while a
+  player still gets a different game each run.
+
 ## 1.8.0 (2026-08-06)
 
 > Folded in before this version was ever released: the entries below describe
