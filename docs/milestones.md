@@ -499,10 +499,10 @@ compile error and lint in code that cannot otherwise be built here.
 one environment returned `send-pack: unexpected disconnect` on every retry while
 branch pushes went through, which left a finished release with no way to publish
 it. The release workflow now takes a version through `workflow_dispatch` and
-drafts from it. No tag is pushed by anybody: `gh release create` against a tag
-that does not exist yet records the name and the commit, and creates the ref
-when a person publishes the draft — so a draft that turns out to be wrong is
-deleted and nothing happened.
+drafts from it, creating the tag on GitHub's side from the commit being built.
+The release stays a draft, because publishing is a person's decision; the tag is
+not, because a release without one is not a release. An existing tag is refused
+rather than moved, and a published release is refused rather than replaced.
 
 Splitting that into a workflow that tags and a workflow that releases is the
 obvious tidy-up and does not work: **a tag pushed with `GITHUB_TOKEN` does not

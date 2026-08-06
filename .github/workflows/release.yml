@@ -17,19 +17,22 @@ name: Release
 # with no way to publish it. Anything that can only be started by a `git push`
 # of a tag has that single point of failure; this does not.
 #
-# **No tag is pushed here, by this workflow or by anybody.** `gh release create`
-# against a tag that does not exist yet records the name and the commit and
-# creates the ref only when a person publishes the draft. So a draft that turns
-# out to be wrong is deleted and nothing happened — which is the same argument
-# the draft itself rests on, applied one step earlier. A tag is a public,
-# permanent-looking thing to create by accident.
+# **A dispatch creates the tag as well as the release.** The tag is made on
+# GitHub's side, from the commit being built, before the draft is created — so
+# somewhere that cannot push a tag can still produce one. The release is still
+# a draft, because publishing stays a person's decision; the tag is not, because
+# a release without one is not a release.
+#
+# An existing tag is refused rather than moved, and a published release is
+# refused rather than replaced. A leftover *draft* is replaced, so that a second
+# dispatch after deleting a tag does not trip over the first attempt.
 #
 # **Do not split this into a workflow that tags and a workflow that releases.**
 # It is the obvious tidy-up and it does not work: a tag pushed with
 # `GITHUB_TOKEN` does not trigger `on: push`, because GitHub suppresses that to
 # stop workflows setting each other off. The tag workflow would succeed, the
 # release workflow would never run, and the failure would look like nothing
-# happening at all.
+# happening at all. Everything therefore happens in this one run.
 #
 # One catch, found the hard way: GitHub only offers `workflow_dispatch` for a
 # workflow that exists on the *default* branch. Dispatching this file while it
@@ -205,6 +208,34 @@ jobs:
           fi
           echo "Dispatched ${DISPATCHED}, which is what Cargo.toml says."
 
+      # The tag is made here, on GitHub's side, which is the whole point: an
+      # environment that cannot push a tag can still cut a release. `checkout`
+      # leaves `GITHUB_TOKEN` configured for pushing, so this needs no secret of
+      # its own beyond the `contents: write` this workflow already asks for.
+      #
+      # Annotated rather than lightweight, matching every tag this repository
+      # already has.
+      #
+      # **An existing tag is refused, never moved.** A tag that points somewhere
+      # new is the thing that makes a checkout of a version stop being
+      # reproducible, and somebody re-dispatching after a fix almost never means
+      # to do that. Delete the tag by hand if that really is the intent.
+      - name: Create the tag
+        if: inputs.version != ''
+        env:
+          TAG: v${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::${TAG} already exists. A tag is never moved: delete it first if that is really the intent."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Release ${TAG#v}" "${GITHUB_SHA}"
+          git push origin "${TAG}"
+          echo "Tagged ${GITHUB_SHA} as ${TAG}."
+
       - name: Collect the archives
         uses: actions/download-artifact@v4
         with:
@@ -245,17 +276,30 @@ jobs:
           set -euo pipefail
 
           # A tag push names itself; a dispatch names a version and the tag is
-          # that with a `v`. `--target` goes with the second, because there is
-          # no ref yet to say which commit the release belongs to: the tag is
-          # created from this commit when somebody publishes the draft.
+          # that with a `v`, which the step above has just created. Either way
+          # the ref exists by the time this runs, so no `--target` is needed.
           if [ -n "${DISPATCHED}" ]; then
             tag="v${DISPATCHED}"
-            target=(--target "${GITHUB_SHA}")
-            echo "Dispatched. Drafting ${tag} against ${GITHUB_SHA}; the tag appears on publish."
           else
             tag="${GITHUB_REF_NAME}"
-            target=()
-            echo "Tagged. Drafting ${tag}, which already exists as a ref."
+          fi
+          echo "Drafting ${tag}."
+
+          # A re-dispatch after deleting the tag should not then trip over the
+          # draft the first attempt left behind. Replacing a draft loses
+          # nothing, because a draft is by definition unreleased.
+          #
+          # **A published release is never touched.** Deleting one takes a
+          # version the world has already downloaded, and a workflow should not
+          # be able to do that by accident.
+          if existing="$(gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "${existing}" = "true" ]; then
+              echo "A draft for ${tag} exists already. Replacing it."
+              gh release delete "${tag}" --repo "${GITHUB_REPOSITORY}" --yes
+            else
+              echo "::error::${tag} is already published. Refusing to touch it."
+              exit 1
+            fi
           fi
 
           version="${tag#v}"
@@ -301,7 +345,6 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "MiruScriptX Release ${tag}" \
             "${body[@]}" \
-            "${target[@]}" \
             --draft \
             dist/*
           echo "Draft release created. Review and publish it from the Releases page."
