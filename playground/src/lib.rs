@@ -138,6 +138,22 @@ impl miruscriptx::value::Clock for BrowserClock {
     fn now_millis(&mut self) -> Result<i64, String> {
         Ok(date_now() as i64)
     }
+
+    /// Refused, and this is the one capability split that needs saying out loud:
+    /// **the page can tell the time and cannot spend it.**
+    ///
+    /// A browser paints between turns of the event loop. Blocking here would
+    /// hold the loop, so a program that paced itself at thirty frames a second
+    /// would not animate at thirty frames a second, it would freeze the tab for
+    /// the whole run and then show the last frame. Busy-waiting on `Date.now`
+    /// would do the same thing while also burning the processor.
+    ///
+    /// Refusing says that plainly, and `try` catches it. Running a paced loop
+    /// in a browser needs a virtual machine that yields to the event loop,
+    /// which is a different design and not something this can fake.
+    fn sleep_millis(&mut self, _millis: u64) -> Result<(), String> {
+        Err("this program is running in a page, which cannot pause".to_string())
+    }
 }
 
 /// Run a program and return everything it printed.

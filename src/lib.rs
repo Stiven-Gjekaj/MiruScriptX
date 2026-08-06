@@ -630,6 +630,17 @@ mod tests {
         fn now_millis(&mut self) -> Result<i64, String> {
             Ok(self.0)
         }
+
+        /// Moves the clock forward instead of really waiting.
+        ///
+        /// A fake that sleeps by advancing is better than one that records the
+        /// request: a test can then assert that `now()` moved by exactly the
+        /// amount asked for, which is the property that matters, and the suite
+        /// stays instant.
+        fn sleep_millis(&mut self, millis: u64) -> Result<(), String> {
+            self.0 += millis as i64;
+            Ok(())
+        }
     }
 
     #[test]
@@ -657,6 +668,10 @@ mod tests {
             fn now_millis(&mut self) -> Result<i64, String> {
                 self.0 += 5;
                 Ok(self.0)
+            }
+
+            fn sleep_millis(&mut self, _millis: u64) -> Result<(), String> {
+                Ok(())
             }
         }
 

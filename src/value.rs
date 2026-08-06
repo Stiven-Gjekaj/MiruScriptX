@@ -141,6 +141,22 @@ pub trait Clock {
     /// than it gave a moment before, and a program that measures a duration
     /// with two of these can see a negative one.
     fn now_millis(&mut self) -> Result<i64, String>;
+
+    /// Do nothing for this many milliseconds.
+    ///
+    /// Here rather than in a capability of its own because a host that can tell
+    /// the time can usually spend it, and the two are wanted together: a loop
+    /// that paces itself reads the clock and then waits.
+    ///
+    /// **The browser is the host where that reasoning breaks**, which is why
+    /// this can refuse rather than being an ordinary method. A page that blocks
+    /// stops repainting, so a paced loop there would freeze the tab instead of
+    /// animating it. `BrowserClock` answers [`Clock::now_millis`] and refuses
+    /// this, and the capability model already allows exactly that.
+    ///
+    /// A negative duration is the caller's mistake to reject, not this one's.
+    /// By the time it arrives here it is already an unsigned count.
+    fn sleep_millis(&mut self, millis: u64) -> Result<(), String>;
 }
 
 /// A [`Clock`] that has no time to tell.
@@ -158,6 +174,13 @@ impl NoClock {
 
 impl Clock for NoClock {
     fn now_millis(&mut self) -> Result<i64, String> {
+        Err(NoClock::REFUSAL.to_string())
+    }
+
+    /// The same refusal as [`NoClock::now_millis`], and for the same reason.
+    /// A host with no clock cannot measure a wait either, and returning at once
+    /// would be a program's pacing silently doing nothing.
+    fn sleep_millis(&mut self, _millis: u64) -> Result<(), String> {
         Err(NoClock::REFUSAL.to_string())
     }
 }

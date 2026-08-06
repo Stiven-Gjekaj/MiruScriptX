@@ -139,6 +139,13 @@ impl miruscriptx::value::Clock for RealClock {
             .map(|since| since.as_millis() as i64)
             .map_err(|_| "the host's clock is set before 1970".to_string())
     }
+
+    /// The whole thread, because the whole program is this one thread. There is
+    /// nothing else waiting to run, so there is nothing to yield to.
+    fn sleep_millis(&mut self, millis: u64) -> Result<(), String> {
+        std::thread::sleep(std::time::Duration::from_millis(millis));
+        Ok(())
+    }
 }
 
 /// Everything `miru` gives a program: the file system it was asked for, plus
