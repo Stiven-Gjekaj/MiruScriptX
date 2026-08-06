@@ -10,6 +10,25 @@ semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- **`sleep(ms)`**, which does nothing for that many milliseconds.
+
+  This is what lets a loop run at a speed somebody chose. A loop with nothing
+  slowing it down runs as fast as the machine allows — measured at 7,918,493
+  turns a second on an ordinary one — which pins a processor and makes anything
+  drawn inside it flash past at whatever rate the hardware gives.
+
+  A negative duration is an error rather than a wait of no time, because nobody
+  means to wait for less than nothing and the usual cause is a subtraction that
+  came out backwards. Zero is allowed: that same subtraction reaches zero
+  honestly on a frame whose work took exactly as long as the frame.
+
+  **The playground refuses it**, and it is the first thing there that has a
+  clock and still cannot be done. A page paints between turns of its event loop,
+  so blocking would freeze the tab rather than pace anything. `try` catches the
+  refusal. This is why a program that animates is a program for a terminal.
+
 ### Changed
 
 - **The playground is redesigned.** It was a plain two-pane page that looked
