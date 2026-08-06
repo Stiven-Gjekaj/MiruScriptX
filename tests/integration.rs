@@ -548,17 +548,27 @@ fn pong_keeps_moving_while_nothing_is_pressed() {
 ///
 /// The loop is bounded so that a wrong answer fails the suite by giving the
 /// wrong count rather than by hanging it.
+///
+/// **The bound is a deadline and not a number of turns, and that is a fix
+/// rather than a preference.** Counting turns was racy: three turns of a busy
+/// loop take microseconds, the write below is not ordered against them, and a
+/// child that got there first reported nothing and failed. It passed almost
+/// always and failed on Linux CI often enough to be worse than a plain
+/// failure.
+///
+/// A deadline keeps the property the bound was there for. A `key_ready` that
+/// answered "no" forever would spin for five seconds and then report nothing,
+/// which fails the assertion below — it still cannot hang the suite.
 #[test]
 fn key_ready_reports_a_pipe_as_readable_and_the_loop_drains_it() {
     use std::io::Write;
 
-    let program = "let seen = 0\nlet frames = 0\nlet stop = false\n\
-                   while frames < 3 && !stop {\n  \
+    let program = "let seen = 0\nlet stop = false\nlet deadline = now() + 5000\n\
+                   while !stop && now() < deadline {\n  \
                      while key_ready() {\n    \
                        let k = read_key()\n    \
                        if k == nil {\n      stop = true\n      break\n    }\n    \
-                       seen = seen + 1\n  }\n  \
-                     frames = frames + 1\n}\n\
+                       seen = seen + 1\n  }\n}\n\
                    print(seen, stop)";
 
     let mut child = miru()
