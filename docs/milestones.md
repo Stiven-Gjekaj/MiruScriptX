@@ -509,6 +509,23 @@ obvious tidy-up and does not work: **a tag pushed with `GITHUB_TOKEN` does not
 trigger `on: push`**, because GitHub suppresses that to stop workflows setting
 each other off. The tag would be made and the release would never run.
 
+**A Pages deploy that times out cannot be fixed by re-running it**, and the
+reason is worth writing down because the obvious response to a red deploy is to
+press the button again. Three deploys in a row sat at `deployment_queued` and
+hit `actions/deploy-pages`'s ten-minute limit, and a timing-out job ends with
+`Canceling Pages deployment...`. **The deployment ID is the commit SHA.** So a
+re-run of that same run creates a deployment with an ID that is already in a
+cancelled state, and GitHub answers `Deployment cancelled.` in seven seconds.
+Only a new commit, with a new SHA, can deploy.
+
+That is also why a red Pages deploy is not automatically a broken site. The
+build half of the workflow is separate and kept passing, and nothing under
+`playground/` had changed since the last deploy that succeeded, so what was
+already published was byte-for-byte what the failed runs would have published.
+**Check what the site is actually serving before treating a red deploy as an
+outage**: fetching the page and looking for a marker from the version in
+question answers it in one request.
+
 ## 1.7: every error at once, a link to a program, and colour in an editor
 
 Shipped. Three issues with nothing in common, which is why they could be built
