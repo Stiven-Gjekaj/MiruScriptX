@@ -60,6 +60,7 @@ pub fn register(globals: &mut Globals) {
     define_system(globals, "file_exists", file_exists);
     define_system(globals, "args", args);
     define_ambient(globals, "now", now);
+    define_ambient(globals, "sleep", sleep);
     define_ambient(globals, "random", random);
     define_ambient(globals, "random_int", random_int);
     define_ambient(globals, "seed", seed);
@@ -1069,6 +1070,43 @@ fn now(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
     ambient.now_millis().map(Value::Int)
 }
 
+/// `sleep(ms)` does nothing for that many milliseconds.
+///
+/// This is what lets a loop hold a frame rate. Without it a loop runs as fast as
+/// the machine allows — measured at just under eight million turns a second on
+/// an ordinary one — which is a pegged processor and a game whose speed depends
+/// on what it is running on.
+///
+/// **A negative duration is an error rather than a no-op.** Nobody means to wait
+/// for less than no time, so it is a mistake somewhere further up, usually a
+/// subtraction that went the wrong way while working out how much of a frame is
+/// left. Returning at once would hide it and leave the loop running flat out,
+/// which is the exact fault this builtin exists to fix.
+///
+/// Zero is not an error, because `sleep(deadline - now())` legitimately reaches
+/// zero on the frame where the work took exactly as long as the frame.
+///
+/// It refuses where the host cannot pause, which is any page: see
+/// `BrowserClock::sleep_millis`. `try` catches it.
+fn sleep(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("sleep", &args, 1)?;
+    let millis = match &args[0] {
+        Value::Int(n) => *n,
+        other => {
+            return Err(format!(
+                "sleep expects an int number of milliseconds but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+    if millis < 0 {
+        return Err(format!(
+            "sleep expects a number of milliseconds that is not negative but got {millis}"
+        ));
+    }
+    ambient.sleep_millis(millis as u64).map(|()| Value::Nil)
+}
+
 /// `random()` gives a float from 0 up to but not including 1.
 ///
 /// The generator seeds itself from the clock the first time a program asks, so
@@ -1216,8 +1254,8 @@ impl Args {
     ///
     /// Forty is the count of `define` calls, not the count of builtins. The
     /// two were the same figure until 1.1 and are not any more: there are
-    /// fifty-three builtins, of which four take a `SystemFn`, five take an
-    /// `AmbientFn`, and four take a `HostFn`, and none of those thirteen would
+    /// fifty-four builtins, of which four take a `SystemFn`, six take an
+    /// `AmbientFn`, and four take a `HostFn`, and none of those fourteen would
     /// be touched by such a change.
     pub fn into_vec(self) -> Vec<Value> {
         match self {
@@ -2254,21 +2292,21 @@ mod count {
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
-            ambient, 5,
-            "{ambient} builtins take an AmbientFn, not 5. This kind arrived in \
+            ambient, 6,
+            "{ambient} builtins take an AmbientFn, not 6. This kind arrived in \
              1.5 and is quoted by `Args::into_vec` above."
         );
         assert_eq!(
             plain + system + ambient,
-            49,
-            "{} builtins reach `call_native`, not 49. Quoted by the caught-error \
+            50,
+            "{} builtins reach `call_native`, not 50. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
         assert_eq!(
             host, 4,
             "{host} builtins are higher-order, not 4. Quoted by the same two \
-             places, which say the other thirteen take a different signature."
+             places, which say the other fourteen take a different signature."
         );
         assert_eq!(
             plain + system + ambient + host,
@@ -2281,7 +2319,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 53] = [
+pub const BUILTIN_NAMES: [&str; 54] = [
     "print",
     "eprint",
     "exit",
@@ -2327,6 +2365,7 @@ pub const BUILTIN_NAMES: [&str; 53] = [
     "file_exists",
     "args",
     "now",
+    "sleep",
     "random",
     "random_int",
     "seed",

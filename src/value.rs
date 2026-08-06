@@ -253,6 +253,11 @@ impl<'a> Ambient<'a> {
         self.clock.now_millis()
     }
 
+    /// Wait, or the host's refusal to.
+    pub fn sleep_millis(&mut self, millis: u64) -> Result<(), String> {
+        self.clock.sleep_millis(millis)
+    }
+
     /// The next key from the host's keyboard, or its refusal.
     pub fn read_key(&mut self) -> Result<Option<String>, String> {
         self.keyboard.read_key()

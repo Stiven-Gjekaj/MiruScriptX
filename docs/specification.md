@@ -754,7 +754,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 53 builtins. A program can use each of them without an import.
+There are 54 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -923,6 +923,7 @@ print(reverse(sort(scores, fn(x) { return x })))
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
 | `now()` | 0 | The milliseconds since 1970-01-01T00:00:00Z, as an integer. |
+| `sleep(ms)` | 1 | Does nothing for `ms` milliseconds. Gives `nil`. |
 
 `now` gives an integer and not a float, so no whole millisecond is lost.
 
@@ -942,6 +943,19 @@ without the other.
 **`now` is the first builtin whose result the program's own source does not
 determine.** Section 8.10 gives the others. Every builtin outside these two
 sections gives the same answer each time it is called with the same arguments.
+
+`sleep` takes an integer, and **a negative one is an error** rather than a
+return with nothing done. Nobody means to wait for less than no time, so a
+negative duration is a mistake further up — usually a subtraction that went the
+wrong way while working out how much of a frame was left — and returning at once
+would hide it. Zero is not an error, because that same subtraction reaches zero
+honestly on a frame whose work took exactly as long as the frame.
+
+`sleep` gives an error where the host cannot pause, and `try` catches it. **This
+is the one place where a host that has a clock still refuses.** A page can tell
+the time and cannot spend it: a browser paints between turns of its event loop,
+so blocking would hold that loop and freeze the tab rather than pacing anything.
+`miru` can pause; the browser playground cannot.
 
 ### 8.10 Random numbers
 

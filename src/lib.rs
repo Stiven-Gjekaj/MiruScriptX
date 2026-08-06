@@ -737,6 +737,40 @@ mod tests {
         );
     }
 
+    /// `sleep` reaches the host's clock with the number the program asked for.
+    ///
+    /// `FixedClock` sleeps by moving itself forward, so this asserts the exact
+    /// duration rather than a bound, and does it without the suite waiting.
+    #[test]
+    fn sleep_asks_the_host_clock_to_wait_exactly_as_long() {
+        let captured = run_capture_all_with(
+            "let a = now()\nsleep(250)\nprint(now() - a)",
+            &[],
+            Host {
+                clock: Box::new(FixedClock(1_000)),
+                ..Host::none()
+            },
+        )
+        .expect("the program runs");
+        assert_eq!(captured.out, "250\n");
+    }
+
+    /// Sleeping where nothing can pause is a refusal, not a silent return.
+    ///
+    /// A page is the host this is about. Returning at once there would let a
+    /// paced loop run flat out while looking as though it were paced.
+    #[test]
+    fn sleep_refuses_where_the_host_has_no_clock() {
+        let Err(error) = run_capture_all("sleep(1)") else {
+            panic!("a host with no clock agreed to wait");
+        };
+        assert!(
+            error.message.contains("there is no clock"),
+            "the message was {:?}",
+            error.message
+        );
+    }
+
     /// Build an error carrying `count` identical trace entries.
     fn traced(count: usize) -> MiruError {
         let mut error = MiruError::with_column(1, 1, "boom");

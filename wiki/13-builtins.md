@@ -417,6 +417,53 @@ program runs, which makes it jump backwards, and a difference you took across
 that moment comes out negative. For anything that has to be right about a
 duration, say what your program does when the answer is below zero.
 
+## sleep(ms)
+
+`sleep(ms)` does nothing for that many milliseconds, and then your program
+carries on.
+
+```
+for n in range(3, 0) {
+  print(n)
+  sleep(1000)
+}
+print("go")
+```
+
+**This is what makes a loop run at a speed you chose** rather than as fast as
+the machine happens to be. A loop with nothing to slow it down runs millions of
+times a second, which pins a processor at full speed and makes anything you draw
+flash past. Anything that moves on a screen wants to wait between one picture
+and the next:
+
+```
+while true {
+  draw()
+  sleep(50)      // twenty pictures a second
+}
+```
+
+A negative number is an error rather than a wait of no time. Nobody means to
+wait for less than nothing, so it is a mistake somewhere earlier — usually a
+subtraction that came out the wrong way round — and it is better to hear about
+it than to have your loop quietly run flat out. `sleep(0)` is fine, because that
+same subtraction reaches zero honestly.
+
+**The browser playground cannot do this**, and it is the one thing there that
+has a clock and still refuses. A page draws between one piece of work and the
+next, so a page that waited would stop drawing: your program would freeze the
+tab and then show its last picture, rather than animating. `try` catches it:
+
+```
+let waited = try sleep(50)
+if is_error(waited) {
+  print("cannot pause here:", waited.message)
+}
+```
+
+That is why anything that moves is a program for a terminal, and why you will
+not find one in the playground.
+
 ## random(), random_int(low, high), and seed(n)
 
 `random()` gives a number from 0 up to but not including 1. `random_int(low,
