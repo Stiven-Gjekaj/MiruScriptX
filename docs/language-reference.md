@@ -2097,29 +2097,29 @@ miru run examples/tetris.miru 7
 
 The same pieces arrive in the same order every time you run that.
 
-**A paced loop is not repeatable just because you count turns instead of
-milliseconds.** This one is worth reading twice, because tetris was written
-with a comment claiming the opposite and Windows CI proved it wrong.
+**On Windows, do not pipe more than about a dozen bytes of arrow keys into a
+game you are testing.** This is a real limit rather than a style note, and it
+is the one that will waste your afternoon.
 
-Counting ticks looks safe: gravity fires every eighth turn of the loop, no
-clock involved, so the same keys should give the same game. They do not. **A
-turn of the loop happens whether or not a key was waiting**, and a pipe does
-not promise when its bytes arrive. Deliver them unevenly and gravity gets extra
-turns between one key and the next, so a piece has already fallen halfway by
-the time the key meant to move it lands — and a sideways move that fits high up
-is refused lower down.
+An arrow key is three bytes, `\u{1B}` then `[` then a letter. `read_key` fills
+a buffer sixteen bytes at a time, and on unix, if a read stops in the middle of
+one of those sequences, `poll` fetches the rest. **Windows has no equivalent**,
+so a sequence split across two reads is decoded as a bare Escape — and most
+games treat Escape as "quit". A test that pipes five arrow keys is well under
+the buffer and fine. One that pipes fifteen is thirty-seven bytes, splits, and
+ends the game somewhere in the middle, on Windows only.
 
-The fix is to let a test turn the paced part off. Tetris takes a second number,
-the ticks a piece takes to fall a row, and its tests pass one large enough that
-nothing falls on its own:
+Tetris also takes a second number, the ticks a piece takes to fall a row, so
+`miru run examples/tetris.miru 7 4` is the same game twice as fast and a large
+number turns gravity off:
 
 ```
 miru run examples/tetris.miru 7 100000
 ```
 
-Then only the keys move anything, and the run is identical whether they arrive
-all at once or seconds apart. If your game has something that happens on its
-own, give it a knob like this before you try to write a test around it.
+That is a speed setting, and it is useful in a test for a different reason —
+it takes the falling out of the picture so only the keys move anything. It does
+**not** rescue a long key sequence from the split above.
 
 
 # Next steps

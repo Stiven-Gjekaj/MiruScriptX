@@ -33,12 +33,17 @@ semantic versioning.
 
   A second number sets how many ticks a piece takes to fall a row, so
   `miru run examples/tetris.miru 7 4` is the same game twice as fast, and a
-  large one turns gravity off. **That argument exists because counting ticks
-  does not make a piped game repeatable**, which the program had claimed it
-  did. A loop turn happens whether or not a key was waiting, so a pipe that
-  delivers unevenly gives gravity extra turns between keys and the pieces land
-  somewhere else. Windows CI found it; the wiki's game lesson now carries the
-  rule.
+  large one turns gravity off.
+
+  **It ships with the rotation test only.** A test that piped fifteen keys to
+  clear a row passed on Linux and macOS and failed on Windows, and the cause is
+  a limit worth knowing: an arrow key is three bytes, `read_key` fills its
+  buffer sixteen at a time, and a sequence split across two reads is decoded as
+  a bare Escape because Windows has no `poll` to fetch the rest. Thirty-seven
+  bytes of arrows splits; the game reads Escape and quits. `src/keyboard.rs`
+  predicted this in a comment before anything hit it. The wiki's game lesson
+  now carries the rule, and clearing a row has no end-to-end test until the
+  limit is lifted.
 
 ## 1.8.0 (2026-08-06)
 
