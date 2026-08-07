@@ -674,6 +674,33 @@ fn arrays_maps_and_indexing() {
             "ok {\"a\": 1, \"b\": 2}",
         ),
         ("{\"a\": 1} == {\"a\": 1}", "ok true"),
+        ("\"abc\"[0]", "ok \"a\""),
+        ("\"abc\"[2]", "ok \"c\""),
+        // Characters, not bytes. The emoji is four bytes and one character, so
+        // a byte-indexed implementation gives `[1]` as a fragment or refuses,
+        // and both disagree with `len` and with `split(s, "")`.
+        ("len(\"a\\u{1F600}b\")", "ok 3"),
+        ("\"a\\u{1F600}b\"[1]", "ok \"\u{1F600}\""),
+        ("\"a\\u{1F600}b\"[2]", "ok \"b\""),
+        ("\"hello\"[1] == split(\"hello\", \"\")[1]", "ok true"),
+        (
+            "\"abc\"[3]",
+            "err index 3 is out of range for a string of length 3 @ 1:7",
+        ),
+        (
+            "\"\"[0]",
+            "err index 0 is out of range for a string of length 0 @ 1:4",
+        ),
+        // Refused rather than counted from the end, so that meaning stays
+        // available to a later release.
+        (
+            "\"abc\"[-1]",
+            "err index -1 is out of range (negative) @ 1:7",
+        ),
+        (
+            "\"abc\"[\"x\"]",
+            "err string index must be an int, not a string @ 1:7",
+        ),
         (
             "[1, 2, 3][5]",
             "err index 5 is out of range for an array of length 3 @ 1:11",

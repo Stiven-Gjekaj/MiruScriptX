@@ -1685,6 +1685,16 @@ fn index_get(
                 .map_err(|message| runtime_error(chunk, index_ip, message))?;
             Ok(entries.borrow().get(key).cloned().unwrap_or(Value::Nil))
         }
+        // A one-character string, because there is no character type and
+        // adding one would be a far larger change than this. An index past
+        // the end refuses rather than giving `nil`: an absent map key is
+        // already `nil`, and joining the two would leave a program unable to
+        // tell "past the end" from "held nothing".
+        Value::Str(text) => {
+            let found = crate::ops::string_index(index, &text)
+                .map_err(|message| runtime_error(chunk, index_ip, message))?;
+            Ok(Value::Str(std::rc::Rc::new(found)))
+        }
         Value::Error(error) => Err(runtime_error(
             chunk,
             target_ip,

@@ -491,8 +491,27 @@ of two other types gives an error that names both types.
 A string holds Unicode characters. Every builtin counts characters, not bytes.
 `len("héllo")` is 5.
 
-A string does not support the index operator. `"abc"[0]` gives the error
-`cannot index a string`. Use the `slice` builtin.
+`s[i]` gives the character at position `i` as a one-character string, counted
+in characters like everything else. `"abc"[0]` is `"a"`, and
+`"a\u{1F600}b"[1]` is the emoji rather than a fragment of its four bytes.
+Indexing agrees with `split(s, "")` for every `i` both accept.
+
+The index must be an integer, from `0` up to one less than `len(s)`. Anything
+else is an error, in the words `slice` and array indexing already use:
+
+| Expression | Error |
+| ---------- | ----- |
+| `"abc"[3]` | `index 3 is out of range for a string of length 3` |
+| `""[0]` | `index 0 is out of range for a string of length 0` |
+| `"abc"[-1]` | `index -1 is out of range (negative)` |
+| `"abc"["x"]` | `string index must be an int, not a string` |
+
+An index past the end is an error rather than `nil`, because an absent map key
+already gives `nil` and a program must be able to tell the two apart.
+
+**A string cannot be assigned through.** `s[0] = "z"` gives
+`cannot index-assign to a string`. Strings are values here, and making one
+assignable is a larger change than reading from one.
 
 ### 5.6.1 Adding two arrays
 

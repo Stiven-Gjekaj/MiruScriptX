@@ -190,6 +190,49 @@ pub fn array_index(index: &Value, len: usize) -> Result<usize, String> {
     Ok(index)
 }
 
+/// Validate an index against a string and give the character it names.
+///
+/// **Characters, not bytes**, matching `len`, `find`, `slice`, and
+/// `split(s, "")`. That was settled long before indexing existed: the library
+/// counts characters everywhere, so this had only to follow rather than choose,
+/// which is why `s[i]` needed no new decision about what a string is made of.
+///
+/// The refusals are [`array_index`]'s, in its words with "string" for "array".
+/// Indexing an array and indexing a string are one mistake made two ways, and a
+/// program should not have to learn two vocabularies for it.
+///
+/// **A negative index refuses rather than counting from the end.** `slice`
+/// clamps one silently, which is recorded as a wart version 1 cannot fix; this
+/// is the chance not to add a second place with the same problem. Counting from
+/// the end stays available to a later release, because a refusal can become a
+/// meaning and a meaning cannot become a refusal.
+///
+/// Finding the character costs a walk from the front, since a character index
+/// is not a byte offset. A loop over every character is therefore quadratic and
+/// `split(s, "")` remains the way to walk a long string once.
+pub fn string_index(index: &Value, s: &str) -> Result<String, String> {
+    if let Some(message) = unhandled(index) {
+        return Err(message);
+    }
+    let Value::Int(n) = index else {
+        return Err(format!(
+            "string index must be an int, not a {}",
+            index.type_name()
+        ));
+    };
+    if *n < 0 {
+        return Err(format!("index {n} is out of range (negative)"));
+    }
+    let wanted = *n as usize;
+    match s.chars().nth(wanted) {
+        Some(found) => Ok(found.to_string()),
+        None => Err(format!(
+            "index {wanted} is out of range for a string of length {}",
+            s.chars().count()
+        )),
+    }
+}
+
 /// Validate a map key without copying it: it must be a string.
 ///
 /// Reading a map only needs to look the key up, and `BTreeMap<String, _>::get`

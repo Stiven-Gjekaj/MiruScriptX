@@ -347,6 +347,31 @@ Join strings with `+`:
 print("Miru" + "ScriptX")   // MiruScriptX
 ```
 
+Reach a single character with square brackets, counting from zero:
+
+```
+let word = "hello"
+print(word[0], word[4])   // h o
+```
+
+There is no character type, so `word[0]` is a string one character long. And
+since a string is measured in characters rather than bytes, so is the index —
+`"a\u{1F600}b"[1]` is the whole emoji, not a piece of it.
+
+An index past the end is an error naming the length, rather than `nil`:
+
+```
+print(word[9])   // index 9 is out of range for a string of length 5
+```
+
+That is deliberate. A missing map key gives `nil` already, so if this did too
+you could not tell "there is no such character" from "there is one, and it is
+nothing". A negative index is an error as well, so `word[-1]` does not mean the
+last character.
+
+Reading a character is all you can do — `word[0] = "H"` is an error. Build a
+new string instead, with `+` or `slice`.
+
 ## Arrays
 
 An ordered list of values, written with square brackets. An array can hold any
