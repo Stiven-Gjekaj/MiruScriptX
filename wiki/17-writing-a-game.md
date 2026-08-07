@@ -201,5 +201,29 @@ miru run examples/tetris.miru 7
 
 The same pieces arrive in the same order every time you run that.
 
+**A paced loop is not repeatable just because you count turns instead of
+milliseconds.** This one is worth reading twice, because tetris was written
+with a comment claiming the opposite and Windows CI proved it wrong.
+
+Counting ticks looks safe: gravity fires every eighth turn of the loop, no
+clock involved, so the same keys should give the same game. They do not. **A
+turn of the loop happens whether or not a key was waiting**, and a pipe does
+not promise when its bytes arrive. Deliver them unevenly and gravity gets extra
+turns between one key and the next, so a piece has already fallen halfway by
+the time the key meant to move it lands — and a sideways move that fits high up
+is refused lower down.
+
+The fix is to let a test turn the paced part off. Tetris takes a second number,
+the ticks a piece takes to fall a row, and its tests pass one large enough that
+nothing falls on its own:
+
+```
+miru run examples/tetris.miru 7 100000
+```
+
+Then only the keys move anything, and the run is identical whether they arrive
+all at once or seconds apart. If your game has something that happens on its
+own, give it a knob like this before you try to write a test around it.
+
 ---
 Previous: [Handling errors](16-handling-errors.md) | Next: [Next steps](18-next-steps.md)

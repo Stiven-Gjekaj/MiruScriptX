@@ -21,6 +21,11 @@
 // The seed comes from the command line if you give it one, so
 // `miru run examples/tetris.miru 7` deals the same pieces every time.
 // Without one the clock decides and each game is different.
+//
+// A second number sets how many ticks a piece takes to fall a row, so
+// `miru run examples/tetris.miru 7 4` is the same game twice as fast.
+// A large number turns gravity off and leaves the keys in charge, which
+// is what the tests use.
 
 let width = 10
 let height = 18
@@ -158,11 +163,21 @@ let lines = 0
 let alive = true
 let landed = false
 
-// Gravity is counted in ticks rather than measured against the clock, so
-// that the same keys produce the same game whether they come from a
-// person or from a pipe.
+// Gravity is counted in ticks rather than measured against the clock.
+//
+// **That does not make a piped game repeatable, and it was written here
+// claiming it did.** A tick happens when the loop goes round, and the
+// loop goes round whether or not a key was waiting, so a pipe that
+// delivers its bytes unevenly gives gravity more turns between one key
+// and the next. Windows CI proved it: the same fifteen keys that land a
+// piece against the left wall on Linux let gravity drop it most of the
+// way first, and it lands somewhere else. Hence the second argument,
+// which a test sets high enough that only the keys move anything.
 let tick = 0
 let fall_every = 8
+if len(given) > 1 {
+  fall_every = int(given[1])
+}
 
 hide_cursor()
 

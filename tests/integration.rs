@@ -550,6 +550,11 @@ fn pong_keeps_moving_while_nothing_is_pressed() {
 /// The leading key is one the game ignores, and it is there to buy a frame.
 /// The loop draws *after* it has handled a key, so the piece as it arrives is
 /// never printed unless something harmless is pressed first.
+///
+/// Gravity is off, as it is in the line-clearing test below and for the reason
+/// given there. Two keys are too few for a tick to reach this one on a pipe
+/// that behaves, but "behaves" is the assumption that broke, so it does not
+/// rely on it.
 #[test]
 fn tetris_example_turns_a_piece() {
     use std::io::Write;
@@ -558,6 +563,7 @@ fn tetris_example_turns_a_piece() {
         .arg("run")
         .arg("examples/tetris.miru")
         .arg("1")
+        .arg("100000")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -603,15 +609,22 @@ fn tetris_example_turns_a_piece() {
 /// The seed fixes the piece order, exactly as `guess.miru` and `dice.miru` fix
 /// theirs, so the fifteen keys below place four pieces the same way every run.
 ///
-/// **The assertion is on the board and the line count, not on the score, and
-/// that is a fix rather than an oversight.** A pipe does not promise when its
-/// bytes arrive, so a `key_ready` that answers false for one turn shifts
-/// gravity's phase against the keys and changes how far each piece falls before
-/// its hard drop — worth one or two points, and nothing else. Every placement
-/// ends in a hard drop, which lands a piece on the stack whatever height it
-/// fell from, so the board is the part that holds. Checked against all eight
-/// phases before it was written down: the score came out 160, 161, or 162, and
-/// the board and the line were the same every time.
+/// **The second argument turns gravity off, and that is the whole reason this
+/// test is stable.** Without it the test raced: a pipe does not promise when
+/// its bytes arrive, and a loop turn with no key waiting is still a tick, so
+/// uneven delivery hands gravity extra turns between one key and the next. A
+/// piece that has already fallen most of the way is somewhere else when its
+/// keys finally land, and a sideways move that fits high up can be refused low
+/// down.
+///
+/// **This was wrong once, and the way it was wrong is worth keeping.** The
+/// first version of this test justified itself by checking all eight gravity
+/// phases and finding the board identical each time. That check shifted the
+/// race *uniformly* — every key delayed by the same amount — which is not what
+/// a pipe does. Windows CI shifted it unevenly and the pieces landed against
+/// the wrong wall. Verified the new way instead: with gravity off the run is
+/// byte-identical whether the fifteen keys arrive at once or 400ms apart,
+/// where before it drifted from 162 points to 146.
 #[test]
 fn tetris_example_clears_a_line() {
     use std::io::Write;
@@ -620,6 +633,7 @@ fn tetris_example_clears_a_line() {
         .arg("run")
         .arg("examples/tetris.miru")
         .arg("1")
+        .arg("100000")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()

@@ -31,6 +31,15 @@ semantic versioning.
   which is what lets a test say what fifteen keypresses must produce while a
   player still gets a different game each run.
 
+  A second number sets how many ticks a piece takes to fall a row, so
+  `miru run examples/tetris.miru 7 4` is the same game twice as fast, and a
+  large one turns gravity off. **That argument exists because counting ticks
+  does not make a piped game repeatable**, which the program had claimed it
+  did. A loop turn happens whether or not a key was waiting, so a pipe that
+  delivers unevenly gives gravity extra turns between keys and the pieces land
+  somewhere else. Windows CI found it; the wiki's game lesson now carries the
+  rule.
+
 ## 1.8.0 (2026-08-06)
 
 > Folded in before this version was ever released: the entries below describe
