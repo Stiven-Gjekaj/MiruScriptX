@@ -29,7 +29,7 @@ Six classes, and nothing else:
 | number | an integer or a float literal |
 | keyword | `fn` `let` `return` `if` `else` `while` `for` `in` `break` `continue` `import` `as` `try` |
 | literal | `true` `false` `nil` |
-| builtin | any of the 53 names in `BUILTIN_NAMES` |
+| builtin | any of the names in `BUILTIN_NAMES` |
 
 **Punctuation and an ordinary identifier are left plain.** That is not an
 omission. `class_of` in `playground/src/lib.rs` made the same decision for the
@@ -44,8 +44,19 @@ A name after a dot is a field rather than a builtin, so `c.len` is plain while
 
 `scripts/build_grammar.sh` reads `BUILTIN_NAMES` from `src/builtins.rs` and
 writes the alternation into the grammar. **Run it after adding a builtin** and
-commit what it changes. That array has moved in five consecutive releases, so a
+commit what it changes. That array has moved in six consecutive releases, so a
 list typed by hand into a grammar is a list that is wrong within a month.
+
+**CI runs the script and fails if the result differs from what is committed**,
+so forgetting is caught before a merge rather than by somebody noticing that
+their editor stopped colouring half the language.
+
+That check exists because this section was not enough on its own. 1.8 added
+eight builtins, nobody ran the script, and the grammar went out with 53 names
+against a language that had 61 — every drawing builtin plain, in a released
+extension, until 1.9. **Generated is not the same as current.** A generated
+file still needs something that runs the generator, and asking a person in
+prose is what had just failed.
 
 The names go in longest first, because a regular expression alternation is tried
 left to right and a shorter name that prefixes a longer one would match first

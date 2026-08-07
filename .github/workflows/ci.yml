@@ -35,6 +35,21 @@ jobs:
       - name: Test
         run: cargo test --workspace --verbose
 
+      # The editor grammar is generated from BUILTIN_NAMES, and 1.8 shipped
+      # with eight builtins missing from it because nobody ran the generator.
+      # Being generated is not a guarantee on its own; this is the guarantee.
+      # It runs on one platform because the answer cannot differ by platform,
+      # for the same reason the WebAssembly steps below do.
+      - name: Check the editor grammar is current
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          bash scripts/build_grammar.sh
+          if ! git diff --quiet -- editors/; then
+            echo "::error::The editor grammar is out of date. Run scripts/build_grammar.sh and commit the result."
+            git diff -- editors/
+            exit 1
+          fi
+
       # The two WebAssembly steps below run on one platform only. The target is
       # the same everywhere, so building it three times would cost three times
       # the minutes to learn one thing.

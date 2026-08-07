@@ -10,8 +10,7 @@
 //
 // For a file that both runs and exercises the language, open the programs in
 // `examples/` beside this one: `recover.miru` uses `try` with a closure,
-// `shop.miru` uses `import`, and `keys.miru` and `dice.miru` use the newest
-// builtins.
+// `shop.miru` uses `import`, and `tetris.miru` uses the newest builtins.
 
 // --- Comments ---------------------------------------------------------------
 // This whole line is a comment, including the "quote and the {brace.
