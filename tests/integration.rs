@@ -600,6 +600,69 @@ fn tetris_example_turns_a_piece() {
     );
 }
 
+/// **A full row disappears, and the rows above it come down.**
+///
+/// This is the one mechanic no other example has. It exercises the array
+/// concatenation 1.8 added: `sweep` keeps the rows with a gap, builds as many
+/// empty rows as went away, and joins the two with `+`.
+///
+/// The seed fixes the piece order, exactly as `guess.miru` and `dice.miru` fix
+/// theirs, and the second argument turns gravity off so only the keys move
+/// anything.
+///
+/// **This test was removed once and is back because #53 is fixed.** Its
+/// fifteen keys are thirty-seven bytes, and `read_key` fills its buffer
+/// sixteen at a time, so two read boundaries land inside escape sequences.
+/// Windows had no follow-up read to complete them, decoded the strays as
+/// Escape, and quit the game in the middle of its input. It is deliberately
+/// the longest key sequence in the suite: nothing else here crosses the
+/// buffer, so nothing else would notice that regressing.
+#[test]
+fn tetris_example_clears_a_line() {
+    use std::io::Write;
+
+    let mut child = miru()
+        .arg("run")
+        .arg("examples/tetris.miru")
+        .arg("1")
+        .arg("100000")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to launch the miru binary");
+    // Drop, three right and drop, two left and drop, then turn, five left,
+    // and drop. The fourth piece completes the bottom row.
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(b" \x1b[C\x1b[C\x1b[C \x1b[D\x1b[D \x1b[A\x1b[D\x1b[D\x1b[D\x1b[D\x1b[D ")
+        .expect("write to child stdin");
+    let output = child.wait_with_output().expect("wait for miru");
+
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).expect("output should be valid utf-8");
+
+    // What is left after the full row went: three rows, not four, and the
+    // two cells that had been sitting on top of the cleared one have come
+    // down a row.
+    assert!(
+        text.contains(
+            "|[] . . . . . . . . .|\n\
+             |[] . . . . . . . . .|\n\
+             |[][][] .[] . . . . .|\n\
+             +--------------------+\n"
+        ),
+        "the rows above the cleared one did not come down; the last frame was:\n{}",
+        text.lines().rev().take(21).collect::<Vec<_>>().join("\n")
+    );
+    assert!(
+        text.ends_with("lines 1\n"),
+        "expected exactly one line cleared, ended with: {:?}",
+        text.lines().last()
+    );
+}
+
 /// `key_ready` through the real binary, against a real pipe.
 ///
 /// The unit tests use a scripted keyboard, which cannot exercise `poll` on unix

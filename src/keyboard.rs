@@ -422,17 +422,32 @@ mod platform {
         super::read_burst(&mut std::io::stdin())
     }
 
-    /// Windows has no `poll` over standard input that works for a console and
-    /// a pipe alike, so this always says "nothing more arrived".
+    /// Whatever else has already arrived, or nothing.
     ///
-    /// That is only consulted when the buffer is empty part way through a
-    /// sequence, which one read of [`READ_SIZE`] bytes makes very unlikely: a
-    /// console delivers a key's whole sequence at once, and a pipe delivers
-    /// far more than one key. The consequence where it does happen is that a
-    /// split sequence reads as Escape, which is the same answer this gives for
-    /// Escape pressed alone.
+    /// **This used to answer "nothing" always, and that was a defect rather
+    /// than a limitation.** The reasoning was that windows has no `poll` over
+    /// standard input, and that one read of [`READ_SIZE`] bytes makes a split
+    /// sequence very unlikely anyway: a console delivers a key's whole
+    /// sequence at once, and a pipe delivers far more than one key. The second
+    /// half is where it went wrong. A pipe does deliver far more than one key
+    /// — and stops at sixteen bytes, which is five whole arrow keys and the
+    /// escape of a sixth. The tail was stranded, the escape read as Escape
+    /// pressed alone, and a game that quits on Escape quit in the middle of
+    /// its input, on windows and nowhere else.
+    ///
+    /// There is no `poll` here, but there has been an answer to this exact
+    /// question since 1.8: [`stdin_is_ready`] asks whether a read would block,
+    /// dispatching on the handle type because a console, a pipe, and a file
+    /// each answer differently. `key_ready` was built on it. Asking it here
+    /// costs nothing new and keeps both cases right — a pipe holding the rest
+    /// of a sequence says yes, and Escape pressed alone at a console with
+    /// nothing behind it still says no, so it still reads as Escape.
     pub fn read_bytes_soon() -> Result<Vec<u8>, String> {
-        Ok(Vec::new())
+        if stdin_is_ready()? {
+            read_bytes()
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     /// Whether a read of standard input would return without waiting.
@@ -712,6 +727,79 @@ mod tests {
             keys.push(key);
         }
         assert_eq!(keys, vec!["right", "right", "left", "q"]);
+    }
+
+    /// Drive the same loop `RealKeyboard::read_key` runs, over bytes, with
+    /// `more` deciding whether a follow-up read is available.
+    fn keys_from_burst(mut source: &[u8], follow_up: bool) -> Vec<String> {
+        let mut pending: Vec<u8> = Vec::new();
+        let mut keys = Vec::new();
+        loop {
+            if pending.is_empty() {
+                pending = read_burst(&mut source).expect("the read works");
+            }
+            if pending.is_empty() {
+                break;
+            }
+            let first = pending.remove(0);
+            let key = decode(first, &mut pending, |left| {
+                if !left.is_empty() {
+                    return true;
+                }
+                if !follow_up {
+                    return false;
+                }
+                match read_burst(&mut source) {
+                    Ok(more) if !more.is_empty() => {
+                        left.extend(more);
+                        true
+                    }
+                    _ => false,
+                }
+            })
+            .expect("the bytes decode")
+            .expect("a key");
+            keys.push(key);
+        }
+        keys
+    }
+
+    /// **More keys than one read holds, and the boundary lands inside an
+    /// escape sequence.**
+    ///
+    /// [`READ_SIZE`] is 16 and an arrow is three bytes, so six of them fill one
+    /// read with five whole sequences and a lone escape. Whether that sixth key
+    /// survives is decided entirely by whether a follow-up read is available,
+    /// which is the one thing unix has and windows does not.
+    ///
+    /// Both halves are asserted here because the difference between them is the
+    /// defect. `a_burst_of_several_keys_decodes_without_a_follow_up_read` above
+    /// covers the short case and cannot see this: ten bytes never reach the
+    /// boundary.
+    #[test]
+    fn a_sequence_split_across_two_reads_needs_a_follow_up_read() {
+        let six_arrows = b"\x1b[C".repeat(6);
+        assert!(
+            six_arrows.len() > READ_SIZE,
+            "the input must span two reads"
+        );
+
+        // What unix does, and what windows must do once `read_bytes_soon`
+        // consults `stdin_is_ready` rather than always saying no.
+        assert_eq!(keys_from_burst(&six_arrows, true), vec!["right"; 6]);
+
+        // What windows did before that: the escape at the end of the first
+        // read has nothing to complete it, so it reads as Escape pressed
+        // alone and the two bytes behind it decode on their own. A game that
+        // quits on Escape quits here, in the middle of its input.
+        let stranded = keys_from_burst(&six_arrows, false);
+        assert_eq!(&stranded[..5], &["right"; 5]);
+        assert_eq!(stranded[5], "escape");
+        assert_ne!(
+            stranded.len(),
+            6,
+            "the tail of the split sequence has to go somewhere"
+        );
     }
 
     /// A byte that cannot start a character is refused rather than guessed at.
