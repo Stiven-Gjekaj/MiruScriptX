@@ -1058,6 +1058,35 @@ print(starts_with("hello.miru", "hello"))   // true
 print(ends_with("hello.miru", ".miru"))     // true
 ```
 
+`ord(c)` gives the number behind a character, and `chr(n)` turns a number back
+into one:
+
+```
+print(ord("A"), chr(65))   // 65 A
+```
+
+Together with indexing, that lets a program do arithmetic on letters — a
+Caesar shift is a loop and one addition:
+
+```
+let secret = ""
+for i in range(0, len("abc")) {
+  secret = secret + chr(ord("abc"[i]) + 1)
+}
+print(secret)   // bcd
+```
+
+`ord` wants exactly one character. `ord("hello")` is an error rather than the
+code of the `h`, because a program that meant to pass one character and passed
+five has a bug worth hearing about.
+
+`chr` refuses a number that is not a character, and does it in the same words
+`"\u{...}"` uses, since it is the same question:
+
+```
+print(chr(55296))   // '\u{D800}' is not a character
+```
+
 ## Array functions
 
 - `pop(array)` removes and returns the last element.

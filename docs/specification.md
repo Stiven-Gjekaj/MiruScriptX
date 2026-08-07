@@ -792,7 +792,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 61 builtins. A program can use each of them without an import.
+There are 63 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -877,6 +877,18 @@ honest answer to the question is then no. `try` catches the error.
 | `find(s, x)` | 2 | The character index of the first `x`, or `-1`. |
 | `starts_with(s, prefix)` | 2 strings | `true` if `s` begins with `prefix`. |
 | `ends_with(s, suffix)` | 2 strings | `true` if `s` ends with `suffix`. |
+| `ord(s)` | 1 string of one character | The code point of the character. |
+| `chr(n)` | 1 int | The one-character string for the code point. |
+
+`ord` takes a string of exactly one character. Any other length is an error
+naming the length, so `ord("hello")` is an error and not `104`. `chr(ord(c))`
+is `c` for every character.
+
+`chr` refuses a value that is not a character, in the words section 2.8 uses
+for the same refusal in a `\u{...}` escape: `chr(0xD800)` gives
+`'\u{D800}' is not a character`. The rule is section 2.8's rule, since the two
+consult the same test. A value that is not a code point at all, such as a
+negative one, is reported as itself: `chr(-1)` gives `-1 is not a character`.
 
 An empty `prefix` or `suffix` gives `true`. One that is longer than `s` gives
 `false`.

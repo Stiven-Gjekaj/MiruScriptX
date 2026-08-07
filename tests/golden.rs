@@ -674,6 +674,29 @@ fn arrays_maps_and_indexing() {
             "ok {\"a\": 1, \"b\": 2}",
         ),
         ("{\"a\": 1} == {\"a\": 1}", "ok true"),
+        ("ord(\"A\")", "ok 65"),
+        ("chr(65)", "ok \"A\""),
+        // Code points, not bytes. The emoji is four bytes and one character,
+        // so a byte-oriented `ord` gives 240 here.
+        ("ord(\"\\u{1F600}\")", "ok 128512"),
+        ("chr(128512) == \"\\u{1F600}\"", "ok true"),
+        // The property the pair exists to have.
+        ("chr(ord(\"\\u{1F600}\")) == \"\\u{1F600}\"", "ok true"),
+        // `chr` consults the same test `\u{...}` does, so the refusals are the
+        // same set in the same words. Section 2.8 pins the escape's side.
+        ("chr(55296)", "err '\\u{D800}' is not a character @ 1:1"),
+        ("chr(1114112)", "err '\\u{110000}' is not a character @ 1:1"),
+        // Not a code point at all, so reported as itself rather than dressed
+        // up as an escape: -1 in hex is '\\u{FFFFFFFFFFFFFFFF}'.
+        ("chr(-1)", "err -1 is not a character @ 1:1"),
+        (
+            "ord(\"hi\")",
+            "err ord expects a string of one character but got one of 2 @ 1:1",
+        ),
+        (
+            "ord(\"\")",
+            "err ord expects a string of one character but got one of 0 @ 1:1",
+        ),
         ("\"abc\"[0]", "ok \"a\""),
         ("\"abc\"[2]", "ok \"c\""),
         // Characters, not bytes. The emoji is four bytes and one character, so

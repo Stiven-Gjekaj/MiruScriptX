@@ -31,6 +31,8 @@ pub fn register(globals: &mut Globals) {
     define(globals, "remove", remove);
     define(globals, "upper", upper);
     define(globals, "lower", lower);
+    define(globals, "ord", ord);
+    define(globals, "chr", chr);
     define(globals, "trim", trim);
     define(globals, "replace", replace);
     define(globals, "split", split);
@@ -458,6 +460,75 @@ fn upper(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
             "upper expects a string but got a {}",
             other.type_name()
         )),
+    }
+}
+
+/// `ord(s)` gives the code point of a one-character string.
+///
+/// **Exactly one character, not the first of several.** Python's `ord` refuses
+/// a longer string and JavaScript's `charCodeAt` takes the first; refusing is
+/// what matches this project, where `term_size` refuses rather than inventing
+/// a width and `sqrt` refuses rather than returning `nan`. `ord("hello")`
+/// quietly meaning 104 is a bug that runs.
+///
+/// Characters, not bytes, like everything else here, so this is the code point
+/// and not the first of the four bytes an emoji is stored in.
+fn ord(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("ord", &args, 1)?;
+    match &args[0] {
+        Value::Str(s) => {
+            let mut chars = s.chars();
+            match (chars.next(), chars.next()) {
+                (Some(only), None) => Ok(Value::Int(only as i64)),
+                // Counted rather than described, so the message says which
+                // mistake was made: an empty string and a whole word are
+                // different errors with the same cause.
+                _ => Err(format!(
+                    "ord expects a string of one character but got one of {}",
+                    s.chars().count()
+                )),
+            }
+        }
+        other => Err(format!(
+            "ord expects a string but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
+/// `chr(n)` gives the one-character string for a code point.
+///
+/// **The refusals are the `\u{...}` escape's, because they are the same
+/// question.** `char::from_u32` is what the lexer consults at `read_unicode_
+/// escape`, and it is the whole rule: everything above `10FFFF` is refused,
+/// and so is a surrogate from `D800` to `DFFF`. Calling it here rather than
+/// writing a second range check is what keeps the two from drifting apart, and
+/// the message is the escape's word for word, so `chr(0xD800)` and
+/// `"\u{D800}"` do not read as two different problems.
+///
+/// `chr(ord(c)) == c` for every character the language admits, which is the
+/// property the golden corpus pins.
+fn chr(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("chr", &args, 1)?;
+    let Value::Int(n) = &args[0] else {
+        return Err(format!(
+            "chr expects an int but got a {}",
+            args[0].type_name()
+        ));
+    };
+    // Spelled in hex, matching the escape this agrees with, even though the
+    // argument is usually written in decimal. A number too big or too small to
+    // be a code point at all is reported as itself instead: rendering -1 in
+    // hex gives '\u{FFFFFFFFFFFFFFFF}', which describes the bits rather than
+    // the mistake.
+    let refuse = || match u32::try_from(*n) {
+        Ok(code) => format!("'\\u{{{code:X}}}' is not a character"),
+        Err(_) => format!("{n} is not a character"),
+    };
+    let code = u32::try_from(*n).map_err(|_| refuse())?;
+    match char::from_u32(code) {
+        Some(found) => Ok(Value::Str(Rc::new(found.to_string()))),
+        None => Err(refuse()),
     }
 }
 
@@ -2494,8 +2565,8 @@ mod count {
         }
 
         assert_eq!(
-            plain, 41,
-            "{plain} builtins take a BuiltinFn, not 41. Quoted by `Args::into_vec` \
+            plain, 43,
+            "{plain} builtins take a BuiltinFn, not 43. Quoted by `Args::into_vec` \
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
@@ -2505,8 +2576,8 @@ mod count {
         );
         assert_eq!(
             plain + system + ambient,
-            57,
-            "{} builtins reach `call_native`, not 57. Quoted by the caught-error \
+            59,
+            "{} builtins reach `call_native`, not 59. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
@@ -2526,7 +2597,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 61] = [
+pub const BUILTIN_NAMES: [&str; 63] = [
     "print",
     "eprint",
     "exit",
@@ -2543,6 +2614,8 @@ pub const BUILTIN_NAMES: [&str; 61] = [
     "remove",
     "upper",
     "lower",
+    "ord",
+    "chr",
     "trim",
     "replace",
     "split",
