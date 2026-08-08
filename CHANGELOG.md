@@ -8,42 +8,93 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
-## Unreleased
+## 1.9.0 (2026-08-08)
+
+Six additions and one fix. Every addition was an error before this release, so
+no program that ran on 1.0 means anything different here — section 2.1 of the
+[stability guarantee](docs/stability.md) is the rule, and it is why none of this
+needed a version 2.
 
 ### Added
 
-- **A fourth game**: [`tetris.miru`](examples/tetris.miru). It needed no change
-  to the language — 1.8 had already shipped everything it uses — and it is
-  here because it demonstrates two things the other three do not.
+- **`f"..."` interpolates a name.** `f"{name} scored {score}"` renders each name
+  with `str` and joins the pieces.
+
+  **The prefix is the feature.** `print("n is ${n}")` is a working program that
+  prints the braces, so interpolating a plain literal would change what an
+  existing program means. `f"` was a parse error, so this costs nothing. Only a
+  bare name goes between the braces: an expression stays an error, and a later
+  release can allow it, where the reverse is not possible.
+
+  An unknown name reports at its own line and column, so the caret lands inside
+  the string on the name, and the "did you mean" suggestion works there too.
+  `{{` and `}}` are the literal braces. `miru fmt` prints an f-string back as
+  one.
+
+- **Compound assignment**: `+=`, `-=`, `*=`, `/=`, `%=`, on a name, an element,
+  or a field. The 38 self-assignments in `examples/` are written this way now.
+
+  **Each part of the target is worked out once.** `a[next()] += 1` calls `next`
+  a single time. That is the reason this is a statement of its own rather than
+  a rewrite into `a[next()] = a[next()] + 1`, which calls it twice, reads one
+  element and writes another. It is a statement rather than an expression, so
+  `let y = (x += 1)` stays the error it was.
+
+- **`s[0]` reads a character**, as a one-character string. Characters and not
+  bytes, so `"a\u{1F600}b"[1]` is the whole emoji, matching `len`, `find`,
+  `slice`, and `split(s, "")`. Past the end is an error naming the length,
+  rather than `nil`, because an absent map key is already `nil`. A negative
+  index is an error rather than counting from the end.
+
+- **`ord(s)` and `chr(n)`** convert between a character and its code point, and
+  `chr(ord(c))` is `c` for every character. `chr` refuses exactly what a
+  `\u{...}` escape refuses, in the same words, because it consults the same
+  test: `chr(0xD800)` gives `'\u{D800}' is not a character`. `ord` takes one
+  character, so `ord("hello")` is an error rather than `104`.
+
+- **`repeat(s, n)`**, and **`pad_left`** and **`pad_right`** to a width. The
+  fill goes where the name says, so `pad_left` lines text up on the right, which
+  is what a column of numbers wants. A string already at the width comes back
+  unchanged rather than cut. Widths count characters, as `len` does.
+
+- **A fourth game**: [`tetris.miru`](examples/tetris.miru), which needed no
+  change to the language — 1.8 had shipped everything it uses.
 
   **Turning a piece needs no trigonometry.** On a grid a quarter turn is not an
-  angle, it is a swap: the cell at `(x, y)` lands at `(box - 1 - y, x)`. That
-  is three lines, and it is worth knowing before reaching for the `sin` and
-  `cos` the language does not have.
+  angle, it is a swap: the cell at `(x, y)` lands at `(box - 1 - y, x)`.
+  Clearing a full row is array work, using the `+` that 1.8 added. It is also
+  the first example whose board is a grid it both reads and writes.
 
-  **Clearing a full row is array work**, and it uses the `+` this release added:
-  keep the rows with a gap, build as many empty rows as went away, and join the
-  two. It is also the first example whose board is a grid it both reads and
-  writes, rather than a list of cells or a pair of coordinates.
+  It takes a seed from the command line, and a second number setting how many
+  ticks a piece takes to fall, so `miru run examples/tetris.miru 7 4` is the
+  same game twice as fast.
 
-  It takes its seed from the command line — `miru run examples/tetris.miru 7`
-  deals the same pieces every time — and falls back to the clock without one,
-  which is what lets a test say what fifteen keypresses must produce while a
-  player still gets a different game each run.
+### Fixed
 
-  A second number sets how many ticks a piece takes to fall a row, so
-  `miru run examples/tetris.miru 7 4` is the same game twice as fast, and a
-  large one turns gravity off.
+- **An escape sequence split across two reads is no longer lost on Windows.**
+  `read_key` fills its buffer sixteen bytes at a time and an arrow key is three,
+  so a burst of six put five whole keys and a stray escape in one read. Unix
+  fetched the rest by polling; Windows returned nothing, the stray decoded as
+  Escape, and any program that quits on Escape quit in the middle of its input.
 
-  **It ships with the rotation test only.** A test that piped fifteen keys to
-  clear a row passed on Linux and macOS and failed on Windows, and the cause is
-  a limit worth knowing: an arrow key is three bytes, `read_key` fills its
-  buffer sixteen at a time, and a sequence split across two reads is decoded as
-  a bare Escape because Windows has no `poll` to fetch the rest. Thirty-seven
-  bytes of arrows splits; the game reads Escape and quits. `src/keyboard.rs`
-  predicted this in a comment before anything hit it. The wiki's game lesson
-  now carries the rule, and clearing a row has no end-to-end test until the
-  limit is lifted.
+  The fix needed nothing new: `stdin_is_ready` has answered "would a read
+  block?" since 1.8, dispatching on the handle type, and `read_bytes_soon` now
+  asks it. Escape pressed alone at a console still reads as Escape.
+
+  `src/keyboard.rs` had predicted this in a comment and judged it unlikely,
+  reasoning that a pipe delivers far more than one key. It does — and stops at
+  sixteen bytes.
+
+- **The editor grammar had been missing eight builtins since 1.8.** Every
+  drawing builtin — `sleep`, `key_ready`, `clear`, `move_to`, `hide_cursor`,
+  `show_cursor`, `term_size`, and `insert` — was absent, so anyone with the
+  VS Code extension installed read the newest part of the language in plain
+  text. `scripts/build_grammar.sh` generates that list and simply had not been
+  run.
+
+  CI now checks it, because the script's own comment had predicted the drift and
+  being generated was not enough to prevent it. `editors/README.md` said 53
+  builtins, last true in 1.6, and is now generated-count accurate.
 
 ## 1.8.0 (2026-08-06)
 

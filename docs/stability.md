@@ -37,6 +37,18 @@ what it means. This is the rule section 2.3 states for a builtin.
 a string literal. No 1.0 program changes meaning, because `\u` was an error
 before.
 
+1.9 uses it three times, and each is stable from 1.9 in the same way:
+
+- **Compound assignment**, `+=` and the four like it. `x += 1` was the error
+  `expected an expression but found '='`.
+- **Indexing a string**, `s[0]`. It was the error `cannot index a string`.
+- **The `f"..."` literal**. `f"` was a parse error.
+
+The third of those shows why the rule is worth keeping rather than working
+around. Interpolating a plain `"${n}"` would have been shorter to write and to
+explain, and it was rejected because `print("n is ${n}")` is a 1.0 program that
+prints the braces. Changing it needs version 2; a prefix needs nothing.
+
 ### 2.2 Semantics
 
 The rules in section 5 of the specification are stable. This includes:

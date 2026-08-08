@@ -80,7 +80,9 @@ for name in people {
 - Reading and writing files, and reading the command line, with `read_file`,
   `write_file`, `file_exists`, and `args`
 - Two output streams, `print` and `eprint`, and an exit code chosen with `exit`
-- Arithmetic, comparison, and short-circuit logic
+- Arithmetic, comparison, and short-circuit logic, and `+=` for changing a
+  variable in place
+- Strings you can index and interpolate: `s[0]`, and `f"{name} scored {score}"`
 
 </td>
 <td width="50%" valign="top">
@@ -88,7 +90,8 @@ for name in people {
 ### Engine and tooling
 
 - Lexer, Pratt parser, bytecode compiler, stack virtual machine
-- A standard library of string, array, math, map, and I/O builtins
+- A standard library of string, array, math, map, and I/O builtins, including
+  `repeat`, `pad_left`, `pad_right`, `chr`, and `ord`
 - Higher-order builtins: `map`, `filter`, and `reduce`
 - File runner, a source formatter (`miru fmt`), and a REPL with history
 - A disassembler (`miru disasm`) that prints the bytecode for a program

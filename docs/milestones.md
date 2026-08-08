@@ -422,6 +422,56 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.9: characters, and saying a thing once
+
+Shipped. Six additions and one fix, in seven parts. Every addition was an error
+before, so section 2.1 of the guarantee covered all of it and none of it needed
+a version 2.
+
+- **`f"..."`**, **compound assignment**, **`s[0]`**, **`chr` and `ord`**, and
+  **`repeat`, `pad_left`, `pad_right`**. Closes #43, #36, #37, #35, #38, #47.
+
+- **An escape sequence split across two reads no longer vanishes on Windows.**
+  Closes #53.
+
+Five things worth carrying forward:
+
+- **A fifth release in a row where a hand-kept list had drifted.** The editor
+  grammar had been missing all eight of 1.8's builtins since the day it shipped,
+  and `editors/README.md` said 53 where the answer was 61. Both are generated
+  from `BUILTIN_NAMES`; the generator had simply not been run. The script's own
+  comment predicted exactly this. **Being generated is not a guard — running the
+  generator in CI is**, and that check now exists and has passed on every run
+  since.
+
+- **A verification that can only confirm what you already believe is not one.**
+  A tetris test failed on Windows. The diagnosis — gravity racing key arrival —
+  was plausible, and it was checked against all eight gravity phases and found
+  solid. That check shifted the race uniformly, which a pipe never does. The
+  fix shipped, and the next run came back **byte-identical**, which was the real
+  evidence and had been available immediately: a board that does not change when
+  you change the variable means you changed the wrong variable. The cause was in
+  a comment in `src/keyboard.rs` that had named the failure and only got its
+  likelihood wrong.
+
+- **Building is not testing.** Adding two opcodes mid-enum renumbers every
+  opcode after them, and `OPCODES` is a hand-kept table that has to move in
+  step. `cargo build` passed; the disassembler printed `RETURN` where `DUP2`
+  belonged. A test written by whoever built that table asserts each entry sits
+  at its own discriminant and names the one that does not.
+
+- **The formatter decides where sugar is expanded.** f-strings expanded in the
+  parser passed every test written for them, and then `miru fmt` printed
+  `"n is " + str(n) + "!"` and rewrote the author's f-string away. The formatter
+  reprints the AST, so the AST has to keep what was written. No test caught it;
+  running `miru fmt` on a scratch file did.
+
+- **The refusals a feature inherits are cheaper than the ones it invents.**
+  `chr` consults the same `char::from_u32` the `\u{...}` escape does, so the two
+  cannot drift and a program meets one message rather than two. `s[0]` took the
+  wording of `array_index`. Neither needed a decision, because the decision had
+  been made years earlier and written down.
+
 ## 1.8: pace a loop, poll a key, draw a frame
 
 The language could compute anything and could not show it happening. 1.8 is the
