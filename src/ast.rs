@@ -135,6 +135,8 @@ impl ExprKind {
             | ExprKind::Bool(_)
             | ExprKind::Nil
             | ExprKind::Identifier(_)
+            // A leaf: its parts hold text and names, not expressions.
+            | ExprKind::FString(_)
             | ExprKind::Function { .. } => 0,
             ExprKind::Array(items) => tallest(items),
             ExprKind::Map(pairs) => pairs
@@ -158,6 +160,14 @@ impl ExprKind {
 /// The different kinds of expressions in the language.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
+    /// An `f"..."` literal, kept whole rather than expanded here.
+    ///
+    /// **The expansion belongs to the compiler, not the parser.** `miru fmt`
+    /// reprints the AST, so a parser that turned this into
+    /// `"a" + str(n)` would rewrite the author's f-string away every time the
+    /// formatter ran. Keeping the parts means the formatter can print back what
+    /// was written.
+    FString(Vec<crate::token::FStringPart>),
     Int(i64),
     Float(f64),
     Str(String),

@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 
 use crate::formatter::{Comment, Trivia};
-use crate::token::{Token, TokenKind};
+use crate::token::{FStringPart, Token, TokenKind};
 use crate::MiruError;
 
 /// The largest number of hexadecimal digits a `\u{...}` escape takes.
@@ -237,6 +237,12 @@ impl Lexer {
         if c.is_ascii_digit() {
             return self.read_number(line, column);
         }
+        // `f"` with nothing between is an f-string. The quote has to follow
+        // immediately, so a variable named `f` and a function called `f(x)`
+        // are untouched, and `f "x"` with a space stays the error it was.
+        if c == 'f' && self.peek_at(1) == Some('"') {
+            return self.read_fstring(line, column);
+        }
         if c == '_' || c.is_alphabetic() {
             return Ok(self.read_identifier(line, column));
         }
@@ -453,6 +459,133 @@ impl Lexer {
             _ => TokenKind::Ident(text),
         };
         Token::new(kind, line, column)
+    }
+
+    /// Read an `f"..."` literal into alternating text and names.
+    ///
+    /// **Why a prefix rather than interpolating every string.**
+    /// `print("n is ${n}")` is a working program that prints the braces, so
+    /// interpolating a plain literal would change what an existing program
+    /// means, which section 5 of the guarantee puts in version 2. `f"` is a
+    /// parse error today, so this costs no program anything.
+    ///
+    /// Each name carries its own line and column. That is the whole reason the
+    /// parts are collected here rather than the string being rebuilt and
+    /// re-lexed: an unknown name inside the literal has to point a caret at
+    /// itself, and by the time a string is one token that position is gone.
+    fn read_fstring(&mut self, line: usize, column: usize) -> Result<Token, MiruError> {
+        self.advance(); // consume 'f'
+        self.advance(); // consume opening quote
+        let mut parts: Vec<FStringPart> = Vec::new();
+        let mut text = String::new();
+        let unterminated = || MiruError::with_column(line, column, "unterminated string literal");
+        loop {
+            match self.peek() {
+                None | Some('\n') => return Err(unterminated()),
+                Some('"') => {
+                    self.advance();
+                    break;
+                }
+                // `{{` and `}}` are the literal braces. Without them there is
+                // no way to write one, and a program that wants a brace in an
+                // interpolated string is not unusual.
+                Some('{') if self.peek_at(1) == Some('{') => {
+                    text.push('{');
+                    self.advance();
+                    self.advance();
+                }
+                Some('}') if self.peek_at(1) == Some('}') => {
+                    text.push('}');
+                    self.advance();
+                    self.advance();
+                }
+                Some('}') => {
+                    return Err(MiruError::with_column(
+                        self.line,
+                        self.column(),
+                        "a '}' in an f-string needs a '{' before it, or '}}' for a literal one",
+                    ));
+                }
+                Some('{') => {
+                    self.advance(); // consume '{'
+                    if !text.is_empty() {
+                        parts.push(FStringPart::Text(std::mem::take(&mut text)));
+                    }
+                    let name_line = self.line;
+                    let name_column = self.column();
+                    let start = self.pos;
+                    while let Some(c) = self.peek() {
+                        if c == '_' || c.is_alphanumeric() {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    let name: String = self.chars[start..self.pos].iter().collect();
+                    if name.is_empty() {
+                        return Err(MiruError::with_column(
+                            name_line,
+                            name_column,
+                            "an f-string needs a name between '{' and '}'",
+                        ));
+                    }
+                    // A name only, deliberately. Any expression is what people
+                    // will eventually want, and it puts the parser inside the
+                    // lexer, which 0.8 already had to do once. Refusing it now
+                    // keeps that release free to allow it: today's error can
+                    // become tomorrow's meaning, and the reverse cannot.
+                    match self.peek() {
+                        Some('}') => {
+                            self.advance();
+                        }
+                        _ => {
+                            return Err(MiruError::with_column(
+                                name_line,
+                                name_column,
+                                format!("f-string '{{{name}}}' needs a '}}' after the name"),
+                            ))
+                        }
+                    }
+                    parts.push(FStringPart::Name {
+                        name,
+                        line: name_line,
+                        column: name_column,
+                    });
+                }
+                Some('\\') => {
+                    self.advance();
+                    match self.peek() {
+                        Some('n') => text.push('\n'),
+                        Some('t') => text.push('\t'),
+                        Some('r') => text.push('\r'),
+                        Some('\\') => text.push('\\'),
+                        Some('"') => text.push('"'),
+                        Some('0') => text.push('\0'),
+                        Some('u') => {
+                            text.push(self.read_unicode_escape(line, column)?);
+                            continue;
+                        }
+                        Some(other) => {
+                            return Err(MiruError::with_column(
+                                line,
+                                column,
+                                format!("unknown escape sequence '\\{other}'"),
+                            ));
+                        }
+                        None => return Err(unterminated()),
+                    }
+                    self.advance();
+                }
+                Some(c) => {
+                    text.push(c);
+                    self.advance();
+                }
+            }
+        }
+        if !text.is_empty() {
+            parts.push(FStringPart::Text(text));
+        }
+        Ok(Token::new(TokenKind::FString(parts), line, column))
     }
 
     fn read_string(&mut self, line: usize, column: usize) -> Result<Token, MiruError> {

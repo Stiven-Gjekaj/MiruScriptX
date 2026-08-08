@@ -388,6 +388,21 @@ Join strings with `+`:
 print("Miru" + "ScriptX")   // MiruScriptX
 ```
 
+Build a message with an `f` in front of the quotes, and put a name in braces:
+
+```
+let name = "Aiko"
+let score = 12
+print(f"{name} scored {score}")   // Aiko scored 12
+```
+
+That saves the `str` calls a `+` chain needs, and a forgotten one is a runtime
+error rather than a mistake anybody meant to make. Only a name goes in the
+braces — not an expression — and `{{` writes a literal brace.
+
+**A plain string is untouched.** `"${n}"` prints the braces, exactly as it
+always has, which is why interpolation needs the `f`.
+
 Reach a single character with square brackets, counting from zero:
 
 ```

@@ -725,6 +725,14 @@ impl<'g> Compiler<'g> {
                 };
                 self.chunk.write_op(opcode, line, column);
             }
+            // Expanded here rather than in the parser, so `miru fmt` still
+            // sees an f-string and prints one back. The expansion is the
+            // parser's `fstring_expr`, which is the single place that decides
+            // what an f-string means.
+            ExprKind::FString(parts) => {
+                let expanded = crate::parser::fstring_expr(parts, line, column);
+                self.expression(&expanded)?;
+            }
             ExprKind::Binary { op, left, right } => {
                 self.expression(left)?;
                 // A constant on the right is the shape most operators in real

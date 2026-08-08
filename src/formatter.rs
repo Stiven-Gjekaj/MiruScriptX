@@ -316,6 +316,8 @@ fn block_inline(stmts: &[Stmt]) -> String {
 /// tighter. Used to decide when a subexpression needs parentheses.
 fn precedence(expr: &Expr) -> u8 {
     match &expr.kind {
+        // Atomic: it prints as one literal and never needs parentheses.
+        ExprKind::FString(_) => u8::MAX,
         ExprKind::Logical {
             op: LogicalOp::Or, ..
         } => 1,
@@ -357,6 +359,28 @@ fn fmt_operand(expr: &Expr, min: u8) -> String {
 /// Render an expression on a single line.
 fn fmt_expr(expr: &Expr) -> String {
     match &expr.kind {
+        ExprKind::FString(parts) => {
+            let mut out = String::from("f\"");
+            for part in parts {
+                match part {
+                    crate::token::FStringPart::Text(text) => {
+                        // Braces are doubled back, and every other character
+                        // goes through the same escaping a plain string uses.
+                        let escaped = fmt_string(text);
+                        let inner = &escaped[1..escaped.len() - 1];
+                        out.push_str(&inner.replace('{', "{{").replace('}', "}}"));
+                    }
+                    crate::token::FStringPart::Name { name, .. } => {
+                        out.push('{');
+                        out.push_str(name);
+                        out.push('}');
+                    }
+                }
+            }
+            out.push('"');
+            out
+        }
+
         ExprKind::Int(n) => n.to_string(),
         ExprKind::Float(f) => fmt_float(*f),
         ExprKind::Str(s) => fmt_string(s),

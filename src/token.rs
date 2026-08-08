@@ -15,6 +15,20 @@ impl Token {
     }
 }
 
+/// One piece of an `f"..."` literal: fixed text, or a name to render.
+///
+/// A name carries its own position so a caret can point inside the string
+/// rather than at the quotation mark that opens it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FStringPart {
+    Text(String),
+    Name {
+        name: String,
+        line: usize,
+        column: usize,
+    },
+}
+
 /// Every kind of token MiruScriptX recognizes.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -45,11 +59,13 @@ pub enum TokenKind {
     Nil,
 
     // Operators.
-    Plus,          // +
-    Minus,         // -
-    Star,          // *
-    Slash,         // /
-    Percent,       // %
+    Plus,    // +
+    Minus,   // -
+    Star,    // *
+    Slash,   // /
+    Percent, // %
+    /// An `f"..."` literal, already split into its text and its names.
+    FString(Vec<FStringPart>),
     PlusAssign,    // +=
     MinusAssign,   // -=
     StarAssign,    // *=
@@ -111,6 +127,7 @@ impl TokenKind {
             TokenKind::Star => "'*'".to_string(),
             TokenKind::Slash => "'/'".to_string(),
             TokenKind::Percent => "'%'".to_string(),
+            TokenKind::FString(_) => "an f-string".to_string(),
             TokenKind::PlusAssign => "'+='".to_string(),
             TokenKind::MinusAssign => "'-='".to_string(),
             TokenKind::StarAssign => "'*='".to_string(),

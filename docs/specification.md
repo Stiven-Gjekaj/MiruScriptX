@@ -207,6 +207,41 @@ gives the error `unterminated string literal`.
 Another escape sequence gives the error `unknown escape sequence '\<c>'`. There
 is no `\x` escape.
 
+### 2.8.1 Interpolated string literals
+
+An `f` immediately before `"` starts an interpolated string literal. The `f`
+and the `"` must touch; `f "x"` is not one.
+
+Inside it, `{name}` is replaced by `str(name)`. Everything else is text, and
+the escape sequences of section 2.8 apply unchanged.
+
+```
+let n = 42
+print(f"n is {n}")   // n is 42
+```
+
+**Only a name is permitted between the braces.** An expression is an error.
+
+`{{` is a literal `{` and `}}` is a literal `}`. A `}` on its own is an error.
+
+`str` is looked up as an ordinary name. A program that defines its own `str`
+gets that one, as it does for each builtin it defines over.
+
+These are the errors:
+
+| Source | Error |
+| ------ | ----- |
+| `f"{}"` | `an f-string needs a name between '{' and '}'` |
+| `f"{n"` | `f-string '{n}' needs a '}' after the name` |
+| `f"a } b"` | `a '}' in an f-string needs a '{' before it, or '}}' for a literal one` |
+
+An unknown name inside the literal is reported at the position of the name, not
+at the quotation mark.
+
+> **Note.** A plain string literal is not interpolated. `"${n}"` is the four
+> characters `${n}` followed by nothing else, exactly as in 1.0. This is why
+> interpolation has a prefix.
+
 ### 2.9 Operators and punctuation
 
 ```

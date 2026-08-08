@@ -694,6 +694,28 @@ fn arrays_maps_and_indexing() {
             "let x = 1\nlet y = (x += 1)",
             "err expected ')' to close a grouped expression but found '+=' @ 2:12",
         ),
+        // f-strings. A bare name only, deliberately: any expression is what
+        // people will eventually want, and today's error can become tomorrow's
+        // meaning where the reverse cannot.
+        ("let n = 42\nf\"n is {n}\"", "ok \"n is 42\""),
+        ("let a = 1\nlet b = 2\nf\"{a} and {b}\"", "ok \"1 and 2\""),
+        ("f\"\"", "ok \"\""),
+        // Rendered with `str`, so a value shows the way `print` shows it.
+        ("let xs = [1, 2]\nf\"{xs}\"", "ok \"[1, 2]\""),
+        ("let n = 1\nf\"{{{n}}}\"", "ok \"{1}\""),
+        // **A plain string is untouched, which is the whole reason for the
+        // prefix.** This program worked before 1.9 and means the same now;
+        // interpolating every literal would have changed it, and that needs a
+        // version 2.
+        ("let n = 1\n\"n is ${n}\"", "ok \"n is ${n}\""),
+        (
+            "let n = 1\nf\"{}\"",
+            "err an f-string needs a name between \'{\' and \'}\' @ 2:4",
+        ),
+        (
+            "let n = 1\nf\"{n\"",
+            "err f-string \'{n}\' needs a \'}\' after the name @ 2:4",
+        ),
         ("repeat(\"-\", 3)", "ok \"---\""),
         ("repeat(\"ab\", 3)", "ok \"ababab\""),
         // Zero gives the empty string. The loop this replaces did, and a

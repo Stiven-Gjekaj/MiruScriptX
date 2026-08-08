@@ -217,15 +217,15 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 
 | Stage | Files | Lines | Responsibility |
 | ----- | ----- | ----- | -------------- |
-| **Lexer** | token.rs, lexer.rs | 1359 | Source text to tokens, with line, column, and span tracking |
-| **Parser** | ast.rs, parser.rs | 1695 | Recursive descent plus a Pratt expression parser |
+| **Lexer** | token.rs, lexer.rs | 1509 | Source text to tokens, with line, column, and span tracking |
+| **Parser** | ast.rs, parser.rs | 1764 | Recursive descent plus a Pratt expression parser |
 | **Runtime model** | value.rs, ops.rs, builtins.rs, random.rs | 4688 | Values, operator and indexing rules, the builtin library |
-| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4353 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
+| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4361 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Diagnostics** | suggest.rs | 220 | Chooses the name an error offers back when a program misspells one |
-| **Formatter** | formatter.rs | 712 | Reprints a program in canonical form (`miru fmt`) |
+| **Formatter** | formatter.rs | 736 | Reprints a program in canonical form (`miru fmt`) |
 | **CLI and REPL** | main.rs, repl.rs, keyboard.rs | 1305 | File runner, `fmt` and `disasm` commands, the REPL, and raw-mode key reading |
 | **Library** | lib.rs | 1190 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **19 files** | **15777** | Written from scratch in Rust |
+| **Total** | **19 files** | **16028** | Written from scratch in Rust |
 
 The playground is a separate crate: 775 lines of Rust binding the language to
 WebAssembly, and 1672 of hand-written HTML, CSS, and JavaScript. It is counted

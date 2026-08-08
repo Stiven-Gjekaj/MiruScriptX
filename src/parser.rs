@@ -6,7 +6,7 @@
 //! indexing are handled by [`Parser::unary`] and [`Parser::postfix`].
 
 use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
-use crate::token::{Token, TokenKind};
+use crate::token::{FStringPart, Token, TokenKind};
 use crate::MiruError;
 
 pub struct Parser {
@@ -866,6 +866,10 @@ impl Parser {
                 self.advance();
                 Ok(Expr::new(ExprKind::Str(s), line, column))
             }
+            TokenKind::FString(parts) => {
+                self.advance();
+                Ok(Expr::new(ExprKind::FString(parts), line, column))
+            }
             TokenKind::True => {
                 self.advance();
                 Ok(Expr::new(ExprKind::Bool(true), line, column))
@@ -1068,6 +1072,61 @@ impl Parser {
             ))
         }
     }
+}
+
+/// Build the expression an `f"..."` literal stands for.
+///
+/// The parts are joined with `+`, and each name becomes `str(name)` so that a
+/// number, a boolean, or an array renders the way `print` would show it.
+///
+/// **Each name keeps the position the lexer gave it**, which is the point of
+/// carrying the parts this far. An unknown name inside the literal reports at
+/// its own line and column, so the caret lands on the name rather than on the
+/// quotation mark that opens the string.
+///
+/// `str` is looked up as an ordinary name. A program that defines its own
+/// `str` gets its own, exactly as it does for every other builtin it shadows.
+pub(crate) fn fstring_expr(parts: &[FStringPart], line: usize, column: usize) -> Expr {
+    let mut joined: Option<Expr> = None;
+    for part in parts {
+        let piece = match part.clone() {
+            FStringPart::Text(text) => Expr::new(ExprKind::Str(text), line, column),
+            FStringPart::Name {
+                name,
+                line: name_line,
+                column: name_column,
+            } => Expr::new(
+                ExprKind::Call {
+                    callee: Box::new(Expr::new(
+                        ExprKind::Identifier("str".to_string()),
+                        name_line,
+                        name_column,
+                    )),
+                    arguments: vec![Expr::new(
+                        ExprKind::Identifier(name),
+                        name_line,
+                        name_column,
+                    )],
+                },
+                name_line,
+                name_column,
+            ),
+        };
+        joined = Some(match joined {
+            None => piece,
+            Some(left) => Expr::new(
+                ExprKind::Binary {
+                    op: BinaryOp::Add,
+                    left: Box::new(left),
+                    right: Box::new(piece),
+                },
+                line,
+                column,
+            ),
+        });
+    }
+    // `f""` is the empty string, which falls out of having no parts at all.
+    joined.unwrap_or_else(|| Expr::new(ExprKind::Str(String::new()), line, column))
 }
 
 #[cfg(test)]
