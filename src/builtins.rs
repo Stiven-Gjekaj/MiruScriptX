@@ -33,6 +33,9 @@ pub fn register(globals: &mut Globals) {
     define(globals, "lower", lower);
     define(globals, "ord", ord);
     define(globals, "chr", chr);
+    define(globals, "repeat", repeat);
+    define(globals, "pad_left", pad_left);
+    define(globals, "pad_right", pad_right);
     define(globals, "trim", trim);
     define(globals, "replace", replace);
     define(globals, "split", split);
@@ -461,6 +464,152 @@ fn upper(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
             other.type_name()
         )),
     }
+}
+
+/// `repeat(s, n)` gives `s` written `n` times.
+///
+/// `examples/dice.miru` had a six-line function that did only this, and any
+/// program printing a rule, a bar, or an indent wrote the same loop again. It
+/// also allocates once where the loop built a new string per turn.
+fn repeat(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    check_arity("repeat", &args, 2)?;
+    let Value::Str(s) = &args[0] else {
+        return Err(format!(
+            "repeat expects a string but got a {}",
+            args[0].type_name()
+        ));
+    };
+    let Value::Int(count) = &args[1] else {
+        return Err(format!(
+            "repeat expects an int count but got a {}",
+            args[1].type_name()
+        ));
+    };
+    // Zero gives the empty string, which is what the hand-written loop did and
+    // is worth keeping: a builtin that refused zero would be a step back for
+    // every caller whose count is computed.
+    if *count < 0 {
+        return Err(format!(
+            "repeat expects a count of 0 or more but got {count}"
+        ));
+    }
+    let times =
+        usize::try_from(*count).map_err(|_| format!("repeat count {count} is too large"))?;
+    // Refuse a result too large to build rather than aborting on the
+    // allocation, in the shape section 5.2 uses for integer overflow.
+    s.chars()
+        .count()
+        .checked_mul(times)
+        .filter(|size| *size <= MAX_REPEAT_CHARACTERS)
+        .ok_or_else(|| {
+            format!("repeat would build a string longer than {MAX_REPEAT_CHARACTERS} characters")
+        })?;
+    Ok(Value::Str(Rc::new(s.repeat(times))))
+}
+
+/// The longest string `repeat` will build, so a wrong count fails with a
+/// sentence rather than by exhausting memory.
+///
+/// Ten million characters is far past any rule, bar, or indent a program has a
+/// reason to draw, and small enough that the refusal arrives immediately.
+/// **Section 3.2 of the stability guarantee leaves this number free**, so it
+/// can rise later without breaking a promise.
+const MAX_REPEAT_CHARACTERS: usize = 10_000_000;
+
+/// Fill `s` out to `width` characters, putting the fill on the given side.
+///
+/// Shared by `pad_left` and `pad_right`, which differ only in where the fill
+/// goes.
+fn pad_to(name: &str, args: &[Value], on_the_left: bool) -> Result<Value, String> {
+    if args.len() != 2 && args.len() != 3 {
+        return Err(format!(
+            "{name} expects 2 or 3 arguments but got {}",
+            args.len()
+        ));
+    }
+    let Value::Str(s) = &args[0] else {
+        return Err(format!(
+            "{name} expects a string but got a {}",
+            args[0].type_name()
+        ));
+    };
+    let Value::Int(width) = &args[1] else {
+        return Err(format!(
+            "{name} expects an int width but got a {}",
+            args[1].type_name()
+        ));
+    };
+    if *width < 0 {
+        return Err(format!(
+            "{name} expects a width of 0 or more but got {width}"
+        ));
+    }
+    // Exactly one character. A fill of several would overshoot the width or
+    // need a rule about cutting it, and neither is worth having.
+    let fill = match args.get(2) {
+        None => ' ',
+        Some(Value::Str(f)) => {
+            let mut chars = f.chars();
+            match (chars.next(), chars.next()) {
+                (Some(only), None) => only,
+                _ => {
+                    return Err(format!(
+                        "{name} expects a fill of one character but got one of {}",
+                        f.chars().count()
+                    ))
+                }
+            }
+        }
+        Some(other) => {
+            return Err(format!(
+                "{name} expects a string fill but got a {}",
+                other.type_name()
+            ))
+        }
+    };
+
+    // Characters, not bytes, so a table holding anything outside ASCII still
+    // lines up. Measuring in bytes is what makes a naive implementation wrong
+    // in exactly the case padding exists to handle.
+    let have = s.chars().count();
+    let want = *width as usize;
+    // Already long enough: unchanged rather than cut. Losing text to make a
+    // column line up is a worse failure than a ragged column, and a caller who
+    // wants it cut has `slice`.
+    if have >= want {
+        return Ok(Value::Str(Rc::new(s.to_string())));
+    }
+    let fill: String = std::iter::repeat_n(fill, want - have).collect();
+    let padded = if on_the_left {
+        fill + s.as_str()
+    } else {
+        s.to_string() + &fill
+    };
+    Ok(Value::Str(Rc::new(padded)))
+}
+
+/// `pad_left(s, width, fill)` puts the fill on the **left**, which lines the
+/// text up on the right. Use it for numbers in a column.
+fn pad_left(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    pad_to("pad_left", &args, true)
+}
+
+/// `pad_right(s, width, fill)` puts the fill on the **right**, which lines the
+/// text up on the left. Use it for words in a column.
+fn pad_right(
+    _out: &mut dyn Output,
+    _input: &mut dyn Input,
+    args: Vec<Value>,
+) -> Result<Value, String> {
+    pad_to("pad_right", &args, false)
 }
 
 /// `ord(s)` gives the code point of a one-character string.
@@ -2565,8 +2714,8 @@ mod count {
         }
 
         assert_eq!(
-            plain, 43,
-            "{plain} builtins take a BuiltinFn, not 43. Quoted by `Args::into_vec` \
+            plain, 46,
+            "{plain} builtins take a BuiltinFn, not 46. Quoted by `Args::into_vec` \
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
@@ -2576,8 +2725,8 @@ mod count {
         );
         assert_eq!(
             plain + system + ambient,
-            59,
-            "{} builtins reach `call_native`, not 59. Quoted by the caught-error \
+            62,
+            "{} builtins reach `call_native`, not 62. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
@@ -2597,7 +2746,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 63] = [
+pub const BUILTIN_NAMES: [&str; 66] = [
     "print",
     "eprint",
     "exit",
@@ -2616,6 +2765,9 @@ pub const BUILTIN_NAMES: [&str; 63] = [
     "lower",
     "ord",
     "chr",
+    "repeat",
+    "pad_left",
+    "pad_right",
     "trim",
     "replace",
     "split",

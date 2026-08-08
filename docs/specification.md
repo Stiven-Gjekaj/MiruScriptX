@@ -792,7 +792,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 63 builtins. A program can use each of them without an import.
+There are 66 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -879,6 +879,32 @@ honest answer to the question is then no. `try` catches the error.
 | `ends_with(s, suffix)` | 2 strings | `true` if `s` ends with `suffix`. |
 | `ord(s)` | 1 string of one character | The code point of the character. |
 | `chr(n)` | 1 int | The one-character string for the code point. |
+| `repeat(s, n)` | 2 | `s` written `n` times. |
+| `pad_left(s, w[, f])` | 2 or 3 | `s` with the fill on the left, to `w` characters. |
+| `pad_right(s, w[, f])` | 2 or 3 | `s` with the fill on the right, to `w` characters. |
+
+`repeat` gives `""` for a count of `0`. A negative count is an error. A result
+longer than an implementation limit is an error; section 3.2 of the
+[stability guarantee](stability.md) leaves that limit free.
+
+`pad_left` puts the fill **before** `s`, which lines text up on the right. Use
+it for a column of numbers. `pad_right` puts the fill **after** `s`, which
+lines text up on the left. Use it for a column of words.
+
+| Expression | Result |
+| ---------- | ------ |
+| `pad_left("7", 4)` | `"   7"` |
+| `pad_right("7", 4)` | `"7   "` |
+| `pad_left("7", 3, "0")` | `"007"` |
+
+The fill `f` is one space if it is not given, and must be a string of exactly
+one character. The width is in characters, as `len` counts them. A string that
+is already `w` characters or longer comes back unchanged; it is not cut. A
+negative width is an error.
+
+> **Note.** The width counts characters, not columns on a screen. A character
+> that a terminal draws two columns wide, such as an emoji, counts as one here,
+> the same as it does for `len`.
 
 `ord` takes a string of exactly one character. Any other length is an error
 naming the length, so `ord("hello")` is an error and not `104`. `chr(ord(c))`

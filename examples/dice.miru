@@ -23,11 +23,7 @@ for i in range(0, rolls) {
 
 // A bar of one character per fifty rolls, so the tallest fits on a line.
 fn bar(count) {
-  let out = ""
-  for i in range(0, count / 50) {
-    out = out + "#"
-  }
-  return out
+  return repeat("#", count / 50)
 }
 
 print("two dice,", rolls, "rolls")

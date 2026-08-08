@@ -674,6 +674,36 @@ fn arrays_maps_and_indexing() {
             "ok {\"a\": 1, \"b\": 2}",
         ),
         ("{\"a\": 1} == {\"a\": 1}", "ok true"),
+        ("repeat(\"-\", 3)", "ok \"---\""),
+        ("repeat(\"ab\", 3)", "ok \"ababab\""),
+        // Zero gives the empty string. The loop this replaces did, and a
+        // builtin that refused zero would be worse for a computed count.
+        ("repeat(\"x\", 0)", "ok \"\""),
+        (
+            "repeat(\"x\", -1)",
+            "err repeat expects a count of 0 or more but got -1 @ 1:1",
+        ),
+        // The fill goes where the name says, so `pad_left` lines text up on
+        // the right. Both directions are pinned because a name that can be
+        // read two ways should have the reading written down.
+        ("pad_right(\"7\", 4)", "ok \"7   \""),
+        ("pad_left(\"7\", 4)", "ok \"   7\""),
+        ("pad_left(\"7\", 3, \"0\")", "ok \"007\""),
+        // Already long enough: unchanged rather than cut, because losing text
+        // to line a column up is worse than a ragged column.
+        ("pad_left(\"hello\", 3)", "ok \"hello\""),
+        ("pad_right(\"hello\", 5)", "ok \"hello\""),
+        // Characters, not bytes. Measured in bytes the emoji is four, so this
+        // would come back unchanged instead of gaining two spaces.
+        ("len(pad_right(\"\\u{1F600}\", 3))", "ok 3"),
+        (
+            "pad_left(\"7\", 4, \"ab\")",
+            "err pad_left expects a fill of one character but got one of 2 @ 1:1",
+        ),
+        (
+            "pad_left(\"7\", -1)",
+            "err pad_left expects a width of 0 or more but got -1 @ 1:1",
+        ),
         ("ord(\"A\")", "ok 65"),
         ("chr(65)", "ok \"A\""),
         // Code points, not bytes. The emoji is four bytes and one character,

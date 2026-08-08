@@ -201,6 +201,28 @@ print(starts_with("hello.miru", "hello"))   // true
 print(ends_with("hello.miru", ".miru"))     // true
 ```
 
+`repeat(s, n)` writes a string out `n` times, which is how you draw a rule or a
+bar without a loop:
+
+```
+print(repeat("-", 20))
+print(repeat("ab", 3))   // ababab
+```
+
+`pad_left` and `pad_right` fill a string out to a width so columns line up. The
+name says where the fill goes, so `pad_left` puts spaces in front and lines the
+text up on the **right** — which is what a column of numbers wants:
+
+```
+print("[" + pad_left("7", 4) + "]")    // [   7]
+print("[" + pad_right("7", 4) + "]")   // [7   ]
+print(pad_left("7", 3, "0"))           // 007
+```
+
+A third argument sets the fill, and it has to be a single character. A string
+already at the width or longer comes back untouched rather than cut — a ragged
+column is a smaller problem than silently losing text.
+
 `ord(c)` gives the number behind a character, and `chr(n)` turns a number back
 into one:
 
