@@ -45,21 +45,26 @@ pub enum TokenKind {
     Nil,
 
     // Operators.
-    Plus,    // +
-    Minus,   // -
-    Star,    // *
-    Slash,   // /
-    Percent, // %
-    Assign,  // =
-    Eq,      // ==
-    NotEq,   // !=
-    Lt,      // <
-    Gt,      // >
-    LtEq,    // <=
-    GtEq,    // >=
-    Bang,    // !
-    And,     // &&
-    Or,      // ||
+    Plus,          // +
+    Minus,         // -
+    Star,          // *
+    Slash,         // /
+    Percent,       // %
+    PlusAssign,    // +=
+    MinusAssign,   // -=
+    StarAssign,    // *=
+    SlashAssign,   // /=
+    PercentAssign, // %=
+    Assign,        // =
+    Eq,            // ==
+    NotEq,         // !=
+    Lt,            // <
+    Gt,            // >
+    LtEq,          // <=
+    GtEq,          // >=
+    Bang,          // !
+    And,           // &&
+    Or,            // ||
 
     // Delimiters.
     LParen,   // (
@@ -106,6 +111,11 @@ impl TokenKind {
             TokenKind::Star => "'*'".to_string(),
             TokenKind::Slash => "'/'".to_string(),
             TokenKind::Percent => "'%'".to_string(),
+            TokenKind::PlusAssign => "'+='".to_string(),
+            TokenKind::MinusAssign => "'-='".to_string(),
+            TokenKind::StarAssign => "'*='".to_string(),
+            TokenKind::SlashAssign => "'/='".to_string(),
+            TokenKind::PercentAssign => "'%='".to_string(),
             TokenKind::Assign => "'='".to_string(),
             TokenKind::Eq => "'=='".to_string(),
             TokenKind::NotEq => "'!='".to_string(),

@@ -486,8 +486,49 @@ impl Parser {
                 },
                 line,
             ))
+        } else if let Some(op) = self.compound_assign_op() {
+            self.advance(); // the compound operator
+                            // The same targets a plain assignment accepts, and the same words
+                            // when it is not one of them: `x + 1 += 2` is wrong for the reason
+                            // `x + 1 = 2` is wrong, and should not read as a different mistake.
+            match &expr.kind {
+                ExprKind::Identifier(_) | ExprKind::Index { .. } | ExprKind::Field { .. } => {}
+                _ => {
+                    return Err(MiruError::with_column(
+                        expr.line,
+                        expr.column,
+                        "invalid assignment target (only variables, elements, and fields can be assigned to)",
+                    ));
+                }
+            }
+            let value = self.expression()?;
+            Ok(Stmt::new(
+                StmtKind::CompoundAssign {
+                    target: expr,
+                    op,
+                    value,
+                },
+                line,
+            ))
         } else {
             Ok(Stmt::new(StmtKind::Expr(expr), line))
+        }
+    }
+
+    /// The operator a compound assignment applies, if the next token is one.
+    ///
+    /// **A statement rather than an expression**, which is why this is here and
+    /// not in the Pratt table. Plain assignment is a statement, so `let x = (y
+    /// += 1)` stays the error it has always been rather than becoming a thing
+    /// this document has to define.
+    fn compound_assign_op(&self) -> Option<BinaryOp> {
+        match self.peek_kind() {
+            TokenKind::PlusAssign => Some(BinaryOp::Add),
+            TokenKind::MinusAssign => Some(BinaryOp::Subtract),
+            TokenKind::StarAssign => Some(BinaryOp::Multiply),
+            TokenKind::SlashAssign => Some(BinaryOp::Divide),
+            TokenKind::PercentAssign => Some(BinaryOp::Modulo),
+            _ => None,
         }
     }
 

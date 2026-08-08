@@ -32,6 +32,18 @@ pub enum StmtKind {
     Let { name: String, value: Expr },
     /// `target = value`, where `target` is an identifier or an index expression.
     Assign { target: Expr, value: Expr },
+    /// `target op= value`, such as `x += 1`.
+    ///
+    /// **Kept as its own statement rather than rewritten into
+    /// `target = target op value`, because that rewrite evaluates the target
+    /// twice.** `a[next()] += 1` would call `next` once to read and again to
+    /// store, leaving the sugar with a meaning the long form does not have. The
+    /// compiler evaluates the parts of the target once and works from copies.
+    CompoundAssign {
+        target: Expr,
+        op: BinaryOp,
+        value: Expr,
+    },
     /// A bare expression evaluated for its side effects, such as `print(x)`.
     Expr(Expr),
     /// `return` with an optional value.

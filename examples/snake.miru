@@ -59,14 +59,14 @@ fn draw(body, food, score, width, height) {
   for y in range(0, height) {
     for x in range(0, width) {
       if x == food[0] && y == food[1] {
-        out = out + "*"
+        out += "*"
       } else if covers(body, x, y) {
-        out = out + "#"
+        out += "#"
       } else {
-        out = out + "."
+        out += "."
       }
     }
-    out = out + "\n"
+    out += "\n"
   }
   print(out + "score " + str(score) + "   arrows turn, q quits")
 }
@@ -128,7 +128,7 @@ while alive {
 
   if next[0] == food[0] && next[1] == food[1] {
     // Eating keeps the whole body and adds the new head, so it grows.
-    score = score + 1
+    score += 1
     snake = [next] + snake
     food = place_food(snake)
   } else {

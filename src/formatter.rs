@@ -249,6 +249,17 @@ fn stmt_inline(stmt: &Stmt) -> String {
         StmtKind::Assign { target, value } => {
             format!("{} = {}", fmt_expr(target), fmt_expr(value))
         }
+        StmtKind::CompoundAssign { target, op, value } => {
+            // Printed as written rather than expanded to the long form. The
+            // formatter reprints a program in canonical style, and `x += 1` is
+            // the canonical way to write `x += 1`.
+            format!(
+                "{} {}= {}",
+                fmt_expr(target),
+                binary_symbol(*op),
+                fmt_expr(value)
+            )
+        }
         StmtKind::Expr(expr) => fmt_expr(expr),
         StmtKind::Return(None) => "return".to_string(),
         StmtKind::Return(Some(expr)) => format!("return {}", fmt_expr(expr)),

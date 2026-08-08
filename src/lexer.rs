@@ -246,11 +246,14 @@ impl Lexer {
 
         self.advance();
         let kind = match c {
-            '+' => TokenKind::Plus,
-            '-' => TokenKind::Minus,
-            '*' => TokenKind::Star,
-            '/' => TokenKind::Slash,
-            '%' => TokenKind::Percent,
+            // Each of the five may be followed by '=', which makes it a
+            // compound assignment. `+=` was an error before 1.9, so reading it
+            // as a token changes no program that ever ran.
+            '+' => self.assigning(TokenKind::PlusAssign, TokenKind::Plus),
+            '-' => self.assigning(TokenKind::MinusAssign, TokenKind::Minus),
+            '*' => self.assigning(TokenKind::StarAssign, TokenKind::Star),
+            '/' => self.assigning(TokenKind::SlashAssign, TokenKind::Slash),
+            '%' => self.assigning(TokenKind::PercentAssign, TokenKind::Percent),
             '(' => {
                 self.group_depth += 1;
                 TokenKind::LParen
@@ -610,6 +613,19 @@ impl Lexer {
             true
         } else {
             false
+        }
+    }
+
+    /// An arithmetic operator, or its compound-assignment form if `=` follows.
+    ///
+    /// The two are told apart here rather than in the parser so that `a +=- 1`
+    /// reads as `a += (-1)`, which is the only sensible answer and the one
+    /// every language with these operators gives.
+    fn assigning(&mut self, compound: TokenKind, plain: TokenKind) -> TokenKind {
+        if self.match_char('=') {
+            compound
+        } else {
+            plain
         }
     }
 

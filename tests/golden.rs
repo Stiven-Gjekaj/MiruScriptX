@@ -674,6 +674,26 @@ fn arrays_maps_and_indexing() {
             "ok {\"a\": 1, \"b\": 2}",
         ),
         ("{\"a\": 1} == {\"a\": 1}", "ok true"),
+        // Compound assignment, one case per target shape.
+        ("let x = 1\nx += 5\nx", "ok 6"),
+        ("let x = 20\nx -= 5\nx *= 3\nx /= 5\nx %= 4\nx", "ok 1"),
+        ("let a = [1, 2, 3]\na[1] += 10\na", "ok [1, 12, 3]"),
+        ("let m = {\"n\": 1}\nm.n += 41\nm", "ok {\"n\": 42}"),
+        ("let s = \"a\"\ns += \"b\"\ns", "ok \"ab\""),
+        // **The reason this is a statement of its own rather than a rewrite
+        // into `a[next()] = a[next()] + 5`.** The rewrite calls `next` twice,
+        // reads one element and writes another, and leaves the array wrong in
+        // a way nothing would explain. One call, and `calls` says so.
+        (
+            "let calls = 0\nfn next() {\n  calls += 1\n  return 0\n}\n\
+             let a = [10]\na[next()] += 5\n[a, calls]",
+            "ok [[15], 1]",
+        ),
+        // Still a statement, so this is the error it always was.
+        (
+            "let x = 1\nlet y = (x += 1)",
+            "err expected ')' to close a grouped expression but found '+=' @ 2:12",
+        ),
         ("repeat(\"-\", 3)", "ok \"---\""),
         ("repeat(\"ab\", 3)", "ok \"ababab\""),
         // Zero gives the empty string. The loop this replaces did, and a

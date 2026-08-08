@@ -211,6 +211,7 @@ is no `\x` escape.
 
 ```
 +   -   *   /   %
++=  -=  *=  /=  %=
 ==  !=  <   >   <=  >=
 &&  ||  !
 =   .   ,   :   ;
@@ -225,7 +226,7 @@ is no `\x` escape.
 
 ```
 program   = { statement }
-statement = import | let | assign | function | return
+statement = import | let | assign | compound | function | return
           | if | while | for | break | continue | expression
 ```
 
@@ -239,6 +240,7 @@ import    = "import" string "as" identifier
 let       = "let" identifier "=" expression
 
 assign    = target "=" expression
+compound  = target ( "+=" | "-=" | "*=" | "/=" | "%=" ) expression
 target    = identifier | index | field
 
 function  = "fn" identifier "(" [ params ] ")" block
@@ -401,6 +403,28 @@ An assignment through an index evaluates the value first. This is the same
 order as Python. Write the parts as separate statements if the order matters.
 
 Because `let` evaluates the value first, `let x = x` reads the outer `x`.
+
+#### Compound assignment
+
+`target op= value` gives `target` the value of `target op value`. The five
+forms are `+=`, `-=`, `*=`, `/=`, and `%=`, and each applies the operator of
+the same name. Section 5.2 gives the rules for that operator; a compound
+assignment adds no rule of its own.
+
+**Each part of the target is evaluated one time.** In `a[f()] += 1`, `f` is
+called once. The value it gives is used to read the element and to write it.
+
+| Statement | Evaluation order |
+| --------- | ---------------- |
+| `x += v` | `x`, then `v` |
+| `a[i] += v` | `a`, then `i`, then the element, then `v` |
+| `a.b += v` | `a`, then the field, then `v` |
+
+A compound assignment is a statement, not an expression. `let y = (x += 1)` is
+a syntax error.
+
+The target must be a name, an index, or a field, which are the targets a plain
+assignment takes. Another target gives the same error a plain assignment gives.
 
 ### 5.2 Numbers
 

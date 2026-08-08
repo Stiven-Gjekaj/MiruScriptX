@@ -39,7 +39,7 @@ fn neighbours(cells, x, y) {
         continue
       }
       if living(cells, x + dx, y + dy) {
-        count = count + 1
+        count += 1
       }
     }
   }
@@ -68,12 +68,12 @@ fn draw(cells, generation) {
   for y in range(0, height) {
     for x in range(0, width) {
       if living(cells, x, y) {
-        out = out + "#"
+        out += "#"
       } else {
-        out = out + "."
+        out += "."
       }
     }
-    out = out + "\n"
+    out += "\n"
   }
   print(out + "generation " + str(generation))
 }

@@ -127,16 +127,16 @@ fn draw(well, piece, x, y, score, lines, width) {
     let line = "|"
     for filled in row {
       if filled {
-        line = line + "[]"
+        line += "[]"
       } else {
-        line = line + " ."
+        line += " ."
       }
     }
-    out = out + line + "|\n"
+    out += line + "|\n"
   }
   let floor = "+"
   for i in range(0, width) {
-    floor = floor + "--"
+    floor += "--"
   }
   print(out + floor + "+\n" +
         "score " + str(score) + "   lines " + str(lines) +
@@ -184,9 +184,9 @@ while alive {
       break
     }
     if pressed == "left" && fits(well, piece, x - 1, y, width, height) {
-      x = x - 1
+      x -= 1
     } else if pressed == "right" && fits(well, piece, x + 1, y, width, height) {
-      x = x + 1
+      x += 1
     } else if pressed == "up" {
       let turned = rotate(piece)
       // A turn that would not fit is refused rather than shoved into
@@ -195,12 +195,12 @@ while alive {
         piece = turned
       }
     } else if pressed == "down" && fits(well, piece, x, y + 1, width, height) {
-      y = y + 1
+      y += 1
       tick = 0
     } else if pressed == " " {
       while fits(well, piece, x, y + 1, width, height) {
-        y = y + 1
-        score = score + 1
+        y += 1
+        score += 1
       }
       landed = true
     }
@@ -208,11 +208,11 @@ while alive {
 
   // The piece falls whether or not anything was pressed. This is the
   // line read_key() alone could not reach.
-  tick = tick + 1
+  tick += 1
   if tick >= fall_every {
     tick = 0
     if fits(well, piece, x, y + 1, width, height) {
-      y = y + 1
+      y += 1
     } else {
       landed = true
     }
@@ -224,9 +224,9 @@ while alive {
     let swept = sweep(well, width, height)
     well = swept["well"]
     if swept["cleared"] > 0 {
-      lines = lines + swept["cleared"]
+      lines += swept["cleared"]
       // Four rows at once is worth far more than four rows one at a time.
-      score = score + swept["cleared"] * swept["cleared"] * 100
+      score += swept["cleared"] * swept["cleared"] * 100
     }
     piece = shapes[random_int(0, len(shapes) - 1)]
     x = 3

@@ -27,7 +27,7 @@ while true {
     continue
   }
 
-  guesses = guesses + 1
+  guesses += 1
   if guess < secret {
     print("Higher.")
   } else if guess > secret {

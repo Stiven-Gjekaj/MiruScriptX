@@ -971,6 +971,21 @@ impl Vm {
                     OpCode::Pop => {
                         self.pop();
                     }
+                    // The two stack moves compound assignment is built from.
+                    // Both are pure rearrangement: nothing is read, written, or
+                    // dropped, so neither can fail.
+                    OpCode::DupTwo => {
+                        let len = self.stack.len();
+                        let under = self.stack[len - 2].clone();
+                        let top = self.stack[len - 1].clone();
+                        self.stack.push(under);
+                        self.stack.push(top);
+                    }
+                    OpCode::Rot3 => {
+                        let len = self.stack.len();
+                        let top = self.stack.remove(len - 1);
+                        self.stack.insert(len - 3, top);
+                    }
                     OpCode::Return => {
                         let result = self.pop();
                         let frame = self.frames.pop().expect("a call frame");

@@ -136,6 +136,19 @@ pub enum OpCode {
     Call,
     /// Discard the value on top of the stack.
     Pop,
+    /// Push copies of the top two values, keeping their order.
+    ///
+    /// `[a, b]` becomes `[a, b, a, b]`. Added for compound assignment, which
+    /// has to read through a target and then store through the same target
+    /// without evaluating its parts twice.
+    DupTwo,
+    /// Move the top value below the two under it.
+    ///
+    /// `[a, b, c]` becomes `[c, a, b]`. The other half of compound assignment:
+    /// the new value is computed on top of the target's parts and has to end
+    /// up underneath them, because that is the order `SetIndex` and `SetField`
+    /// read their operands in.
+    Rot3,
     /// Return from the current function (or end the program).
     Return,
     /// Apply a binary operator whose right operand is a constant, to the value
@@ -198,7 +211,7 @@ pub enum OpCode {
 /// Every opcode in declaration order, so a byte decodes by indexing rather than
 /// by comparison. The order must match the enum, which `opcodes_match_their_byte`
 /// checks.
-const OPCODES: [OpCode; 48] = [
+const OPCODES: [OpCode; 50] = [
     OpCode::Constant,
     OpCode::Nil,
     OpCode::True,
@@ -239,6 +252,8 @@ const OPCODES: [OpCode; 48] = [
     OpCode::CloseUpvalue,
     OpCode::Call,
     OpCode::Pop,
+    OpCode::DupTwo,
+    OpCode::Rot3,
     OpCode::Return,
     OpCode::BinaryConst,
     OpCode::ConstantLong,
@@ -316,6 +331,8 @@ impl OpCode {
             OpCode::CloseUpvalue => "CLOSE_UPVALUE",
             OpCode::Call => "CALL",
             OpCode::Pop => "POP",
+            OpCode::DupTwo => "DUP2",
+            OpCode::Rot3 => "ROT3",
             OpCode::Return => "RETURN",
             OpCode::BinaryConst => "BINARY_CONST",
             OpCode::ConstantLong => "CONSTANT_LONG",

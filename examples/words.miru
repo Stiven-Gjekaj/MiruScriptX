@@ -21,7 +21,7 @@ fn clean(word) {
   let out = ""
   for letter in split(lower(word), "") {
     if letter >= "a" && letter <= "z" {
-      out = out + letter
+      out += letter
     }
   }
   return out

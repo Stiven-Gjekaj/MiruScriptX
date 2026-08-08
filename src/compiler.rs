@@ -189,6 +189,9 @@ impl<'g> Compiler<'g> {
                     self.declare_local(name, stmt.line)?;
                 }
             }
+            StmtKind::CompoundAssign { target, op, value } => {
+                self.compound_assign(target, *op, value)?;
+            }
             StmtKind::Assign { target, value } => {
                 self.expression(value)?;
                 match &target.kind {
@@ -959,6 +962,106 @@ fn local_slot(locals: &[Local], name: &str) -> Option<u16> {
         .iter()
         .rposition(|local| local.name == name)
         .map(|slot| slot as u16)
+}
+
+impl Compiler<'_> {
+    /// Compile `target op= value`.
+    ///
+    /// **The parts of the target are evaluated once**, which is the whole
+    /// reason this is not rewritten into `target = target op value` in the
+    /// parser. `a[next()] += 1` calls `next` a single time; the rewrite would
+    /// call it to read and again to store, and put the element back in a slot
+    /// the program never asked for.
+    ///
+    /// A name has no parts to evaluate, so it needs no care: read it, apply,
+    /// write it back.
+    ///
+    /// An index and a field have the same shape as each other, because
+    /// `GetField` and `SetField` take the name from the stack exactly as
+    /// `Index` and `SetIndex` take the index. So both compile to one sequence,
+    /// with `DupTwo` making the copies to read through and `Rot3` putting the
+    /// result underneath the pair that stores it.
+    fn compound_assign(
+        &mut self,
+        target: &Expr,
+        op: BinaryOp,
+        value: &Expr,
+    ) -> Result<(), MiruError> {
+        let (line, column) = (target.line, target.column);
+        match &target.kind {
+            ExprKind::Identifier(_) => {
+                // Reading and writing a name are each a single instruction, so
+                // the plain expression path gives the read and the assignment
+                // path gives the write.
+                self.expression(target)?;
+                self.expression(value)?;
+                self.chunk.write_op(binary_opcode(op), line, column);
+                self.store_name(target)?;
+            }
+            ExprKind::Index {
+                target: object,
+                index,
+            } => {
+                self.expression(object)?;
+                self.expression(index)?;
+                self.chunk.write_op(OpCode::DupTwo, line, column);
+                self.chunk.write_op(OpCode::Index, index.line, index.column);
+                self.chunk.write(0, object.line, object.column);
+                self.expression(value)?;
+                self.chunk.write_op(binary_opcode(op), line, column);
+                self.chunk.write_op(OpCode::Rot3, line, column);
+                self.chunk
+                    .write_op(OpCode::SetIndex, index.line, index.column);
+                self.chunk.write(0, object.line, object.column);
+            }
+            ExprKind::Field {
+                target: object,
+                name,
+            } => {
+                self.expression(object)?;
+                self.constant(Value::Str(Rc::new(name.clone())), line, column)?;
+                self.chunk.write_op(OpCode::DupTwo, line, column);
+                self.chunk.write_op(OpCode::GetField, line, column);
+                self.chunk.write(0, object.line, object.column);
+                self.expression(value)?;
+                self.chunk.write_op(binary_opcode(op), line, column);
+                self.chunk.write_op(OpCode::Rot3, line, column);
+                self.chunk.write_op(OpCode::SetField, line, column);
+                self.chunk.write(0, object.line, object.column);
+            }
+            _ => {
+                return Err(MiruError::with_column(
+                    line,
+                    column,
+                    "invalid assignment target (only variables, elements, and fields can be assigned to)",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Emit the write half of an assignment to a name.
+    fn store_name(&mut self, target: &Expr) -> Result<(), MiruError> {
+        let ExprKind::Identifier(name) = &target.kind else {
+            unreachable!("store_name is only called for an identifier target");
+        };
+        if let Some(slot) = self.resolve_local(name) {
+            self.local_access(
+                OpCode::SetLocal,
+                OpCode::SetLocalLong,
+                slot,
+                target.line,
+                target.column,
+            );
+        } else if let Some(upvalue) = self.resolve_upvalue(name, target.line, target.column)? {
+            self.chunk
+                .write_op(OpCode::SetUpvalue, target.line, target.column);
+            self.chunk.write(upvalue as u8, target.line, target.column);
+        } else {
+            self.named_global(OpCode::SetGlobal, name, target.line, target.column)?;
+        }
+        Ok(())
+    }
 }
 
 fn binary_opcode(op: BinaryOp) -> OpCode {

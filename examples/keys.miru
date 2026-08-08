@@ -16,9 +16,9 @@ fn draw(position) {
   let line = ""
   for i in range(0, width) {
     if i == position {
-      line = line + "#"
+      line += "#"
     } else {
-      line = line + "."
+      line += "."
     }
   }
   print(line)
@@ -41,9 +41,9 @@ while true {
   }
 
   if key == "left" && at > 0 {
-    at = at - 1
+    at -= 1
   } else if key == "right" && at < width - 1 {
-    at = at + 1
+    at += 1
   }
   draw(at)
 }
