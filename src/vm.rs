@@ -857,8 +857,44 @@ impl Vm {
                         field_set(target, &name, value, chunk, op_ip, target_ip)?;
                     }
                     OpCode::IterSnapshot => {
+                        let wants_pairs = chunk.code[ip] == 1;
+                        ip += 1;
                         let value = self.pop();
                         match value {
+                            // A map is iterable only as pairs. With one loop
+                            // variable it falls through to the refusal below,
+                            // which is deliberate: keys and values are both
+                            // reasonable expectations, so picking one silently
+                            // makes half of all readers wrong.
+                            Value::Map(entries) if wants_pairs => {
+                                // Key order, matching what `keys` promises in
+                                // section 8.6, so the two cannot drift.
+                                let snapshot: Vec<Value> = entries
+                                    .borrow()
+                                    .iter()
+                                    .map(|(key, value)| {
+                                        Value::array(vec![
+                                            Value::Str(std::rc::Rc::new(key.clone())),
+                                            value.clone(),
+                                        ])
+                                    })
+                                    .collect();
+                                self.stack.push(Value::array(snapshot));
+                            }
+                            Value::Array(items) if wants_pairs => {
+                                let snapshot: Vec<Value> = items
+                                    .borrow()
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(index, element)| {
+                                        Value::array(vec![
+                                            Value::Int(index as i64),
+                                            element.clone(),
+                                        ])
+                                    })
+                                    .collect();
+                                self.stack.push(Value::array(snapshot));
+                            }
                             Value::Array(items) => {
                                 let snapshot = items.borrow().clone();
                                 self.stack.push(Value::array(snapshot));

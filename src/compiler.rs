@@ -469,6 +469,8 @@ impl<'g> Compiler<'g> {
         // in source ('$' is not a valid identifier), so they never clash.
         self.expression(iterable)?;
         self.chunk.write_op(OpCode::IterSnapshot, line, column);
+        // 0 asks for the elements. The pairs form has no syntax to reach it yet.
+        self.chunk.write(0, line, column);
         let seq_slot = u16::try_from(self.locals.len())
             .map_err(|_| MiruError::with_column(line, column, TOO_MANY_LOCALS))?;
         self.declare_local("$seq", line)?;

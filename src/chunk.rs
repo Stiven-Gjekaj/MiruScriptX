@@ -103,6 +103,12 @@ pub enum OpCode {
     GetField,
     /// Pop the iterable, check it is an array, and push a snapshot to iterate. A
     /// runtime error otherwise.
+    /// One operand byte: 0 snapshots the elements, 1 snapshots pairs.
+    ///
+    /// Pairs are what a two-variable `for` walks. A map gives `[key, value]`
+    /// and an array gives `[index, element]`. The byte is here rather than in
+    /// a second opcode because the two differ only in what they build, and
+    /// because a map with one loop variable has to stay the error it was.
     IterSnapshot,
     /// Drive a `for` loop. Operands: the snapshot's slot (two bytes, big-endian)
     /// and a big-endian exit distance (two bytes). The index lives in the next
@@ -558,6 +564,12 @@ impl Chunk {
                 let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
                 let _ = writeln!(out, "{:<14}slot {}", op.name(), (high << 8) | low);
                 offset + 3
+            }
+            Some(op @ OpCode::IterSnapshot) => {
+                let pairs = self.code.get(offset + 1).copied().unwrap_or(0);
+                let what = if pairs == 1 { "pairs" } else { "elements" };
+                let _ = writeln!(out, "{:<14}{what}", op.name());
+                offset + 2
             }
             Some(op @ (OpCode::Index | OpCode::SetIndex | OpCode::GetField | OpCode::SetField)) => {
                 // The operand byte carries only a source position, so there is
