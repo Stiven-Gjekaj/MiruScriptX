@@ -1,6 +1,6 @@
 # The MiruScriptX Stability Guarantee
 
-Version 1.8
+Version 1.10
 
 This document tells you what will not change while MiruScriptX has the version
 number 1. It is short on purpose. A promise that nobody can check is not a
@@ -49,6 +49,20 @@ around. Interpolating a plain `"${n}"` would have been shorter to write and to
 explain, and it was rejected because `print("n is ${n}")` is a 1.0 program that
 prints the braces. Changing it needs version 2; a prefix needs nothing.
 
+1.10 uses it twice, and each is stable from 1.10 in the same way:
+
+- **A second loop variable**, `for key, value in map`. It was the error
+  `expected 'in' after the loop variable but found ','`.
+- **A pattern in a binding**, `let [x, y] = pair`, and the same in either
+  position of a `for`. `let [` was the error `expected an identifier after 'let'
+  but found '['`.
+
+What 1.10 did **not** add is part of the same rule. One loop variable over a map
+stays an error, because a key and a value are each a reasonable reading of
+`for x in m`: choosing either would be stable from 1.10 onward, and half of all
+readers would be permanently wrong. An error can be given a meaning later. A
+meaning cannot be taken back.
+
 ### 2.2 Semantics
 
 The rules in section 5 of the specification are stable. This includes:
@@ -61,7 +75,7 @@ The rules in section 5 of the specification are stable. This includes:
 
 ### 2.3 The builtins
 
-All 61 builtins keep their names, their arguments, and their results. Section 8
+All 67 builtins keep their names, their arguments, and their results. Section 8
 of the specification lists them.
 
 Four of them need something from the host: `read_file`, `write_file`,
