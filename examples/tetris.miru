@@ -49,8 +49,8 @@ let shapes = [
 fn rotate(piece) {
   let box = piece["box"]
   let turned = []
-  for cell in piece["cells"] {
-    turned = push(turned, [box - 1 - cell[1], cell[0]])
+  for [x, y] in piece["cells"] {
+    turned = push(turned, [box - 1 - y, x])
   }
   return {"box": box, "cells": turned}
 }
@@ -66,16 +66,14 @@ fn empty_row(width) {
 // Where a piece's cells are once it sits at x, y.
 fn cells_at(piece, x, y) {
   let placed = []
-  for cell in piece["cells"] {
-    placed = push(placed, [x + cell[0], y + cell[1]])
+  for [cx, cy] in piece["cells"] {
+    placed = push(placed, [x + cx, y + cy])
   }
   return placed
 }
 
 fn fits(well, piece, x, y, width, height) {
-  for cell in cells_at(piece, x, y) {
-    let cx = cell[0]
-    let cy = cell[1]
+  for [cx, cy] in cells_at(piece, x, y) {
     if cx < 0 || cx >= width || cy < 0 || cy >= height {
       return false
     }
@@ -87,8 +85,8 @@ fn fits(well, piece, x, y, width, height) {
 }
 
 fn freeze(well, piece, x, y) {
-  for cell in cells_at(piece, x, y) {
-    well[cell[1]][cell[0]] = true
+  for [cx, cy] in cells_at(piece, x, y) {
+    well[cy][cx] = true
   }
   return well
 }
@@ -119,8 +117,8 @@ fn draw(well, piece, x, y, score, lines, width) {
   // the picture never touches what has already landed. copy is shallow,
   // which is why it is each row rather than the well.
   let frame = map(well, copy)
-  for cell in cells_at(piece, x, y) {
-    frame[cell[1]][cell[0]] = true
+  for [cx, cy] in cells_at(piece, x, y) {
+    frame[cy][cx] = true
   }
 
   let out = ""
