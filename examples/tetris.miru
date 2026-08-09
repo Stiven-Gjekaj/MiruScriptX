@@ -116,8 +116,9 @@ fn sweep(well, width, height) {
 
 fn draw(well, piece, x, y, score, lines, width) {
   // Copy each row before drawing on it, so laying the falling piece over
-  // the picture never touches what has already landed.
-  let frame = map(well, fn(row) { return slice(row, 0, width) })
+  // the picture never touches what has already landed. copy is shallow,
+  // which is why it is each row rather than the well.
+  let frame = map(well, copy)
   for cell in cells_at(piece, x, y) {
     frame[cell[1]][cell[0]] = true
   }
