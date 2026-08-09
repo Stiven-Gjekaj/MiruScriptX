@@ -641,6 +641,7 @@ mod tests {
             "let x = 1 + 2 * 3",
             "fn f(n) {\n  if n < 2 {\n    return n\n  }\n  return f(n - 1)\n}",
             "for i in range(10) {\n  print(i)\n}",
+            "for key, value in scores {\n  print(key, value)\n}",
             "while a && b || c {\n  x = x + 1\n}",
             "let data = [1, 2, [3, 4], {\"k\": v}]",
             "map(xs, fn(x) { return x * 2 })",
@@ -651,12 +652,33 @@ mod tests {
         }
     }
 
+    /// Both forms of the loop, printed back the way they were written. A
+    /// formatter that dropped the second name would silently rewrite a program
+    /// into one that no longer runs, which is worse than not formatting it.
+    #[test]
+    fn prints_both_forms_of_a_for_loop() {
+        assert_eq!(
+            fmt("for k,v in m{print(k)}"),
+            "for k, v in m {\n  print(k)\n}\n"
+        );
+        assert_eq!(
+            fmt("for x in xs{print(x)}"),
+            "for x in xs {\n  print(x)\n}\n"
+        );
+        // The inline form, which a single-statement body inside a block takes.
+        assert_eq!(
+            fmt("fn f() { for k, v in m { print(v) } }"),
+            "fn f() {\n  for k, v in m {\n    print(v)\n  }\n}\n"
+        );
+    }
+
     #[test]
     fn round_trips_through_the_parser() {
         let sources = [
             "let x = -(a + b) * c",
             "if p {\n  q\n} else if r {\n  s\n}",
             "print(a, b, fn(x) { return x + 1 })",
+            "for k, v in m {\n  print(k, v)\n}",
         ];
         for source in sources {
             let formatted = fmt(source);
