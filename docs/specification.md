@@ -933,6 +933,16 @@ of one gives it back.
 | `sort(a)` or `sort(a, key)` | 1 or 2 | A new array, sorted. Section 8.8 gives the two-argument form. |
 | `reverse(v)` | 1 | A new array or string, reversed. |
 | `range(e)` or `range(s, e)` | 1 or 2 | An array of integers, from `s` (or 0) to `e`. `e` is not in the result. |
+| `range(s, e, k)` | 3 | The integers from `s`, by `k`, while short of `e`. |
+
+The step `k` is 1 if it is not given. A `k` of `0` is an error: the result
+would have no end.
+
+A negative `k` counts down, and `e` is still not in the result:
+`range(3, 0, -1)` is `[3, 2, 1]`.
+
+A `k` whose sign disagrees with the bounds gives an empty array, not an error.
+`range(0, 10, -1)` is `[]`, in the same way `range(5, 0)` is `[]`.
 
 ### 8.5 Strings
 
