@@ -752,6 +752,30 @@ mod tests {
         );
     }
 
+    /// The same trap as `get_field_is_disassembled_with_its_operand_byte`,
+    /// sprung by the operand `IterSnapshot` gained in 1.10. The byte is also
+    /// what the two forms of the loop are told apart by, so the disassembler
+    /// names which one it is rather than only stepping over it.
+    #[test]
+    fn iter_snapshot_is_disassembled_with_the_form_it_asks_for() {
+        let mut chunk = Chunk::new();
+        chunk.write_op(OpCode::IterSnapshot, 1, 1);
+        chunk.write(0, 1, 1);
+        chunk.write_op(OpCode::IterSnapshot, 1, 1);
+        chunk.write(1, 1, 1);
+        chunk.write_op(OpCode::Return, 1, 1);
+        // RETURN at 0004 says both operand bytes were consumed. Read as
+        // zero-operand instructions, the 0 at 0001 would have decoded as
+        // CONSTANT and the 1 at 0003 as CONSTANT_LONG.
+        assert_eq!(
+            chunk.disassemble("test"),
+            "== test ==\n\
+             \x20  1  0000 ITER_SNAPSHOT elements\n\
+             \x20  |  0002 ITER_SNAPSHOT pairs\n\
+             \x20  |  0004 RETURN\n"
+        );
+    }
+
     #[test]
     fn disassembles_a_small_chunk() {
         let mut chunk = Chunk::new();
