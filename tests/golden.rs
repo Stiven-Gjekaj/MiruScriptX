@@ -742,6 +742,26 @@ fn arrays_maps_and_indexing() {
         ("copy(7)", "ok 7"),
         ("copy(nil)", "ok nil"),
         ("copy()", "err copy expects 1 argument(s) but got 0 @ 1:1"),
+        // range with a step. The first is the one that was impossible.
+        ("range(5, 0, -1)", "ok [5, 4, 3, 2, 1]"),
+        ("range(0, 10, 2)", "ok [0, 2, 4, 6, 8]"),
+        // The end stays excluded counting down, as it is counting up.
+        ("range(3, 0, -1)", "ok [3, 2, 1]"),
+        // The existing forms are untouched, which section 2.3 requires.
+        ("range(3)", "ok [0, 1, 2]"),
+        ("range(2, 5)", "ok [2, 3, 4]"),
+        // **Empty, not an error.** range(5, 0) has been empty since the
+        // builtin existed, so a disagreeing sign has to be empty too.
+        ("range(5, 0)", "ok []"),
+        ("range(0, 10, -1)", "ok []"),
+        (
+            "range(0, 3, 0)",
+            "err range expects a step that is not 0 @ 1:1",
+        ),
+        (
+            "range(1, 2, 3, 4)",
+            "err range expects 1 to 3 arguments but got 4 @ 1:1",
+        ),
         ("repeat(\"-\", 3)", "ok \"---\""),
         ("repeat(\"ab\", 3)", "ok \"ababab\""),
         // Zero gives the empty string. The loop this replaces did, and a
