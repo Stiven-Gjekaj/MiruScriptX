@@ -716,6 +716,32 @@ fn arrays_maps_and_indexing() {
             "let n = 1\nf\"{n\"",
             "err f-string \'{n}\' needs a \'}\' after the name @ 2:4",
         ),
+        // copy: the point is that the original does not move.
+        (
+            "let a = [1, 2]\nlet b = copy(a)\nb[0] = 99\n[a, b]",
+            "ok [[1, 2], [99, 2]]",
+        ),
+        (
+            "let m = {\"n\": 1}\nlet c = copy(m)\nc[\"n\"] = 99\n[m, c]",
+            "ok [{\"n\": 1}, {\"n\": 99}]",
+        ),
+        // **Shallow, pinned rather than described.** A grid copied this way
+        // shares every row, and a reader who expects otherwise should meet a
+        // test rather than a paragraph.
+        (
+            "let g = [[1, 2]]\nlet c = copy(g)\nc[0][0] = 99\ng",
+            "ok [[99, 2]]",
+        ),
+        // And the documented answer to that.
+        (
+            "let g = [[1, 2]]\nlet c = map(g, copy)\nc[0][0] = 99\n[g, c]",
+            "ok [[[1, 2]], [[99, 2]]]",
+        ),
+        // Nothing else can be changed in place, so copying it is itself.
+        ("copy(\"ab\")", "ok \"ab\""),
+        ("copy(7)", "ok 7"),
+        ("copy(nil)", "ok nil"),
+        ("copy()", "err copy expects 1 argument(s) but got 0 @ 1:1"),
         ("repeat(\"-\", 3)", "ok \"---\""),
         ("repeat(\"ab\", 3)", "ok \"ababab\""),
         // Zero gives the empty string. The loop this replaces did, and a
