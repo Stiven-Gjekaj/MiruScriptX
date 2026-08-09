@@ -422,6 +422,58 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.10: arrays and maps, said once
+
+Shipped. Four additions, in five parts, chosen from the fourteen issues open
+after 1.9 because they form one release rather than four errands: share or copy,
+walk a map's entries, take a pair apart, count in either direction. Each was an
+error before, so section 2.1 of the guarantee covered all of it.
+
+- **`copy(v)`**, shallow and named so. Closes #39.
+- **`range` takes a step**, so a loop can count down. Closes #41.
+- **`for key, value in map`**, and `for i, x in array`. Closes #46.
+- **`let [x, y] = pair`**, in a `let` or either position of a `for`. Closes #42.
+
+Five things worth carrying forward:
+
+- **An error is the cheapest thing a language owns, and the only one it can
+  spend later.** Three decisions in this release turned on it. `for x in m`
+  stays an error because a key and a value are each a reasonable reading, and
+  section 2.3 would freeze whichever was picked. A pattern refuses a length
+  mismatch rather than padding with `nil`, because padding turns a changed
+  return value into a `nil` several lines away. Assignment does not destructure,
+  because `[a, m.x, arr[0]] = ...` has a question behind it that `let` does not.
+  All three remain additive in a later 1.x. None of them would have been
+  reversible.
+
+- **The empirical test for whether a 1.x may add syntax is "does it error
+  today?"** — and running it takes seconds. `for k, v in m` was
+  `expected 'in' after the loop variable but found ','`. `let [` was
+  `expected an identifier after 'let' but found '['`. Neither needed an argument
+  about the guarantee; both needed one command.
+
+- **A feature that falls out of a recursion is smaller than one that enumerates
+  its cases.** A pattern is a binding target, `let` and `for` both bind, so both
+  take one — and `let [[a, b], c]`, `for [x, y] in cells`, and
+  `for i, [x, y] in cells` are then not features at all. The alternative was
+  three special cases and a decision about each. One new opcode checks the array;
+  every element comes out through the `Index` a program would have written.
+
+- **Two hidden locals are cheaper than moving the ones above them.** A bracketed
+  pattern keeps the array it took apart as a hidden local for the rest of the
+  block, exactly as a `for` loop keeps `$seq` and `$idx`. Removing it would mean
+  renumbering every local declared after it. It costs one stack slot and no
+  instruction, and the first design that tried to be tidier about it needed a new
+  opcode and a renumbering pass.
+
+- **A limit that protects one recursive walk protects all of them, but only if
+  something counts.** A pattern is walked by the compiler and the formatter, so
+  an uncounted one aborts the process rather than reporting — the class v1.0
+  spent a milestone closing. The parser's existing `enter` covered it for the
+  cost of two lines. The test for it belongs in `tests/golden.rs`, which spawns
+  the 64 MiB thread the language assumes; written as a unit test it overflowed
+  libtest's 2 MiB and measured the harness instead.
+
 ## 1.9: characters, and saying a thing once
 
 Shipped. Six additions and one fix, in seven parts. Every addition was an error
