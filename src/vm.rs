@@ -899,6 +899,26 @@ impl Vm {
                                 let snapshot = items.borrow().clone();
                                 self.stack.push(Value::array(snapshot));
                             }
+                            // A map with one loop variable. Still refused, for
+                            // the reason it always was: keys and values are
+                            // both reasonable expectations, so choosing either
+                            // silently makes half of all readers wrong, and
+                            // section 2.3 would then freeze the coin flip.
+                            //
+                            // What changed in 1.10 is that there is now
+                            // somewhere to point. The refusal names it, because
+                            // a message that only says no leaves the reader to
+                            // guess which of the two the language meant.
+                            Value::Map(_) => {
+                                return Err(runtime_error(
+                                    chunk,
+                                    op_ip,
+                                    "cannot iterate over a map with one loop variable \
+                                     (write 'for key, value in ...' to walk its entries, \
+                                     or 'for key in keys(...)' for the keys alone)"
+                                        .to_string(),
+                                ))
+                            }
                             // Iterating a caught error is a use of it, so it
                             // names the original error like every other use.
                             // Without this arm the wildcard below answered

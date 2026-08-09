@@ -542,6 +542,83 @@ fn for_in_loops_over_arrays() {
     ]);
 }
 
+/// A second loop variable, added in 1.10. Both forms of the loop are here
+/// together so that a change to one that breaks the other is caught by the
+/// same test.
+#[test]
+fn a_for_loop_with_two_variables() {
+    check_all(&[
+        // A map gives its key and its value.
+        (
+            "let m = {\"a\": 1, \"b\": 2}\nlet out = \"\"\nfor k, v in m { out = out + k + str(v) }\nout",
+            "ok \"a1b2\"",
+        ),
+        // In the order `keys` gives, which is insertion order. The two are the
+        // same walk, so neither can drift from the other unnoticed.
+        (
+            "let m = {\"z\": 1, \"a\": 2, \"m\": 3}\nlet a = []\nfor k, v in m { a = push(a, k) }\nstr(a) == str(keys(m))",
+            "ok true",
+        ),
+        // An array gives the index alongside the element, which is the other
+        // thing a loop repeatedly wants and had to count by hand.
+        (
+            "let out = \"\"\nfor i, x in [\"a\", \"b\", \"c\"] { out = out + str(i) + x }\nout",
+            "ok \"0a1b2c\"",
+        ),
+        // An empty collection runs the body no times, either way round.
+        ("let n = 0\nfor k, v in {} { n = n + 1 }\nn", "ok 0"),
+        ("let n = 0\nfor i, x in [] { n = n + 1 }\nn", "ok 0"),
+        // `break` and `continue` reach the pair loop like any other.
+        (
+            "let out = \"\"\nfor k, v in {\"a\": 1, \"b\": 2, \"c\": 3} {\n  if k == \"c\" { break }\n  if v == 2 { continue }\n  out = out + k\n}\nout",
+            "ok \"a\"",
+        ),
+        // Both names are ordinary locals: they can shadow, and the outer
+        // binding is back once the loop ends.
+        (
+            "let k = 9\nfor k, v in {\"a\": 1} { }\nk",
+            "ok 9",
+        ),
+        // Nesting works, and the inner loop's names do not disturb the outer.
+        (
+            "let out = \"\"\nfor k, v in {\"a\": 1} {\n  for i, x in [10, 20] { out = out + k + str(x) }\n}\nout",
+            "ok \"a10a20\"",
+        ),
+        // The pair is read out of a snapshot, so changing the map inside the
+        // loop does not change what the loop walks. That is what an array
+        // already did, and the two forms agree.
+        (
+            "let m = {\"a\": 1}\nlet n = 0\nfor k, v in m {\n  m.b = 2\n  n = n + 1\n}\nn",
+            "ok 1",
+        ),
+        // Nothing else has pairs to give.
+        ("for a, b in 5 { }", "err cannot iterate over a int @ 1:13"),
+        (
+            "for a, b in \"ab\" { }",
+            "err cannot iterate over a string @ 1:13",
+        ),
+    ]);
+}
+
+/// One variable over a map stays the error it has always been. Keys and values
+/// are both reasonable expectations, so picking either silently would make half
+/// of all readers wrong -- and section 2.3 would then freeze the coin flip.
+#[test]
+fn one_loop_variable_over_a_map_is_refused_and_names_the_fix() {
+    check_all(&[
+        (
+            "for k in {\"a\": 1} { }",
+            "err cannot iterate over a map with one loop variable (write 'for key, value in ...' to walk its entries, or 'for key in keys(...)' for the keys alone) @ 1:10",
+        ),
+        // The way it was written before 1.10 still works, and is still the way
+        // to ask for the keys alone.
+        (
+            "let m = {\"a\": 1, \"b\": 2}\nlet out = \"\"\nfor k in keys(m) { out = out + k }\nout",
+            "ok \"ab\"",
+        ),
+    ]);
+}
+
 #[test]
 fn functions_calls_and_recursion() {
     check_all(&[
