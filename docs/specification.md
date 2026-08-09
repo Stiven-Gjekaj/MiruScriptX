@@ -272,7 +272,8 @@ A statement ends at a newline or a semicolon. Section 2.3 gives the rule.
 ```
 import    = "import" string "as" identifier
 
-let       = "let" identifier "=" expression
+let       = "let" pattern "=" expression
+pattern   = identifier | "[" [ pattern { "," pattern } [ "," ] ] "]"
 
 assign    = target "=" expression
 compound  = target ( "+=" | "-=" | "*=" | "/=" | "%=" ) expression
@@ -287,7 +288,7 @@ if        = "if" expression block [ "else" ( if | block ) ]
 
 while     = "while" expression block
 
-for       = "for" identifier [ "," identifier ] "in" expression block
+for       = "for" pattern [ "," pattern ] "in" expression block
 
 break     = "break"
 continue  = "continue"
@@ -642,6 +643,43 @@ print(print)    // Error: a int is not callable
 An inner `let` can use the name of an outer variable. The inner name hides the
 outer name until the end of the block.
 
+### 5.8.1 Taking an array apart
+
+A `let` and a `for` both take a pattern. A pattern is a name, or names in
+brackets that take an array apart.
+
+```
+let [x, y] = [3, 4]
+let [width, height] = term_size()
+
+for [x, y] in cells {
+  print(x, y)
+}
+```
+
+A bracketed pattern reads an array with exactly as many elements as the pattern
+has parts. An array of another length gives the error `cannot take apart an
+array of <length> with a pattern of <count>`. A value that is not an array gives
+`cannot take apart a <type>; a pattern needs an array`.
+
+The length must match rather than being padded with `nil`, so a value of the
+wrong shape reports at the line that made it.
+
+A pattern can hold a pattern, which takes apart an array inside an array.
+
+```
+let [[a, b], c] = [[1, 2], 3]
+```
+
+A pattern makes every name it holds, in the order the names are written, after
+the whole value is worked out. A name that a pattern makes twice keeps the last
+value, by the rule of section 5.8.
+
+An empty pattern reads an array of no elements.
+
+A map is not taken apart by a pattern. An assignment does not take an array
+apart: only `let` and `for` do.
+
 ### 5.9 Loops
 
 A `for` loop with one variable reads an array. The variable takes each element.
@@ -666,6 +704,14 @@ two-variable form and `keys`, because a key and a value are each a reasonable
 reading of `for x in m` and this document defines neither.
 
 A `for` loop on any other type gives the error `cannot iterate over a <type>`.
+
+Either loop variable can be a pattern, which takes that element apart. Section
+5.8.1 defines one.
+
+```
+for [x, y] in cells { }
+for index, [x, y] in cells { }
+```
 
 A `for` loop makes a copy of what it reads before the first step. A change to
 the array or the map inside the loop does not change the number of steps.

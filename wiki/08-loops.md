@@ -26,6 +26,17 @@ That saves keeping a counter of your own, which is a line to write and a line to
 forget to increment. Over a map the two names are the key and the value instead;
 [Maps](10-maps.md) covers that.
 
+Brackets go in either position, for a loop over pairs:
+
+```
+for [x, y] in [[0, 1], [2, 3]] {
+  print(x + y)                // 1, then 5
+}
+```
+
+[Arrays](09-arrays.md) covers what the brackets do and what happens when the
+lengths disagree.
+
 ## Counting with range
 
 `range` builds an array of integers, which is the usual way to count. With one

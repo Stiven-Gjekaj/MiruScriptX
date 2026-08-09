@@ -585,6 +585,17 @@ That saves keeping a counter of your own, which is a line to write and a line to
 forget to increment. Over a map the two names are the key and the value instead;
 [Maps](#maps) covers that.
 
+Brackets go in either position, for a loop over pairs:
+
+```
+for [x, y] in [[0, 1], [2, 3]] {
+  print(x + y)                // 1, then 5
+}
+```
+
+[Arrays](#arrays) covers what the brackets do and what happens when the
+lengths disagree.
+
 ## Counting with range
 
 `range` builds an array of integers, which is the usual way to count. With one
@@ -748,6 +759,55 @@ for n in names {
   print("Hello, " + n)
 }
 ```
+
+## Taking one apart
+
+A function returns one value, so anything that returns two returns an array. Put
+brackets on the left of a `let` and each element gets its own name:
+
+```
+let [x, y] = [3, 4]
+print(x)              // 3
+print(y)              // 4
+```
+
+That is worth reaching for whenever the elements mean different things. `size[0]`
+and `size[1]` are a puzzle with a correct answer; `width` and `height` are not:
+
+```
+let [width, height] = term_size()
+```
+
+**The lengths have to match.** Two names need an array of exactly two:
+
+```
+let [x, y] = [1, 2, 3]    // error: cannot take apart an array of 3 with a
+                          // pattern of 2
+```
+
+That is deliberate. If a short array quietly filled the extra names with `nil`,
+a function that started returning three values would show up as a `nil` several
+lines later, instead of as an error on the line that is wrong.
+
+A pattern can hold a pattern, for an array inside an array:
+
+```
+let [[a, b], c] = [[1, 2], 3]
+print(a, b, c)        // 1 2 3
+```
+
+A `for` loop takes the same brackets, which is where this earns its keep:
+
+```
+let cells = [[0, 1], [2, 3]]
+for [x, y] in cells {
+  print(x + y)        // 1, then 5
+}
+```
+
+Two things it does not do, both on purpose. It does not take a map apart — use
+[a two-variable loop](#maps) for that. And it works with `let` and `for`,
+not with assignment: `[a, b] = pair` is an error.
 
 ## Sharing, and copying
 
