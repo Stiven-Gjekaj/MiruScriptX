@@ -287,7 +287,7 @@ if        = "if" expression block [ "else" ( if | block ) ]
 
 while     = "while" expression block
 
-for       = "for" identifier "in" expression block
+for       = "for" identifier [ "," identifier ] "in" expression block
 
 break     = "break"
 continue  = "continue"
@@ -644,14 +644,34 @@ outer name until the end of the block.
 
 ### 5.9 Loops
 
-A `for` loop reads an array. A `for` loop on another type gives the error
-`cannot iterate over a <type>`.
+A `for` loop with one variable reads an array. The variable takes each element.
 
-A `for` loop makes a copy of the array before the first step. A change to the
-array inside the loop does not change the number of steps.
+A `for` loop with two variables reads an array or a map. Over a map the first
+variable takes the key and the second takes the value, in the order of section
+4.3. Over an array the first variable takes the index and the second takes the
+element.
 
-The loop variable is a new name at each step. A closure that a step makes keeps
-the value of that step.
+```
+for key, value in {"b": 2, "a": 1} {
+  print(key, value)                     // a 1, then b 2
+}
+
+for index, element in ["x", "y"] {
+  print(index, element)                 // 0 x, then 1 y
+}
+```
+
+A `for` loop with one variable over a map is an error. The message names the
+two-variable form and `keys`, because a key and a value are each a reasonable
+reading of `for x in m` and this document defines neither.
+
+A `for` loop on any other type gives the error `cannot iterate over a <type>`.
+
+A `for` loop makes a copy of what it reads before the first step. A change to
+the array or the map inside the loop does not change the number of steps.
+
+Each loop variable is a new name at each step. A closure that a step makes keeps
+the values of that step.
 
 ### 5.10 Functions
 
@@ -1018,6 +1038,19 @@ answer that reading an absent key gives.
 
 > **Note.** A key that holds `nil` and a key that is not there both make
 > `remove` give `nil`. Use `has` before the removal to tell one from the other.
+
+To read every entry, use a `for` loop with two variables rather than `keys` and
+an index. Section 5.9 defines it, and both walk the keys in the order of section
+4.3.
+
+```
+for key, value in prices {
+  print(key, value)
+}
+```
+
+`keys` remains the way to ask for the keys alone, and the way to hold the list
+of them as a value.
 
 ### 8.7 Numbers
 
