@@ -36,6 +36,7 @@ pub fn register(globals: &mut Globals) {
     define(globals, "repeat", repeat);
     define(globals, "pad_left", pad_left);
     define(globals, "pad_right", pad_right);
+    define(globals, "copy", copy);
     define(globals, "trim", trim);
     define(globals, "replace", replace);
     define(globals, "split", split);
@@ -464,6 +465,33 @@ fn upper(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
             other.type_name()
         )),
     }
+}
+
+/// `copy(v)` gives a value that shares nothing with `v` at the top level.
+///
+/// **Arrays and maps are shared when they are assigned.** `let b = a` makes
+/// both names reach one array, so `b[0] = 99` changes `a`. That is the value
+/// model and not a defect; what was missing is a way to ask for the other
+/// thing. `examples/tetris.miru` had to write `slice(row, 0, width)` to get it,
+/// which is a copy spelled as a slice and needs the width in scope to say.
+///
+/// **Shallow, and named so it cannot be read as deep.** A grid is an array of
+/// arrays, and copying one shallowly shares every row — `map(grid, copy)` is
+/// the documented way to copy that, and the golden corpus pins it. A deep form
+/// can be added later under section 2.3; a shallow `copy` that later started
+/// copying deeply could not, because that would change what a builtin does. A
+/// naive deep copy also has to answer what happens to a value that holds
+/// itself, which is the class of defect v1.0 spent a milestone closing.
+fn copy(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
+    check_arity("copy", &args, 1)?;
+    Ok(match &args[0] {
+        Value::Array(items) => Value::array(items.borrow().clone()),
+        Value::Map(entries) => Value::map(entries.borrow().clone()),
+        // Everything else is already a value rather than a handle: two names
+        // holding the same string cannot observe each other, because nothing
+        // can change one in place. Returning it is the copy.
+        other => other.clone(),
+    })
 }
 
 /// `repeat(s, n)` gives `s` written `n` times.
@@ -2714,8 +2742,8 @@ mod count {
         }
 
         assert_eq!(
-            plain, 46,
-            "{plain} builtins take a BuiltinFn, not 46. Quoted by `Args::into_vec` \
+            plain, 47,
+            "{plain} builtins take a BuiltinFn, not 47. Quoted by `Args::into_vec` \
              above and by the trampoline section of docs/architecture.md."
         );
         assert_eq!(
@@ -2725,8 +2753,8 @@ mod count {
         );
         assert_eq!(
             plain + system + ambient,
-            62,
-            "{} builtins reach `call_native`, not 62. Quoted by the caught-error \
+            63,
+            "{} builtins reach `call_native`, not 63. Quoted by the caught-error \
              guard in `Vm::call_native`.",
             plain + system + ambient
         );
@@ -2746,7 +2774,7 @@ mod count {
 /// Every builtin, in registration order. Pinned so the count cannot drift and
 /// so the specification has one list to be generated from rather than a second
 /// hand-written one that can disagree.
-pub const BUILTIN_NAMES: [&str; 66] = [
+pub const BUILTIN_NAMES: [&str; 67] = [
     "print",
     "eprint",
     "exit",
@@ -2768,6 +2796,7 @@ pub const BUILTIN_NAMES: [&str; 66] = [
     "repeat",
     "pad_left",
     "pad_right",
+    "copy",
     "trim",
     "replace",
     "split",
