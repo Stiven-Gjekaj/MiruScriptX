@@ -60,9 +60,14 @@ pub enum StmtKind {
     },
     /// `while condition { .. }`
     While { condition: Expr, body: Vec<Stmt> },
-    /// `for name in iterable { .. }`
+    /// `for name in iterable { .. }`, or `for key, value in map { .. }`.
+    ///
+    /// `value_name` is the second loop variable. When it is present the
+    /// iterable is walked as pairs: a map gives its key and value, an array
+    /// gives its index and element.
     For {
         name: String,
+        value_name: Option<String>,
         iterable: Expr,
         body: Vec<Stmt>,
     },

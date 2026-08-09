@@ -259,9 +259,10 @@ impl<'g> Compiler<'g> {
             StmtKind::While { condition, body } => self.while_statement(condition, body)?,
             StmtKind::For {
                 name,
+                value_name,
                 iterable,
                 body,
-            } => self.for_statement(name, iterable, body)?,
+            } => self.for_statement(name, value_name.as_deref(), iterable, body)?,
             StmtKind::Break => self.break_statement(stmt.line)?,
             StmtKind::Continue => self.continue_statement(stmt.line)?,
             StmtKind::Return(value) => {
@@ -456,9 +457,13 @@ impl<'g> Compiler<'g> {
     /// Compile `for name in iterable { .. }`. The iterable is snapshotted into a
     /// hidden local, a hidden index walks it, and each iteration binds `name` to
     /// the next element in a fresh per-iteration scope.
+    ///
+    /// With a `value_name` the snapshot holds pairs instead, and each iteration
+    /// binds both halves of the pair it is given.
     fn for_statement(
         &mut self,
         name: &str,
+        value_name: Option<&str>,
         iterable: &Expr,
         body: &[Stmt],
     ) -> Result<(), MiruError> {
@@ -469,8 +474,10 @@ impl<'g> Compiler<'g> {
         // in source ('$' is not a valid identifier), so they never clash.
         self.expression(iterable)?;
         self.chunk.write_op(OpCode::IterSnapshot, line, column);
-        // 0 asks for the elements. The pairs form has no syntax to reach it yet.
-        self.chunk.write(0, line, column);
+        // 1 asks the snapshot for pairs, which is what a second loop variable
+        // walks. A map with one variable reaches the refusal in the VM.
+        self.chunk
+            .write(u8::from(value_name.is_some()), line, column);
         let seq_slot = u16::try_from(self.locals.len())
             .map_err(|_| MiruError::with_column(line, column, TOO_MANY_LOCALS))?;
         self.declare_local("$seq", line)?;
@@ -486,7 +493,32 @@ impl<'g> Compiler<'g> {
 
         // The loop variable and body share one fresh scope per iteration.
         self.begin_scope();
-        self.declare_local(name, line)?;
+        match value_name {
+            // One variable takes the element `ForNext` pushed.
+            None => self.declare_local(name, line)?,
+            // Two variables take it apart. `ForNext` pushed the pair, which
+            // becomes a hidden local, and each half is read out of it with the
+            // ordinary index opcode -- no new instruction, and the same code a
+            // program would write by hand.
+            Some(value_name) => {
+                let pair_slot = u16::try_from(self.locals.len())
+                    .map_err(|_| MiruError::with_column(line, column, TOO_MANY_LOCALS))?;
+                self.declare_local("$pair", line)?;
+                for (half, bound) in [(0i64, name), (1, value_name)] {
+                    self.local_access(
+                        OpCode::GetLocal,
+                        OpCode::GetLocalLong,
+                        pair_slot,
+                        line,
+                        column,
+                    );
+                    self.constant(Value::Int(half), line, column)?;
+                    self.chunk.write_op(OpCode::Index, line, column);
+                    self.chunk.write(0, line, column);
+                    self.declare_local(bound, line)?;
+                }
+            }
+        }
         self.loops.push(LoopContext {
             start: loop_start,
             body_depth: self.scope_depth,

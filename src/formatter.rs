@@ -98,10 +98,15 @@ impl Printer<'_> {
             }
             StmtKind::For {
                 name,
+                value_name,
                 iterable,
                 body,
             } => {
-                let header = format!("for {name} in {} {{", fmt_expr(iterable));
+                let bound = match value_name {
+                    Some(value_name) => format!("{name}, {value_name}"),
+                    None => name.clone(),
+                };
+                let header = format!("for {bound} in {} {{", fmt_expr(iterable));
                 let header = self.attach_trailing(stmt.line, header);
                 self.push_line(indent, header);
                 self.print_stmts(body, indent + 1);
@@ -279,13 +284,20 @@ fn stmt_inline(stmt: &Stmt) -> String {
         }
         StmtKind::For {
             name,
+            value_name,
             iterable,
             body,
-        } => format!(
-            "for {name} in {} {}",
-            fmt_expr(iterable),
-            block_inline(body)
-        ),
+        } => {
+            let bound = match value_name {
+                Some(value_name) => format!("{name}, {value_name}"),
+                None => name.clone(),
+            };
+            format!(
+                "for {bound} in {} {}",
+                fmt_expr(iterable),
+                block_inline(body)
+            )
+        }
         StmtKind::Function { name, params, body } => {
             format!("fn {name}({}) {}", params.join(", "), block_inline(body))
         }

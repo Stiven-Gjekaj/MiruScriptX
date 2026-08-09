@@ -443,12 +443,22 @@ impl Parser {
     fn for_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
         self.advance(); // 'for'
         let name = self.expect_identifier("after 'for'")?;
+        // A second loop variable walks the iterable as pairs. `for k, v in m`
+        // was `expected 'in' after the loop variable but found ','` before
+        // 1.10, so no program that ran can change meaning.
+        let value_name = if self.check(&TokenKind::Comma) {
+            self.advance();
+            Some(self.expect_identifier("after the first loop variable")?)
+        } else {
+            None
+        };
         self.expect(TokenKind::In, "after the loop variable")?;
         let iterable = self.expression()?;
         let body = self.loop_body()?;
         Ok(Stmt::new(
             StmtKind::For {
                 name,
+                value_name,
                 iterable,
                 body,
             },
@@ -1430,15 +1440,49 @@ mod tests {
         match &statements[0].kind {
             StmtKind::For {
                 name,
+                value_name,
                 iterable,
                 body,
             } => {
                 assert_eq!(name, "n");
+                assert_eq!(*value_name, None);
                 assert_eq!(*iterable, e(ExprKind::Identifier("names".to_string())));
                 assert_eq!(body.len(), 1);
             }
             other => panic!("expected a for loop, found {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_for_in_loop_with_two_names() {
+        let statements = parse_program("for key, value in scores {\n  print(key)\n}");
+        match &statements[0].kind {
+            StmtKind::For {
+                name,
+                value_name,
+                iterable,
+                body,
+            } => {
+                assert_eq!(name, "key");
+                assert_eq!(*value_name, Some("value".to_string()));
+                assert_eq!(*iterable, e(ExprKind::Identifier("scores".to_string())));
+                assert_eq!(body.len(), 1);
+            }
+            other => panic!("expected a for loop, found {other:?}"),
+        }
+    }
+
+    /// Two names is the whole of it. A third has no meaning to give it, so it
+    /// is refused rather than ignored.
+    #[test]
+    fn a_for_loop_takes_at_most_two_names() {
+        let tokens = Lexer::tokenize("for a, b, c in scores {\n}").expect("lexes");
+        let err = first_error_from(tokens);
+        assert!(
+            err.message.contains("after the loop variable"),
+            "unexpected message: {}",
+            err.message
+        );
     }
 
     #[test]
