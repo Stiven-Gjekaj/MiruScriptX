@@ -867,8 +867,9 @@ impl Vm {
                             // reasonable expectations, so picking one silently
                             // makes half of all readers wrong.
                             Value::Map(entries) if wants_pairs => {
-                                // Key order, matching what `keys` promises in
-                                // section 8.6, so the two cannot drift.
+                                // The map's own order, which section 4.3 fixes
+                                // as sorted. `keys` reads the same order from
+                                // the same place, so the two cannot drift.
                                 let snapshot: Vec<Value> = entries
                                     .borrow()
                                     .iter()

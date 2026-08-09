@@ -553,8 +553,9 @@ fn a_for_loop_with_two_variables() {
             "let m = {\"a\": 1, \"b\": 2}\nlet out = \"\"\nfor k, v in m { out = out + k + str(v) }\nout",
             "ok \"a1b2\"",
         ),
-        // In the order `keys` gives, which is insertion order. The two are the
-        // same walk, so neither can drift from the other unnoticed.
+        // In the order `keys` gives, which section 4.3 fixes as sorted rather
+        // than as inserted. The two are the same walk, so neither can drift
+        // from the other unnoticed.
         (
             "let m = {\"z\": 1, \"a\": 2, \"m\": 3}\nlet a = []\nfor k, v in m { a = push(a, k) }\nstr(a) == str(keys(m))",
             "ok true",

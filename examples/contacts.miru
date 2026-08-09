@@ -11,9 +11,11 @@ let book = {
 book["Mai"] = "555-0177"
 book["Ken"] = "555-0199"
 
+// Two loop variables walk the entries directly. The keys come in sorted order,
+// so the listing is the same on every run.
 print("names:")
-for name in keys(book) {
-  print("  " + name + ": " + book[name])
+for name, number in book {
+  print("  " + name + ": " + number)
 }
 
 // Look up a name, guarding against a missing one.
