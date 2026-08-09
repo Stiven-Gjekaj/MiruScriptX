@@ -73,6 +73,10 @@ for name in people {
 - Arrays and maps, with indexing
 - Functions, closures, and recursion
 - `if` / `else if` / `else`, `while`, `for ... in`
+- `for key, value in map` to walk a map's entries, and `for i, x in array` for
+  the position alongside the element
+- `let [x, y] = pair` to give an array's elements their own names, in a `let`
+  or a loop
 - `break` and `continue`
 - Modules: `import` a file and reach its names through a dot
 - `try`, which turns a failure into a value you can check
@@ -91,7 +95,7 @@ for name in people {
 
 - Lexer, Pratt parser, bytecode compiler, stack virtual machine
 - A standard library of string, array, math, map, and I/O builtins, including
-  `repeat`, `pad_left`, `pad_right`, `chr`, and `ord`
+  `copy`, `repeat`, `pad_left`, `pad_right`, `chr`, and `ord`
 - Higher-order builtins: `map`, `filter`, and `reduce`
 - File runner, a source formatter (`miru fmt`), and a REPL with history
 - A disassembler (`miru disasm`) that prints the bytecode for a program
