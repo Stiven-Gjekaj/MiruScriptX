@@ -12,6 +12,20 @@ for c in colors {
 }
 ```
 
+## Two names, for the position as well
+
+Give the loop two names and the first one is the position:
+
+```
+for i, c in colors {
+  print(str(i) + ": " + c)    // 0: red, then 1: green, then 2: blue
+}
+```
+
+That saves keeping a counter of your own, which is a line to write and a line to
+forget to increment. Over a map the two names are the key and the value instead;
+[Maps](10-maps.md) covers that.
+
 ## Counting with range
 
 `range` builds an array of integers, which is the usual way to count. With one

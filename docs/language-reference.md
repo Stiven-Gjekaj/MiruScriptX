@@ -571,6 +571,20 @@ for c in colors {
 }
 ```
 
+## Two names, for the position as well
+
+Give the loop two names and the first one is the position:
+
+```
+for i, c in colors {
+  print(str(i) + ": " + c)    // 0: red, then 1: green, then 2: blue
+}
+```
+
+That saves keeping a counter of your own, which is a line to write and a line to
+forget to increment. Over a map the two names are the key and the value instead;
+[Maps](#maps) covers that.
+
 ## Counting with range
 
 `range` builds an array of integers, which is the usual way to count. With one
@@ -844,21 +858,55 @@ print(len(m))        // 2
 
 ## Going over a map
 
-Get the keys or values as arrays with `keys` and `values`, then loop:
+A `for` loop with two variables gives you the key and the value together:
 
 ```
 let ages = {"Aiko": 3, "Ken": 5}
-for name in keys(ages) {
-  print(name + " is " + str(ages[name]))
+for name, age in ages {
+  print(name + " is " + str(age))
 }
 ```
 
-Keys always come back in sorted order, so the output is stable:
+Keys always come in sorted order, so the output is stable:
 
 ```
 Aiko is 3
 Ken is 5
 ```
+
+**One variable is an error over a map.** `for x in ages` does not run, because a
+key and a value are both fair guesses at what `x` would be and the language will
+not pick for you:
+
+```
+for x in ages {                     // error: cannot iterate over a map with
+  print(x)                          // one loop variable
+}
+```
+
+Ask for the keys alone with `keys`, which is also how you hold them as a value
+to sort, count, or pass on:
+
+```
+print(keys(ages))                   // ["Aiko", "Ken"]
+print(values(ages))                 // [3, 5]
+print(len(keys(ages)))              // 2
+
+for name in keys(ages) {
+  print(name)
+}
+```
+
+Two variables work over an array too, and there the first one is the index:
+
+```
+for i, name in ["Aiko", "Ken"] {
+  print(str(i) + ": " + name)       // 0: Aiko, then 1: Ken
+}
+```
+
+Like a one-variable loop, this walks a copy. Adding a key inside the loop does
+not give the loop another step.
 
 
 # Functions
