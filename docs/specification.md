@@ -851,7 +851,7 @@ contains the import.
 
 ## 8. Builtins
 
-There are 66 builtins. A program can use each of them without an import.
+There are 67 builtins. A program can use each of them without an import.
 
 A builtin refuses a caught error, and stops the program. There are two
 exceptions: `type` and `is_error` accept one, because a program uses them to
@@ -908,6 +908,18 @@ honest answer to the question is then no. `try` catches the error.
 | `type(v)` | 1 | The name of the type, as a string. |
 | `is_error(v)` | 1 | `true` if the value is a caught error. |
 | `str(v)` | 1 | The value as a string, in the form `print` writes. |
+| `copy(v)` | 1 | A copy of an array or a map. Any other value, unchanged. |
+
+An array and a map are references. `let b = a` makes `a` and `b` the same
+array, so a change through one is seen through the other. Section 4.2 gives the
+rule. `copy` is how a program asks for the other thing.
+
+`copy` is **shallow**. A copy of an array of arrays holds the same inner
+arrays, so a change through one is still seen through the other.
+`map(grid, copy)` copies a grid.
+
+A string, a number, a boolean, and `nil` cannot be changed in place, so `copy`
+of one gives it back.
 
 ### 8.4 Arrays
 

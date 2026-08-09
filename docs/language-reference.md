@@ -714,6 +714,37 @@ for n in names {
 }
 ```
 
+## Sharing, and copying
+
+An array is a **reference**. Two names can reach the same array, and a change
+through one is seen through the other:
+
+```
+let a = [1, 2]
+let b = a
+b[0] = 99
+print(a)      // [99, 2]
+```
+
+That is often what you want — it is how a function can change an array you pass
+it. When it is not, `copy` gives you an array that shares nothing:
+
+```
+let b = copy(a)
+b[0] = 99
+print(a)      // [1, 2]
+```
+
+**`copy` is shallow.** A grid is an array of arrays, and copying it gives a new
+outer array holding the same rows, so writing into a row is still seen by both.
+Copy each row to get a grid of your own:
+
+```
+let mine = map(grid, copy)
+```
+
+Maps work the same way, and `copy` copies one the same way.
+
 
 # Maps
 
