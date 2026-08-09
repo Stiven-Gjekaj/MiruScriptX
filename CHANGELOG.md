@@ -8,6 +8,77 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 1.10.0 (2026-08-09)
+
+Four additions, and one theme: **arrays and maps, said once.** Share or copy,
+walk a map's entries, take a pair apart, count in either direction. Each was an
+error before this release, so no program that ran on 1.0 means anything
+different here — section 2.1 of the
+[stability guarantee](docs/stability.md) is the rule, and it is why none of this
+needed a version 2.
+
+### Added
+
+- **`copy(v)`** gives an array or a map that shares nothing with the original.
+  `let b = a` shares, so `b[0] = 99` changed `a`, and the way to avoid that was
+  `slice(a, 0, len(a))` — "slice the whole thing", which says copy without
+  saying it. `examples/tetris.miru` carried one with a comment explaining why.
+
+  **It is shallow, and named so it cannot be mistaken for deep.** A grid is an
+  array of arrays, and `copy(grid)` gives a new outer array holding the same
+  rows; `map(grid, copy)` is the documented way to copy a grid. A deep form can
+  be added later under section 2.3; a shallow `copy` that quietly started
+  copying deeply could not. A naive deep copy also walks straight into the
+  self-referential-value guards that v1.0 spent a milestone building.
+
+  A string, a number, a boolean, and `nil` are values already, so `copy` gives
+  them back unchanged rather than refusing.
+
+- **`range` takes a step**, so a loop can count down. `range(5, 0)` is `[]` and
+  has to stay `[]` under section 2.3, so a descending `for` could not be written
+  at all — a `while` and a counter was the whole answer. `range(5, 0, -1)` is
+  now `[5, 4, 3, 2, 1]`.
+
+  **A step of `0` refuses**, because it describes a loop that never ends. A step
+  whose sign disagrees with the bounds gives an empty array rather than an
+  error, which is what `range(5, 0)` already did.
+
+- **`for key, value in map`** walks a map's entries directly. It took
+  `for key in keys(m)` and then an index: three mentions of the collection to do
+  one thing, and a second lookup of a key the loop had already found.
+  `for index, element in array` does the same for an array's positions.
+
+  The keys come in the order `keys` gives, which section 4.3 fixes as sorted.
+  Both read the same order from the same place, so the two cannot drift.
+
+  **One variable over a map is still an error**, and for the reason it always
+  was: a key and a value are each a reasonable reading of `for x in m`, so
+  choosing either silently makes half of all readers wrong, and section 2.3
+  would then freeze the coin flip. What is new is that the refusal names both
+  ways to say what was meant.
+
+- **`let [x, y] = pair`** takes an array apart. A function returns one value, so
+  anything returning two returns an array, and the caller took it apart by
+  index. `examples/tetris.miru` was written in `cell[0]` and `cell[1]`
+  throughout: the same coordinate spelled two ways that a reader has to keep
+  straight. It is written `[x, y]` now, and so is `snake.miru`.
+
+  **A pattern is a binding target, and both `let` and `for` bind**, so both take
+  one: `for [x, y] in cells`, and `for i, [x, y] in cells` for the position as
+  well. Nesting is not a case of its own either — `let [[a, b], c]` falls out of
+  the pattern being recursive.
+
+  **A length mismatch refuses, naming both lengths.** Padding with `nil` would
+  turn a changed return value into a `nil` several lines away instead of an
+  error on the line that is wrong. The caret lands under the value that did not
+  fit.
+
+  Two omissions, recorded in section 5.8.1 as omissions rather than left to look
+  like oversights. **A map is not taken apart** — `let {name, age} = person` has
+  its own question about an absent key. **An assignment does not take an array
+  apart** — `[a, m.x, arr[0]] = ...` raises what a mixed target should mean.
+  Both are errors today, so both stay additive later.
+
 ## 1.9.0 (2026-08-08)
 
 Six additions and one fix. Every addition was an error before this release, so
