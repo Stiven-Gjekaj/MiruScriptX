@@ -856,6 +856,41 @@ impl Vm {
                         let value = self.pop();
                         field_set(target, &name, value, chunk, op_ip, target_ip)?;
                     }
+                    OpCode::CheckUnpack => {
+                        let expected = read_u16(chunk, ip) as usize;
+                        ip += 2;
+                        // Looked at rather than popped: the array stays as the
+                        // hidden local the names are then indexed out of.
+                        match self.peek() {
+                            Value::Array(items) => {
+                                let found = items.borrow().len();
+                                if found != expected {
+                                    return Err(runtime_error(
+                                        chunk,
+                                        op_ip,
+                                        format!(
+                                            "cannot take apart an array of {found} \
+                                             with a pattern of {expected}"
+                                        ),
+                                    ));
+                                }
+                            }
+                            // A caught error names the original failure here as
+                            // it does everywhere else it is used, rather than
+                            // reporting its type.
+                            Value::Error(error) => {
+                                let message = format!("unhandled error: {}", error.message);
+                                return Err(runtime_error(chunk, op_ip, message));
+                            }
+                            other => {
+                                let message = format!(
+                                    "cannot take apart a {}; a pattern needs an array",
+                                    other.type_name()
+                                );
+                                return Err(runtime_error(chunk, op_ip, message));
+                            }
+                        }
+                    }
                     OpCode::IterSnapshot => {
                         let wants_pairs = chunk.code[ip] == 1;
                         ip += 1;

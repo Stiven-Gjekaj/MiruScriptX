@@ -110,6 +110,20 @@ pub enum OpCode {
     /// a second opcode because the two differ only in what they build, and
     /// because a map with one loop variable has to stay the error it was.
     IterSnapshot,
+    /// Check the value on top of the stack is an array of a given length, and
+    /// leave it there. Operands: the length a pattern expects (two bytes,
+    /// big-endian). A runtime error naming both lengths otherwise.
+    ///
+    /// **It looks rather than pops** because the array it checked then becomes
+    /// the hidden local the names are indexed out of, exactly as a `for` loop's
+    /// snapshot does. Everything after this is `GetLocal`, a constant, and
+    /// `Index`, which is the code a program would write by hand, so nesting
+    /// needs nothing further.
+    ///
+    /// The length is wide because it is the length of an array, and an array
+    /// literal is not capped at 256. A pattern that long is not something a
+    /// person writes, but the encoding should not be the reason.
+    CheckUnpack,
     /// Drive a `for` loop. Operands: the snapshot's slot (two bytes, big-endian)
     /// and a big-endian exit distance (two bytes). The index lives in the next
     /// slot. If the index is past the end, jump by the distance; otherwise push
@@ -217,7 +231,7 @@ pub enum OpCode {
 /// Every opcode in declaration order, so a byte decodes by indexing rather than
 /// by comparison. The order must match the enum, which `opcodes_match_their_byte`
 /// checks.
-const OPCODES: [OpCode; 50] = [
+const OPCODES: [OpCode; 51] = [
     OpCode::Constant,
     OpCode::Nil,
     OpCode::True,
@@ -251,6 +265,7 @@ const OPCODES: [OpCode; 50] = [
     OpCode::SetIndex,
     OpCode::GetField,
     OpCode::IterSnapshot,
+    OpCode::CheckUnpack,
     OpCode::ForNext,
     OpCode::Closure,
     OpCode::GetUpvalue,
@@ -330,6 +345,7 @@ impl OpCode {
             OpCode::GetField => "GET_FIELD",
             OpCode::SetIndex => "SET_INDEX",
             OpCode::IterSnapshot => "ITER_SNAPSHOT",
+            OpCode::CheckUnpack => "CHECK_UNPACK",
             OpCode::ForNext => "FOR_NEXT",
             OpCode::Closure => "CLOSURE",
             OpCode::GetUpvalue => "GET_UPVALUE",
@@ -570,6 +586,12 @@ impl Chunk {
                 let what = if pairs == 1 { "pairs" } else { "elements" };
                 let _ = writeln!(out, "{:<14}{what}", op.name());
                 offset + 2
+            }
+            Some(op @ OpCode::CheckUnpack) => {
+                let high = self.code.get(offset + 1).copied().unwrap_or(0) as usize;
+                let low = self.code.get(offset + 2).copied().unwrap_or(0) as usize;
+                let _ = writeln!(out, "{:<14}{} names", op.name(), (high << 8) | low);
+                offset + 3
             }
             Some(op @ (OpCode::Index | OpCode::SetIndex | OpCode::GetField | OpCode::SetField)) => {
                 // The operand byte carries only a source position, so there is

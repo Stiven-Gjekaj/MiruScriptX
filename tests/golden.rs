@@ -601,6 +601,150 @@ fn a_for_loop_with_two_variables() {
     ]);
 }
 
+/// `let [x, y] = pair`, added in 1.10. `let [` was a syntax error before it,
+/// which is what section 2.1 needs.
+#[test]
+fn a_binding_takes_an_array_apart() {
+    check_all(&[
+        ("let [x, y] = [3, 4]\nstr(x) + str(y)", "ok \"34\""),
+        // At the top level the names are globals; in a block they are locals.
+        // The two paths through the compiler are different, so both are here.
+        (
+            "fn f() {\n  let [a, b] = [1, 2]\n  return a * 10 + b\n}\nf()",
+            "ok 12",
+        ),
+        // Nesting, which falls out of the pattern being recursive rather than
+        // being a case of its own.
+        (
+            "let [[a, b], c] = [[1, 2], 3]\nstr(a) + str(b) + str(c)",
+            "ok \"123\"",
+        ),
+        (
+            "fn f() {\n  let [[a, b], c] = [[1, 2], 3]\n  return a + b + c\n}\nf()",
+            "ok 6",
+        ),
+        // One name, and none, both work: neither is a special case.
+        ("let [only] = [7]\nonly", "ok 7"),
+        ("let [] = []\n1", "ok 1"),
+        // The value is whatever an expression gives, not only a literal.
+        (
+            "fn pair() { return [1, 2] }\nlet [a, b] = pair()\na + b",
+            "ok 3",
+        ),
+        // A name bound twice takes the later value, which is the shadowing rule
+        // that already governs `let x = 1` followed by `let x = 2`.
+        ("let [x, x] = [1, 2]\nx", "ok 2"),
+        (
+            "fn f() {\n  let [x, x] = [1, 2]\n  return x\n}\nf()",
+            "ok 2",
+        ),
+        // A closure captures a name a pattern bound like any other local.
+        (
+            "fn f() {\n  let [a, b] = [1, 2]\n  return fn() { return a + b }\n}\nf()()",
+            "ok 3",
+        ),
+        // The pattern binds after the value is worked out, so the right-hand
+        // side sees the outer binding of a name it rebinds.
+        (
+            "let x = [9, 8]\nlet [x, y] = x\nstr(x) + str(y)",
+            "ok \"98\"",
+        ),
+    ]);
+}
+
+/// A pattern that does not fit refuses, and names both lengths. Padding with
+/// `nil` would turn a changed return value into a `nil` several lines away
+/// instead of an error on the line that is wrong.
+#[test]
+fn a_pattern_that_does_not_fit_refuses_and_names_both_lengths() {
+    check_all(&[
+        (
+            "let [a, b] = [1, 2, 3]",
+            "err cannot take apart an array of 3 with a pattern of 2 @ 1:14",
+        ),
+        (
+            "let [a, b] = [1]",
+            "err cannot take apart an array of 1 with a pattern of 2 @ 1:14",
+        ),
+        (
+            "let [] = [1]",
+            "err cannot take apart an array of 1 with a pattern of 0 @ 1:10",
+        ),
+        // The inner pattern reports too, rather than the outer one succeeding
+        // and the mistake surfacing later as a wrong value.
+        (
+            "let [a, [b, c]] = [1, [2]]",
+            "err cannot take apart an array of 1 with a pattern of 2 @ 1:19",
+        ),
+        // Nothing but an array has elements to take apart. A map is named
+        // here rather than quietly giving its keys.
+        (
+            "let [a, b] = 5",
+            "err cannot take apart a int; a pattern needs an array @ 1:14",
+        ),
+        (
+            "let [a, b] = {\"x\": 1, \"y\": 2}",
+            "err cannot take apart a map; a pattern needs an array @ 1:14",
+        ),
+        (
+            "let [a, b] = \"ab\"",
+            "err cannot take apart a string; a pattern needs an array @ 1:14",
+        ),
+        // A caught error names the original failure, as it does at every other
+        // place a program uses one.
+        (
+            "let [a, b] = try 1 / 0",
+            "err unhandled error: division by zero @ 1:14",
+        ),
+    ]);
+}
+
+/// A `for` loop binds through the same patterns, in both positions.
+#[test]
+fn a_for_loop_takes_each_element_apart() {
+    check_all(&[
+        (
+            "let out = \"\"\nfor [x, y] in [[1, 2], [3, 4]] { out = out + str(x) + str(y) }\nout",
+            "ok \"1234\"",
+        ),
+        // The index and a taken-apart element together.
+        (
+            "let out = \"\"\nfor i, [x, y] in [[1, 2], [3, 4]] { out = out + str(i) + \":\" + str(x + y) + \" \" }\nout",
+            "ok \"0:3 1:7 \"",
+        ),
+        // A map's key with a taken-apart value.
+        (
+            "let out = \"\"\nfor k, [x, y] in {\"a\": [1, 2]} { out = out + k + str(x) + str(y) }\nout",
+            "ok \"a12\"",
+        ),
+        // And nesting inside a loop.
+        (
+            "let out = 0\nfor [[a, b], c] in [[[1, 2], 3]] { out = a + b + c }\nout",
+            "ok 6",
+        ),
+        // The refusal reaches the loop, naming the element that did not fit.
+        (
+            "for [x, y] in [[1, 2], [3]] { }",
+            "err cannot take apart an array of 1 with a pattern of 2 @ 1:15",
+        ),
+    ]);
+}
+
+/// Assignment does not take an array apart, and this pins that. It is left out
+/// rather than forgotten: `let` is where names are introduced, and an
+/// assignment form raises what a mixed target such as `[a, m.x, arr[0]]` should
+/// mean, which is a question with its own answer. `[a, b] = pair` is an error
+/// today, so a later release can still add it.
+#[test]
+fn assignment_does_not_take_an_array_apart() {
+    check_all(&[
+        (
+            "let a = 1\nlet b = 2\n[a, b] = [3, 4]",
+            "err invalid assignment target (only variables, elements, and fields can be assigned to) @ 3:1",
+        ),
+    ]);
+}
+
 /// One variable over a map stays the error it has always been. Keys and values
 /// are both reasonable expectations, so picking either silently would make half
 /// of all readers wrong -- and section 2.3 would then freeze the coin flip.
@@ -1986,6 +2130,12 @@ fn source_that_nests_too_deeply_is_an_error_rather_than_an_abort() {
             format!("{}1", "try ".repeat(over)),
             format!("{}1", "-".repeat(over)),
             format!("{}true", "!".repeat(over)),
+            // A pattern, added in 1.10. It is the same defect: the compiler and
+            // the formatter walk one by recursion, so an uncounted pattern
+            // aborts rather than reports, exactly as an uncounted array literal
+            // did before 1.1.
+            format!("let {}x{} = v", "[".repeat(over), "]".repeat(over)),
+            format!("for {}x{} in v {{ }}", "[".repeat(over), "]".repeat(over)),
         ];
         for source in &nested {
             let outcome = outcome(source);

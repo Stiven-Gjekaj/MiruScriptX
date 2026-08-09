@@ -6,7 +6,7 @@
 
 use std::rc::Rc;
 
-use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Pattern, Stmt, StmtKind, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
 use crate::globals::{Globals, ModuleId, ROOT_MODULE};
 use crate::value::{CompiledFunction, Value};
@@ -178,16 +178,20 @@ impl<'g> Compiler<'g> {
                 self.expression(expr)?;
                 self.chunk.write_op(OpCode::Pop, stmt.line, 1);
             }
-            StmtKind::Let { name, value } => {
+            StmtKind::Let { pattern, value } => {
                 // Compile the value first, so a right-hand reference to the same
                 // name resolves to the outer binding, not the one being declared.
                 self.expression(value)?;
-                if self.scope_depth == 0 {
-                    self.named_global(OpCode::DefineGlobal, name, stmt.line, 1)?;
-                } else {
-                    // A local's value stays on the stack as the slot's storage.
-                    self.declare_local(name, stmt.line)?;
-                }
+                let as_global = self.scope_depth == 0;
+                // A pattern that does not fit reports against the value that
+                // does not fit it, so the caret lands under the array rather
+                // than under the word `let`. A plain name keeps the position it
+                // has always had, so no existing caret moves.
+                let (line, column) = match pattern {
+                    Pattern::Array(_) => (value.line, value.column),
+                    Pattern::Name(_) => (stmt.line, 1),
+                };
+                self.bind_pattern(pattern, as_global, line, column)?;
             }
             StmtKind::CompoundAssign { target, op, value } => {
                 self.compound_assign(target, *op, value)?;
@@ -259,10 +263,10 @@ impl<'g> Compiler<'g> {
             StmtKind::While { condition, body } => self.while_statement(condition, body)?,
             StmtKind::For {
                 name,
-                value_name,
+                value,
                 iterable,
                 body,
-            } => self.for_statement(name, value_name.as_deref(), iterable, body)?,
+            } => self.for_statement(name, value.as_ref(), iterable, body)?,
             StmtKind::Break => self.break_statement(stmt.line)?,
             StmtKind::Continue => self.continue_statement(stmt.line)?,
             StmtKind::Return(value) => {
@@ -458,12 +462,12 @@ impl<'g> Compiler<'g> {
     /// hidden local, a hidden index walks it, and each iteration binds `name` to
     /// the next element in a fresh per-iteration scope.
     ///
-    /// With a `value_name` the snapshot holds pairs instead, and each iteration
-    /// binds both halves of the pair it is given.
+    /// With a `value` pattern the snapshot holds pairs instead, and each
+    /// iteration binds both halves of the pair it is given.
     fn for_statement(
         &mut self,
-        name: &str,
-        value_name: Option<&str>,
+        name: &Pattern,
+        value: Option<&Pattern>,
         iterable: &Expr,
         body: &[Stmt],
     ) -> Result<(), MiruError> {
@@ -476,8 +480,7 @@ impl<'g> Compiler<'g> {
         self.chunk.write_op(OpCode::IterSnapshot, line, column);
         // 1 asks the snapshot for pairs, which is what a second loop variable
         // walks. A map with one variable reaches the refusal in the VM.
-        self.chunk
-            .write(u8::from(value_name.is_some()), line, column);
+        self.chunk.write(u8::from(value.is_some()), line, column);
         let seq_slot = u16::try_from(self.locals.len())
             .map_err(|_| MiruError::with_column(line, column, TOO_MANY_LOCALS))?;
         self.declare_local("$seq", line)?;
@@ -493,29 +496,20 @@ impl<'g> Compiler<'g> {
 
         // The loop variable and body share one fresh scope per iteration.
         self.begin_scope();
-        match value_name {
+        match value {
             // One variable takes the element `ForNext` pushed.
-            None => self.declare_local(name, line)?,
+            None => self.bind_pattern(name, false, line, column)?,
             // Two variables take it apart. `ForNext` pushed the pair, which
             // becomes a hidden local, and each half is read out of it with the
             // ordinary index opcode -- no new instruction, and the same code a
             // program would write by hand.
-            Some(value_name) => {
+            Some(value) => {
                 let pair_slot = u16::try_from(self.locals.len())
                     .map_err(|_| MiruError::with_column(line, column, TOO_MANY_LOCALS))?;
                 self.declare_local("$pair", line)?;
-                for (half, bound) in [(0i64, name), (1, value_name)] {
-                    self.local_access(
-                        OpCode::GetLocal,
-                        OpCode::GetLocalLong,
-                        pair_slot,
-                        line,
-                        column,
-                    );
-                    self.constant(Value::Int(half), line, column)?;
-                    self.chunk.write_op(OpCode::Index, line, column);
-                    self.chunk.write(0, line, column);
-                    self.declare_local(bound, line)?;
+                for (half, bound) in [(0i64, name), (1, value)] {
+                    self.element_of(pair_slot, half, line, column)?;
+                    self.bind_pattern(bound, false, line, column)?;
                 }
             }
         }
@@ -537,6 +531,76 @@ impl<'g> Compiler<'g> {
             self.patch_jump(break_jump, line, column)?;
         }
         self.end_scope(line, column);
+        Ok(())
+    }
+
+    /// Bind the value on top of the stack to a pattern.
+    ///
+    /// `as_global` decides what a name becomes, and is decided once by the
+    /// statement rather than read from `scope_depth` on the way down: a
+    /// bracketed pattern declares a hidden local for the array it takes apart,
+    /// and a nested pattern must not become a local merely because one exists.
+    ///
+    /// A name at global scope is defined and the value popped. A name in a
+    /// block becomes a local, whose storage is the stack slot the value already
+    /// occupies.
+    ///
+    /// A bracketed pattern checks the array, keeps it as a hidden local, and
+    /// reads each element out with [`OpCode::Index`] -- the same code a program
+    /// would write by hand. Nesting needs nothing more, because the element it
+    /// reads is on top of the stack, which is where this started.
+    ///
+    /// **The hidden local stays for the rest of the block**, exactly as a `for`
+    /// loop's `$seq` and `$idx` do. It costs one stack slot and no instruction;
+    /// removing it would mean moving every local declared after it. At global
+    /// scope every name was popped by its `DefineGlobal`, so the array is back
+    /// on top and is popped here instead.
+    fn bind_pattern(
+        &mut self,
+        pattern: &Pattern,
+        as_global: bool,
+        line: usize,
+        column: usize,
+    ) -> Result<(), MiruError> {
+        match pattern {
+            Pattern::Name(name) if as_global => {
+                self.named_global(OpCode::DefineGlobal, name, line, column)
+            }
+            Pattern::Name(name) => self.declare_local(name, line),
+            Pattern::Array(items) => {
+                let expected = u16::try_from(items.len()).map_err(|_| {
+                    MiruError::with_column(line, column, "too many names in one pattern")
+                })?;
+                self.chunk.write_op(OpCode::CheckUnpack, line, column);
+                self.write_u16(expected, line, column);
+                let slot = u16::try_from(self.locals.len())
+                    .map_err(|_| MiruError::with_column(line, column, TOO_MANY_LOCALS))?;
+                self.declare_local("$pattern", line)?;
+                for (index, item) in items.iter().enumerate() {
+                    self.element_of(slot, index as i64, line, column)?;
+                    self.bind_pattern(item, as_global, line, column)?;
+                }
+                if as_global {
+                    self.chunk.write_op(OpCode::Pop, line, column);
+                    self.locals.pop();
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Push `local[index]`, where `local` holds an array.
+    fn element_of(
+        &mut self,
+        slot: u16,
+        index: i64,
+        line: usize,
+        column: usize,
+    ) -> Result<(), MiruError> {
+        self.local_access(OpCode::GetLocal, OpCode::GetLocalLong, slot, line, column);
+        self.constant(Value::Int(index), line, column)?;
+        self.chunk.write_op(OpCode::Index, line, column);
+        self.chunk.write(0, line, column);
         Ok(())
     }
 

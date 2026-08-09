@@ -16,7 +16,7 @@
 
 use std::collections::HashSet;
 
-use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Pattern, Stmt, StmtKind, UnaryOp};
 
 /// A single line comment, remembered so the formatter can put it back.
 #[derive(Debug, Clone)]
@@ -98,15 +98,15 @@ impl Printer<'_> {
             }
             StmtKind::For {
                 name,
-                value_name,
+                value,
                 iterable,
                 body,
             } => {
-                let bound = match value_name {
-                    Some(value_name) => format!("{name}, {value_name}"),
-                    None => name.clone(),
-                };
-                let header = format!("for {bound} in {} {{", fmt_expr(iterable));
+                let header = format!(
+                    "for {} in {} {{",
+                    fmt_bound(name, value),
+                    fmt_expr(iterable)
+                );
                 let header = self.attach_trailing(stmt.line, header);
                 self.push_line(indent, header);
                 self.print_stmts(body, indent + 1);
@@ -250,7 +250,9 @@ fn stmt_inline(stmt: &Stmt) -> String {
             alias,
             column: _,
         } => format!("import {} as {alias}", fmt_string(spec)),
-        StmtKind::Let { name, value } => format!("let {name} = {}", fmt_expr(value)),
+        StmtKind::Let { pattern, value } => {
+            format!("let {} = {}", fmt_pattern(pattern), fmt_expr(value))
+        }
         StmtKind::Assign { target, value } => {
             format!("{} = {}", fmt_expr(target), fmt_expr(value))
         }
@@ -284,20 +286,15 @@ fn stmt_inline(stmt: &Stmt) -> String {
         }
         StmtKind::For {
             name,
-            value_name,
+            value,
             iterable,
             body,
-        } => {
-            let bound = match value_name {
-                Some(value_name) => format!("{name}, {value_name}"),
-                None => name.clone(),
-            };
-            format!(
-                "for {bound} in {} {}",
-                fmt_expr(iterable),
-                block_inline(body)
-            )
-        }
+        } => format!(
+            "for {} in {} {}",
+            fmt_bound(name, value),
+            fmt_expr(iterable),
+            block_inline(body)
+        ),
         StmtKind::Function { name, params, body } => {
             format!("fn {name}({}) {}", params.join(", "), block_inline(body))
         }
@@ -311,6 +308,26 @@ fn else_inline(else_branch: &Option<Vec<Stmt>>) -> String {
             Some(nested) => format!(" else {}", stmt_inline(nested)),
             None => format!(" else {}", block_inline(branch)),
         },
+    }
+}
+
+/// Render a binding target: `x`, or `[x, y]` for one that takes an array
+/// apart.
+fn fmt_pattern(pattern: &Pattern) -> String {
+    match pattern {
+        Pattern::Name(name) => name.clone(),
+        Pattern::Array(items) => {
+            let parts: Vec<String> = items.iter().map(fmt_pattern).collect();
+            format!("[{}]", parts.join(", "))
+        }
+    }
+}
+
+/// Render what a `for` loop binds: one pattern, or two separated by a comma.
+fn fmt_bound(name: &Pattern, value: &Option<Pattern>) -> String {
+    match value {
+        Some(value) => format!("{}, {}", fmt_pattern(name), fmt_pattern(value)),
+        None => fmt_pattern(name),
     }
 }
 
@@ -642,6 +659,8 @@ mod tests {
             "fn f(n) {\n  if n < 2 {\n    return n\n  }\n  return f(n - 1)\n}",
             "for i in range(10) {\n  print(i)\n}",
             "for key, value in scores {\n  print(key, value)\n}",
+            "let [width, height] = term_size()",
+            "for [x, y] in cells {\n  print(x)\n}",
             "while a && b || c {\n  x = x + 1\n}",
             "let data = [1, 2, [3, 4], {\"k\": v}]",
             "map(xs, fn(x) { return x * 2 })",
@@ -672,6 +691,28 @@ mod tests {
         );
     }
 
+    /// A pattern, printed back as written. A formatter that dropped a bracket
+    /// or a name would rewrite a working program into one that binds something
+    /// else, which is worse than not formatting it.
+    #[test]
+    fn prints_a_pattern_back() {
+        assert_eq!(fmt("let [x,y]=pair"), "let [x, y] = pair\n");
+        assert_eq!(fmt("let [ [a,b] , c ]=v"), "let [[a, b], c] = v\n");
+        assert_eq!(fmt("let []=v"), "let [] = v\n");
+        // A trailing comma is normalized away, as it is in an array literal.
+        assert_eq!(fmt("let [x, y,] = pair"), "let [x, y] = pair\n");
+        // A pattern written over several lines comes back on one.
+        assert_eq!(fmt("let [\n  x,\n  y,\n] = pair"), "let [x, y] = pair\n");
+        assert_eq!(
+            fmt("for [x,y] in cells{print(x)}"),
+            "for [x, y] in cells {\n  print(x)\n}\n"
+        );
+        assert_eq!(
+            fmt("for i,[x,y] in cells{print(i)}"),
+            "for i, [x, y] in cells {\n  print(i)\n}\n"
+        );
+    }
+
     #[test]
     fn round_trips_through_the_parser() {
         let sources = [
@@ -679,6 +720,8 @@ mod tests {
             "if p {\n  q\n} else if r {\n  s\n}",
             "print(a, b, fn(x) { return x + 1 })",
             "for k, v in m {\n  print(k, v)\n}",
+            "let [x, [y, z]] = v",
+            "for i, [x, y] in cells {\n  print(i)\n}",
         ];
         for source in sources {
             let formatted = fmt(source);

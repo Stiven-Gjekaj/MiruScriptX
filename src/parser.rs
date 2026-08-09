@@ -5,7 +5,7 @@
 //! drives infix operators by binding power, while prefix operators, calls, and
 //! indexing are handled by [`Parser::unary`] and [`Parser::postfix`].
 
-use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Stmt, StmtKind, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Pattern, Stmt, StmtKind, UnaryOp};
 use crate::token::{FStringPart, Token, TokenKind};
 use crate::MiruError;
 
@@ -384,10 +384,51 @@ impl Parser {
 
     fn let_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
         self.advance(); // 'let'
-        let name = self.expect_identifier("after 'let'")?;
+        let pattern = self.pattern("after 'let'")?;
         self.expect(TokenKind::Assign, "after the variable name")?;
         let value = self.expression()?;
-        Ok(Stmt::new(StmtKind::Let { name, value }, line))
+        Ok(Stmt::new(StmtKind::Let { pattern, value }, line))
+    }
+
+    /// Read a binding target: a name, or `[` a comma-separated list of targets
+    /// `]`.
+    ///
+    /// `let [` was a syntax error before 1.10, which is what section 2.1 needs
+    /// of it.
+    ///
+    /// **The recursion is counted.** A pattern is walked by recursion in the
+    /// compiler and in the formatter, so `let [[[[ .. ]]]]` nested past the
+    /// Rust stack would abort the process rather than report, which is the
+    /// defect class v1.0 spent a milestone closing. [`Parser::enter`] holds it
+    /// to the same limit as every other kind of nesting.
+    fn pattern(&mut self, context: &str) -> Result<Pattern, MiruError> {
+        if !self.check(&TokenKind::LBracket) {
+            return Ok(Pattern::Name(self.expect_identifier(context)?));
+        }
+        let open = self.peek().clone();
+        self.enter(open.line, open.column)?;
+        let result = self.bracketed_pattern();
+        self.leave();
+        result
+    }
+
+    fn bracketed_pattern(&mut self) -> Result<Pattern, MiruError> {
+        self.advance(); // '['
+        let mut items = Vec::new();
+        // A newline inside brackets is not a statement separator, so a long
+        // pattern can be written over several lines like an array literal.
+        self.skip_newlines();
+        while !self.check(&TokenKind::RBracket) {
+            items.push(self.pattern("in a pattern")?);
+            self.skip_newlines();
+            if !self.check(&TokenKind::Comma) {
+                break;
+            }
+            self.advance();
+            self.skip_newlines();
+        }
+        self.expect(TokenKind::RBracket, "after the names in a pattern")?;
+        Ok(Pattern::Array(items))
     }
 
     fn return_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
@@ -442,13 +483,13 @@ impl Parser {
 
     fn for_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
         self.advance(); // 'for'
-        let name = self.expect_identifier("after 'for'")?;
+        let name = self.pattern("after 'for'")?;
         // A second loop variable walks the iterable as pairs. `for k, v in m`
         // was `expected 'in' after the loop variable but found ','` before
         // 1.10, so no program that ran can change meaning.
-        let value_name = if self.check(&TokenKind::Comma) {
+        let value = if self.check(&TokenKind::Comma) {
             self.advance();
-            Some(self.expect_identifier("after the first loop variable")?)
+            Some(self.pattern("after the first loop variable")?)
         } else {
             None
         };
@@ -458,7 +499,7 @@ impl Parser {
         Ok(Stmt::new(
             StmtKind::For {
                 name,
-                value_name,
+                value,
                 iterable,
                 body,
             },
@@ -1288,6 +1329,16 @@ mod tests {
         Expr::new(kind, 0, 0)
     }
 
+    /// The pattern that binds one name, which is what most bindings are.
+    fn name(text: &str) -> Pattern {
+        Pattern::Name(text.to_string())
+    }
+
+    /// The pattern that takes an array of names apart.
+    fn names(texts: &[&str]) -> Pattern {
+        Pattern::Array(texts.iter().map(|text| name(text)).collect())
+    }
+
     #[test]
     fn syntax_error_carries_a_column() {
         // 'let' must be followed by a name; the '=' sits at column 5.
@@ -1301,8 +1352,8 @@ mod tests {
     fn parses_let_statement() {
         let statements = parse_program("let x = 1 + 2");
         match &statements[0].kind {
-            StmtKind::Let { name, value } => {
-                assert_eq!(name, "x");
+            StmtKind::Let { pattern, value } => {
+                assert_eq!(*pattern, name("x"));
                 assert_eq!(
                     *value,
                     e(ExprKind::Binary {
@@ -1439,13 +1490,13 @@ mod tests {
         let statements = parse_program("for n in names {\n  print(n)\n}");
         match &statements[0].kind {
             StmtKind::For {
-                name,
-                value_name,
+                name: bound,
+                value,
                 iterable,
                 body,
             } => {
-                assert_eq!(name, "n");
-                assert_eq!(*value_name, None);
+                assert_eq!(*bound, name("n"));
+                assert_eq!(*value, None);
                 assert_eq!(*iterable, e(ExprKind::Identifier("names".to_string())));
                 assert_eq!(body.len(), 1);
             }
@@ -1458,15 +1509,64 @@ mod tests {
         let statements = parse_program("for key, value in scores {\n  print(key)\n}");
         match &statements[0].kind {
             StmtKind::For {
-                name,
-                value_name,
+                name: bound,
+                value,
                 iterable,
                 body,
             } => {
-                assert_eq!(name, "key");
-                assert_eq!(*value_name, Some("value".to_string()));
+                assert_eq!(*bound, name("key"));
+                assert_eq!(*value, Some(name("value")));
                 assert_eq!(*iterable, e(ExprKind::Identifier("scores".to_string())));
                 assert_eq!(body.len(), 1);
+            }
+            other => panic!("expected a for loop, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_a_let_that_takes_an_array_apart() {
+        for (source, expected) in [
+            ("let [x, y] = pair", names(&["x", "y"])),
+            ("let [only] = pair", names(&["only"])),
+            // An empty pattern reads an array that must be empty. Nothing
+            // rejects it, because there is nothing wrong with it.
+            ("let [] = pair", Pattern::Array(Vec::new())),
+            // A trailing comma, as an array literal allows.
+            ("let [x, y,] = pair", names(&["x", "y"])),
+            // Over several lines: the lexer suppresses newlines inside
+            // brackets, so a long pattern reads like a long array literal.
+            ("let [\n  x,\n  y,\n] = pair", names(&["x", "y"])),
+            (
+                "let [[a, b], c] = pair",
+                Pattern::Array(vec![names(&["a", "b"]), name("c")]),
+            ),
+        ] {
+            match &parse_program(source)[0].kind {
+                StmtKind::Let { pattern, .. } => assert_eq!(*pattern, expected, "for: {source}"),
+                other => panic!("expected a let, found {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn parses_a_for_loop_that_takes_each_element_apart() {
+        match &parse_program("for [x, y] in cells {\n  print(x)\n}")[0].kind {
+            StmtKind::For {
+                name: bound, value, ..
+            } => {
+                assert_eq!(*bound, names(&["x", "y"]));
+                assert_eq!(*value, None);
+            }
+            other => panic!("expected a for loop, found {other:?}"),
+        }
+        // Both positions are patterns, so an index and a taken-apart element
+        // are one loop rather than two features.
+        match &parse_program("for i, [x, y] in cells {\n  print(x)\n}")[0].kind {
+            StmtKind::For {
+                name: bound, value, ..
+            } => {
+                assert_eq!(*bound, name("i"));
+                assert_eq!(*value, Some(names(&["x", "y"])));
             }
             other => panic!("expected a for loop, found {other:?}"),
         }

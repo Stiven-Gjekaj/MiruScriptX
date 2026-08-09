@@ -15,6 +15,45 @@ impl Stmt {
     }
 }
 
+/// What a binding binds to: a name, or a bracketed list that takes an array
+/// apart.
+///
+/// `let` and `for` both bind, so both take one of these, and nesting falls out
+/// of the recursion rather than being a case of its own. **The parser counts
+/// its own recursion while reading one**, because the compiler and the
+/// formatter walk it by recursion too, and source nested past the Rust stack
+/// aborts the process rather than reporting.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    Name(String),
+    /// `[a, b]`, and `[]` for an array that must be empty.
+    Array(Vec<Pattern>),
+}
+
+impl Pattern {
+    /// The names this pattern binds, in the order it binds them.
+    ///
+    /// A name may appear twice. Nothing here refuses that: `let [x, x] = pair`
+    /// binds `x` twice in one statement, and the shadowing rule that already
+    /// governs `let x = 1` followed by `let x = 2` says the later one wins.
+    pub fn names(&self) -> Vec<&str> {
+        let mut found = Vec::new();
+        self.collect_names(&mut found);
+        found
+    }
+
+    fn collect_names<'a>(&'a self, found: &mut Vec<&'a str>) {
+        match self {
+            Pattern::Name(name) => found.push(name),
+            Pattern::Array(items) => {
+                for item in items {
+                    item.collect_names(found);
+                }
+            }
+        }
+    }
+}
+
 /// The different kinds of statements in the language.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StmtKind {
@@ -28,8 +67,8 @@ pub enum StmtKind {
         /// rather than at the start of the line.
         column: usize,
     },
-    /// `let name = value`
-    Let { name: String, value: Expr },
+    /// `let name = value`, or `let [a, b] = value` to take an array apart.
+    Let { pattern: Pattern, value: Expr },
     /// `target = value`, where `target` is an identifier or an index expression.
     Assign { target: Expr, value: Expr },
     /// `target op= value`, such as `x += 1`.
@@ -62,12 +101,17 @@ pub enum StmtKind {
     While { condition: Expr, body: Vec<Stmt> },
     /// `for name in iterable { .. }`, or `for key, value in map { .. }`.
     ///
-    /// `value_name` is the second loop variable. When it is present the
-    /// iterable is walked as pairs: a map gives its key and value, an array
-    /// gives its index and element.
+    /// `value` is the second loop variable. When it is present the iterable is
+    /// walked as pairs: a map gives its key and value, an array gives its index
+    /// and element.
+    ///
+    /// Both positions are patterns, so `for [x, y] in cells` takes each element
+    /// apart and `for i, [x, y] in cells` does both at once. Allowing a pattern
+    /// in one position and not the other would be a carve-out with nothing
+    /// behind it.
     For {
-        name: String,
-        value_name: Option<String>,
+        name: Pattern,
+        value: Option<Pattern>,
         iterable: Expr,
         body: Vec<Stmt>,
     },
