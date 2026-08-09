@@ -333,22 +333,42 @@ fn is_error(
 /// `range(end)` or `range(start, end)` returns an array of integers in the
 /// half-open interval, so the end value is not included.
 fn range(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
-    let (start, end) = match args.as_slice() {
-        [Value::Int(end)] => (0i64, *end),
-        [Value::Int(start), Value::Int(end)] => (*start, *end),
-        [_] | [_, _] => return Err("range expects integer arguments".to_string()),
+    let (start, end, step) = match args.as_slice() {
+        [Value::Int(end)] => (0i64, *end, 1i64),
+        [Value::Int(start), Value::Int(end)] => (*start, *end, 1),
+        [Value::Int(start), Value::Int(end), Value::Int(step)] => (*start, *end, *step),
+        [_] | [_, _] | [_, _, _] => return Err("range expects integer arguments".to_string()),
         _ => {
             return Err(format!(
-                "range expects 1 or 2 arguments but got {}",
+                "range expects 1 to 3 arguments but got {}",
                 args.len()
             ))
         }
     };
+    // A loop that never ends, so it is refused rather than run. Naming it beats
+    // letting the program hang with nothing to read.
+    if step == 0 {
+        return Err("range expects a step that is not 0".to_string());
+    }
     let mut items = Vec::new();
     let mut current = start;
-    while current < end {
-        items.push(Value::Int(current));
-        current += 1;
+    // **A step whose sign disagrees with the bounds gives an empty array, not
+    // an error.** `range(5, 0)` is empty in every release since the builtin
+    // existed, and section 2.3 does not let that become an error now. The same
+    // rule then has to cover `range(0, 10, -1)`, which is the same disagreement
+    // written a second way.
+    if step > 0 {
+        while current < end {
+            items.push(Value::Int(current));
+            // Saturating rather than wrapping: a step that runs off the end of
+            // the integers stops the loop instead of turning it back on itself.
+            current = current.saturating_add(step);
+        }
+    } else {
+        while current > end {
+            items.push(Value::Int(current));
+            current = current.saturating_add(step);
+        }
     }
     Ok(Value::array(items))
 }
