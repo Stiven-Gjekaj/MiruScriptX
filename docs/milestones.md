@@ -422,6 +422,53 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.11: a branch that gives a value
+
+Shipped. One addition and one documented inconsistency, in three parts. The
+release was planned as two features and shipped as one, which is the plan
+working rather than failing: it was ordered so that the second could slip, and
+it did, for a reason found by checking rather than by running out of time.
+
+- **`if` gives a value**, and `? :` is declined for good. Closes #49.
+- **`pow` gives `nan`** where `sqrt` refuses, documented rather than corrected,
+  because correcting it needs version 2.
+- **`match` slipped to 1.12.** Still open as #48.
+
+Five things worth carrying forward:
+
+- **Read the issue's examples before building what the issue asks for.** #48
+  wanted `match` to replace the `else if` chains in three games. Every one of
+  those chains carries an extra predicate — `&& fits(..)`, `&& facing_y == 0` —
+  and two of them want several cases in one arm. A `match` on the value alone
+  fixes none of them. That is two more design decisions than the issue had
+  settled, discovered in the time it took to grep for `pressed ==`. Section 2.1
+  freezes syntax from the release that adds it, so the cost of improvising them
+  would have been permanent.
+
+- **A release ordered so its tail can fall off does not need rescuing when it
+  does.** 1.10's plan carried the same warning about #42, which landed. 1.11's
+  carried it about #48, which did not. The warning is worth writing either way,
+  because the alternative is deciding under pressure whether to ship something
+  half-designed.
+
+- **The hard part of an expression form is the stack, not the parser.** An arm
+  that declares a local leaves that local underneath the arm's value, and
+  neither `Pop` nor `CloseUpvalue` can reach past the top of the stack to get
+  it. Restricting an arm to one expression made the whole feature need no new
+  opcode: it is the statement form's bytecode with the two `Pop`s removed. The
+  general form stays addable, because it is an error now.
+
+- **Scope a new rule to a position, not to a construct.** "A block's value is
+  its trailing expression" is the natural way to describe this feature and it is
+  a 2.0 change: `fn f() { 1 }` returns `nil` today, and that phrasing silently
+  makes it return `1`. Measuring one function before writing any code was the
+  whole cost of finding it.
+
+- **Two forms of one keyword must print one way.** The formatter folded
+  `else { if .. }` into `else if ..` for statements and not for expressions, so
+  a chain came back reshaped depending on which form it was. Nothing failed
+  except the test written to look for it.
+
 ## 1.10: arrays and maps, said once
 
 Shipped. Four additions, in five parts, chosen from the fourteen issues open

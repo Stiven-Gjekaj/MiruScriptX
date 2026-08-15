@@ -8,6 +8,64 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## 1.11.0 (2026-08-09)
+
+One addition, and one documented inconsistency. `let x = if ..` was a parse
+error before this release, so no program that ran on 1.0 means anything
+different here, and section 2.1 of the
+[stability guarantee](docs/stability.md) covers it.
+
+### Added
+
+- **`if` gives a value.** Choosing between two values took four lines and a name
+  that had to be mutable:
+
+  ```
+  let step = "left"
+  if target > 3 {
+    step = "right"
+  }
+  ```
+
+  It is now `let step = if target > 3 { "right" } else { "left" }`.
+
+  **There is no `? :`, and there will not be.** The two are alternatives rather
+  than steps: section 2.1 does not permit removing syntax, so shipping both
+  would leave the language with two ways to say one thing forever. `try` was
+  already a keyword-led construct that gives a value, and section 1.4 of the
+  specification is "One word for one thing".
+
+  **Which form you get depends only on position.** An `if` at the start of a
+  statement is the statement it always was, so `fn f() { 1 }` still returns
+  `nil` and an `if` statement still needs no `else`. Scoping the rule to blocks
+  rather than to position would have changed both, and section 5 of the
+  guarantee puts that in version 2.
+
+  **Used as a value it needs an `else`**, because there is no value when the
+  condition is false and `nil` would invent one. **Each arm holds one
+  expression.** An arm that holds statements is an error today, so a later
+  release can allow one; the reverse is not true, and the f-string took the
+  same shape in 1.9.
+
+  It is a primary, so `if c { 1 } else { 2 } + 3` adds 3 to the result, and
+  `else if` chains read as one choice. `keys.miru`, `life.miru`, and
+  `snake.miru` now append the character they chose rather than choosing which
+  line to run.
+
+### Documented
+
+- **`pow` gives `nan`** when the base is negative and the exponent is a float
+  that is not a whole number. Section 5.2.1 listed three operations that can
+  produce an infinity or a not-a-number and there are four.
+
+  `pow(-8.0, 0.5)` and `sqrt(-1)` ask the same question and are answered two
+  ways: `sqrt` refuses, `pow` hands back a value that travels through every
+  arithmetic operation it touches. `pow` is documented rather than corrected,
+  because section 2.3 does not permit changing what a builtin does. A `pow`
+  that refuses needs version 2, and
+  [#52](https://github.com/Stiven-Gjekaj/MiruScriptX/issues/52) is waiting to
+  carry it there.
+
 ## 1.10.0 (2026-08-09)
 
 Four additions, and one theme: **arrays and maps, said once.** Share or copy,

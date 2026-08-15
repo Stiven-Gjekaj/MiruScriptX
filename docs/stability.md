@@ -1,6 +1,6 @@
 # The MiruScriptX Stability Guarantee
 
-Version 1.10
+Version 1.11
 
 This document tells you what will not change while MiruScriptX has the version
 number 1. It is short on purpose. A promise that nobody can check is not a
@@ -56,6 +56,16 @@ prints the braces. Changing it needs version 2; a prefix needs nothing.
 - **A pattern in a binding**, `let [x, y] = pair`, and the same in either
   position of a `for`. `let [` was the error `expected an identifier after 'let'
   but found '['`.
+
+1.11 uses it once. **`if` gives a value**, as in
+`let x = if c { 1 } else { 2 }`. It was the error `expected an expression but
+found 'if'`.
+
+1.11 also declined syntax for the same reason it added this. A `? :` operator
+is the other way to write the same choice, and both cannot be had: section 2.1
+does not permit removing the loser, so a language that shipped both would keep
+two ways to say one thing for as long as it has the version number 1. The
+record is on issue #49.
 
 What 1.10 did **not** add is part of the same rule. One loop variable over a map
 stays an error, because a key and a value are each a reasonable reading of

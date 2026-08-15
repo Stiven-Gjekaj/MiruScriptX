@@ -1,6 +1,6 @@
 # The MiruScriptX Language Specification
 
-Version 1.10
+Version 1.11
 
 This document defines the MiruScriptX language. It tells you what a program
 means. The [wiki](../wiki/01-introduction.md) teaches the language, and the
