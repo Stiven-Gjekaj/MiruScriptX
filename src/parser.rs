@@ -441,6 +441,79 @@ impl Parser {
         }
     }
 
+    /// Parse `if condition { a } else { b }` where a value is wanted.
+    ///
+    /// **Each arm is one expression.** An arm holding statements is refused
+    /// rather than given a meaning, because a local declared in an arm would
+    /// sit underneath the arm's value on the stack and cost an instruction to
+    /// get out from under it. It is an error now, so a later release can allow
+    /// it; the reverse is not true.
+    ///
+    /// **The `else` is required**, unlike the statement form. Without one there
+    /// is no value when the condition is false, and `nil` would invent one.
+    ///
+    /// The recursion is counted, as every other bracketed form counts its own.
+    fn if_expression(&mut self, line: usize, column: usize) -> Result<Expr, MiruError> {
+        self.enter(line, column)?;
+        let result = self.if_expression_inner(line, column);
+        self.leave();
+        result
+    }
+
+    fn if_expression_inner(&mut self, line: usize, column: usize) -> Result<Expr, MiruError> {
+        self.advance(); // 'if'
+        let condition = self.expression()?;
+        let then_value = self.arm_value("after the condition")?;
+        // `else` may sit on the closing brace's line or the next, as it may in
+        // the statement form.
+        self.skip_newlines();
+        if !self.check(&TokenKind::Else) {
+            // Reported against the `if`, not against whatever follows the arm.
+            // What is missing has no position of its own, and the word that
+            // needs the `else` does.
+            return Err(MiruError::with_column(
+                line,
+                column,
+                "an 'if' used as a value needs an 'else', because it has no value to give when the condition is false".to_string(),
+            ));
+        }
+        self.advance(); // 'else'
+                        // `else if` chains, which are the shape a longer choice takes.
+        let else_value = if self.check(&TokenKind::If) {
+            let token = self.peek().clone();
+            self.if_expression(token.line, token.column)?
+        } else {
+            self.arm_value("after 'else'")?
+        };
+        self.checked(Expr::new(
+            ExprKind::If {
+                condition: Box::new(condition),
+                then_value: Box::new(then_value),
+                else_value: Box::new(else_value),
+            },
+            line,
+            column,
+        ))
+    }
+
+    /// One brace-wrapped expression: the arm of an `if` used as a value.
+    fn arm_value(&mut self, context: &str) -> Result<Expr, MiruError> {
+        self.expect(TokenKind::LBrace, context)?;
+        self.skip_newlines();
+        let value = self.expression()?;
+        self.skip_newlines();
+        if !self.check(&TokenKind::RBrace) {
+            let token = self.peek().clone();
+            return Err(MiruError::with_column(
+                token.line,
+                token.column,
+                "an arm of an 'if' used as a value holds one expression".to_string(),
+            ));
+        }
+        self.advance(); // '}'
+        Ok(value)
+    }
+
     fn if_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
         self.advance(); // 'if'
         let condition = self.expression()?;
@@ -943,6 +1016,11 @@ impl Parser {
                 self.expect(TokenKind::RParen, "to close a grouped expression")?;
                 Ok(expr)
             }
+            // `if` reached from expression position. The statement form is
+            // parsed by `if_statement` and is untouched; which one is built
+            // depends only on where the word was found, so no program that
+            // ran can change meaning.
+            TokenKind::If => self.if_expression(line, column),
             TokenKind::LBracket => {
                 self.advance();
                 let elements = self.parse_array_elements()?;

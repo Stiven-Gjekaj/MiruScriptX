@@ -747,6 +747,24 @@ impl<'g> Compiler<'g> {
             }
         }
         match &expr.kind {
+            // The statement form's shape, with the two `Pop`s that discard each
+            // arm's value removed: here each arm is the value, and both paths
+            // leave exactly one on the stack.
+            ExprKind::If {
+                condition,
+                then_value,
+                else_value,
+            } => {
+                self.expression(condition)?;
+                let else_jump = self.emit_jump(OpCode::JumpIfFalse, line, column);
+                self.chunk.write_op(OpCode::Pop, line, column);
+                self.expression(then_value)?;
+                let end_jump = self.emit_jump(OpCode::Jump, line, column);
+                self.patch_jump(else_jump, line, column)?;
+                self.chunk.write_op(OpCode::Pop, line, column);
+                self.expression(else_value)?;
+                self.patch_jump(end_jump, line, column)?;
+            }
             ExprKind::Try(inner) => {
                 // Both ways out leave exactly one value where this expression's
                 // result belongs: EndTry keeps what the expression produced, and

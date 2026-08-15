@@ -437,6 +437,19 @@ fn fmt_expr(expr: &Expr) -> String {
         ExprKind::Index { target, index } => {
             format!("{}[{}]", fmt_operand(target, 8), fmt_expr(index))
         }
+        // Always on one line. An arm is one expression, so there is nothing to
+        // break across lines, and the whole point of the form is that the
+        // choice fits where the value goes.
+        ExprKind::If {
+            condition,
+            then_value,
+            else_value,
+        } => format!(
+            "if {} {{ {} }} else {{ {} }}",
+            fmt_expr(condition),
+            fmt_expr(then_value),
+            fmt_expr(else_value)
+        ),
         ExprKind::Try(inner) => format!("try {}", fmt_expr(inner)),
         ExprKind::Unary { op, operand } => {
             let symbol = match op {

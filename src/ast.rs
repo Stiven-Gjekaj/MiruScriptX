@@ -200,6 +200,11 @@ impl ExprKind {
                 left.height.max(right.height)
             }
             ExprKind::Call { callee, arguments } => callee.height.max(tallest(arguments)),
+            ExprKind::If {
+                condition,
+                then_value,
+                else_value,
+            } => condition.height.max(then_value.height).max(else_value.height),
             ExprKind::Try(inner) => inner.height,
         };
         below + 1
@@ -253,6 +258,25 @@ pub enum ExprKind {
     Call {
         callee: Box<Expr>,
         arguments: Vec<Expr>,
+    },
+    /// `if condition { a } else { b }`, used where a value is wanted.
+    ///
+    /// **An arm holds one expression, not a block of statements.** The general
+    /// form is addable later, because it is an error now; the reverse is not
+    /// true. It is left out because an arm that declares a local leaves that
+    /// local underneath the arm's value on the stack, and removing it from
+    /// there needs either a new instruction or a renumbering pass, neither of
+    /// which buys anything a reader of `if c { a } else { b }` wanted. The
+    /// f-string took the same shape in 1.9: a name between the braces, with an
+    /// expression left to a release that needs one.
+    ///
+    /// The `else` is not optional here, unlike [`StmtKind::If`]. An `if`
+    /// without one has no value to give when the condition is false, and `nil`
+    /// would be inventing one.
+    If {
+        condition: Box<Expr>,
+        then_value: Box<Expr>,
+        else_value: Box<Expr>,
     },
     /// `try expr`. Evaluates the expression and yields its value, or, if
     /// evaluating it fails at any depth, the error itself as a value.
