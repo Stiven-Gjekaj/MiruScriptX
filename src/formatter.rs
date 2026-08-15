@@ -444,12 +444,20 @@ fn fmt_expr(expr: &Expr) -> String {
             condition,
             then_value,
             else_value,
-        } => format!(
-            "if {} {{ {} }} else {{ {} }}",
-            fmt_expr(condition),
-            fmt_expr(then_value),
-            fmt_expr(else_value)
-        ),
+        } => {
+            // `else { if .. }` folds into `else if ..`, as the statement form
+            // folds it in `print_else`. Without this the two forms print a
+            // chain two different ways.
+            let otherwise = match &else_value.kind {
+                ExprKind::If { .. } => fmt_expr(else_value),
+                _ => format!("{{ {} }}", fmt_expr(else_value)),
+            };
+            format!(
+                "if {} {{ {} }} else {otherwise}",
+                fmt_expr(condition),
+                fmt_expr(then_value)
+            )
+        }
         ExprKind::Try(inner) => format!("try {}", fmt_expr(inner)),
         ExprKind::Unary { op, operand } => {
             let symbol = match op {
@@ -673,6 +681,7 @@ mod tests {
             "for i in range(10) {\n  print(i)\n}",
             "for key, value in scores {\n  print(key, value)\n}",
             "let [width, height] = term_size()",
+            "let s = if a { 1 } else { 2 }",
             "for [x, y] in cells {\n  print(x)\n}",
             "while a && b || c {\n  x = x + 1\n}",
             "let data = [1, 2, [3, 4], {\"k\": v}]",
@@ -726,6 +735,24 @@ mod tests {
         );
     }
 
+    /// An `if` used as a value prints on one line, since an arm is one
+    /// expression and the whole point of the form is that it fits where the
+    /// value goes.
+    #[test]
+    fn prints_an_if_used_as_a_value() {
+        assert_eq!(
+            fmt("let s=if n>3{\"big\"}else{\"small\"}"),
+            "let s = if n > 3 { \"big\" } else { \"small\" }\n"
+        );
+        assert_eq!(
+            fmt("let s = if a { 1 } else if b { 2 } else { 3 }"),
+            "let s = if a { 1 } else if b { 2 } else { 3 }\n"
+        );
+        // The statement form still prints across lines, and the two do not
+        // collide: which one is printed follows which one was parsed.
+        assert_eq!(fmt("if a {\n  print(1)\n}"), "if a {\n  print(1)\n}\n");
+    }
+
     #[test]
     fn round_trips_through_the_parser() {
         let sources = [
@@ -734,6 +761,7 @@ mod tests {
             "print(a, b, fn(x) { return x + 1 })",
             "for k, v in m {\n  print(k, v)\n}",
             "let [x, [y, z]] = v",
+            "let s = if a { 1 } else if b { 2 } else { 3 }",
             "for i, [x, y] in cells {\n  print(i)\n}",
         ];
         for source in sources {

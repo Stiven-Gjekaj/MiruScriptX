@@ -15,11 +15,7 @@ let at = 10
 fn draw(position) {
   let line = ""
   for i in range(0, width) {
-    if i == position {
-      line += "#"
-    } else {
-      line += "."
-    }
+    line += if i == position { "#" } else { "." }
   }
   print(line)
 }

@@ -67,11 +67,7 @@ fn draw(cells, generation) {
   let out = ""
   for y in range(0, height) {
     for x in range(0, width) {
-      if living(cells, x, y) {
-        out += "#"
-      } else {
-        out += "."
-      }
+      out += if living(cells, x, y) { "#" } else { "." }
     }
     out += "\n"
   }

@@ -59,12 +59,12 @@ fn draw(body, food, score, width, height) {
   let out = ""
   for y in range(0, height) {
     for x in range(0, width) {
-      if x == food_x && y == food_y {
-        out += "*"
+      out += if x == food_x && y == food_y {
+        "*"
       } else if covers(body, x, y) {
-        out += "#"
+        "#"
       } else {
-        out += "."
+        "."
       }
     }
     out += "\n"

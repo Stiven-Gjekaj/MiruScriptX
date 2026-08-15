@@ -542,6 +542,110 @@ fn for_in_loops_over_arrays() {
     ]);
 }
 
+/// `if` used where a value is wanted, added in 1.11. `let x = if ..` was a
+/// parse error before it, which is what section 2.1 needs.
+#[test]
+fn an_if_used_as_a_value() {
+    check_all(&[
+        // Every case here puts the `if` where a value is wanted. A bare `if`
+        // at the start of a statement is still a statement, which is what
+        // `the_statement_form_of_if_is_unchanged` holds it to.
+        ("let v = if true { 1 } else { 2 }\nv", "ok 1"),
+        ("let v = if false { 1 } else { 2 }\nv", "ok 2"),
+        (
+            "let n = 9\nlet v = if n > 3 { \"big\" } else { \"small\" }\nv",
+            "ok \"big\"",
+        ),
+        // The condition is an ordinary expression, and so is each arm.
+        ("let v = if 1 + 1 == 2 { 3 * 4 } else { 0 }\nv", "ok 12"),
+        // Every position a value can go.
+        ("[if true { 1 } else { 2 }, 3]", "ok [1, 3]"),
+        ("{\"k\": if false { 1 } else { 2 }}", "ok {\"k\": 2}"),
+        ("str(if true { 1 } else { 2 })", "ok \"1\""),
+        (
+            "fn pick(n) { return if n > 0 { \"pos\" } else { \"neg\" } }\npick(-1)",
+            "ok \"neg\"",
+        ),
+        ("let a = 0\na += if true { 5 } else { 6 }\na", "ok 5"),
+        // Parenthesised, which is the other way to reach expression position.
+        ("(if true { 1 } else { 2 })", "ok 1"),
+        // It binds as a primary, so an operator after it applies to the
+        // result. The arms are brace-delimited, so there is no question where
+        // the `if` ends.
+        ("let v = if true { 1 } else { 2 } + 3\nv", "ok 4"),
+        ("let v = 1 + if true { 10 } else { 20 }\nv", "ok 11"),
+        // Nesting, in the condition and in an arm.
+        (
+            "let v = if (if true { 1 } else { 0 }) == 1 { \"yes\" } else { \"no\" }\nv",
+            "ok \"yes\"",
+        ),
+        ("let v = if true { if false { 1 } else { 2 } } else { 3 }\nv", "ok 2"),
+        // `else if` chains, which is the shape a longer choice takes.
+        (
+            "let n = 9\nlet v = if n > 100 { \"huge\" } else if n > 3 { \"big\" } else { \"small\" }\nv",
+            "ok \"big\"",
+        ),
+        // Only the arm taken runs. The other would fail if it did.
+        ("let v = if true { 1 } else { 1 / 0 }\nv", "ok 1"),
+        ("let v = if false { 1 / 0 } else { 2 }\nv", "ok 2"),
+        // The condition uses section 5.3's truthiness, the same as the
+        // statement form: only `false` and `nil` are false, so `0` and `""`
+        // both take the first arm.
+        ("let v = if 0 { \"t\" } else { \"f\" }\nv", "ok \"t\""),
+        ("let v = if \"\" { \"t\" } else { \"f\" }\nv", "ok \"t\""),
+        ("let v = if nil { \"t\" } else { \"f\" }\nv", "ok \"f\""),
+        ("let v = if [] { \"t\" } else { \"f\" }\nv", "ok \"t\""),
+    ]);
+}
+
+/// The refusals that keep the value form from inventing anything, and the
+/// promises that keep the statement form exactly as it was.
+#[test]
+fn an_if_used_as_a_value_refuses_what_it_cannot_answer() {
+    check_all(&[
+        // No `else` means no value when the condition is false. `nil` would
+        // invent one. The caret is on the `if`, because what is missing has no
+        // position of its own.
+        (
+            "let x = if true { 1 }",
+            "err an 'if' used as a value needs an 'else', because it has no value to give when the condition is false @ 1:9",
+        ),
+        // An arm holds one expression. Both of these are errors today, so a
+        // later release can allow statements in an arm.
+        (
+            "let x = if true { 1 2 } else { 3 }",
+            "err an arm of an 'if' used as a value holds one expression @ 1:21",
+        ),
+        ("let x = if true { } else { 2 }", "err expected an expression but found '}' @ 1:19"),
+        (
+            "let x = if true { let y = 1 } else { 2 }",
+            "err expected an expression but found 'let' @ 1:19",
+        ),
+    ]);
+}
+
+/// The statement form is untouched. Scoping the value rule to blocks rather
+/// than to position would have changed every one of these, and section 5 of
+/// the guarantee puts that in version 2.
+#[test]
+fn the_statement_form_of_if_is_unchanged() {
+    check_all(&[
+        // A function body ending in an expression still gives `nil`.
+        ("fn f() { 1 }\nf()", "ok nil"),
+        ("fn f() { if true { 1 } }\nf()", "ok nil"),
+        ("let f = fn() { 42 }\nf()", "ok nil"),
+        // A trailing `if` statement is still a statement, so the program's
+        // value is `nil` rather than the arm taken.
+        ("if true { 1 }", "ok nil"),
+        ("if true { 1 } else { 2 }\n", "ok nil"),
+        // An `if` statement with no `else` is still fine.
+        ("let x = 0\nif true { x = 1 }\nx", "ok 1"),
+        // `while` and `for` are still statements and still give nothing.
+        ("let n = 0\nwhile n < 2 { n += 1 }", "ok nil"),
+        ("for i in [1, 2] { i }", "ok nil"),
+    ]);
+}
+
 /// A second loop variable, added in 1.10. Both forms of the loop are here
 /// together so that a change to one that breaks the other is caught by the
 /// same test.
