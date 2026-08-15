@@ -1172,6 +1172,23 @@ fn builtins_and_their_errors() {
         ("pow(2, 10)", "ok 1024"),
         ("pow(2, -1)", "ok 0.5"),
         ("pow(2.0, 3)", "ok 8.0"),
+        // `pow` gives `nan` for a negative base with an exponent that is not a
+        // whole number, where `sqrt` refuses the same operation. The two do not
+        // agree, and section 2.3 of the guarantee does not let a 1.x correct
+        // it, so what section 5.2.1 now documents is pinned here instead.
+        //
+        // `nan != nan`, so these compare the printed form rather than the
+        // value. A case written as an equality would pass whatever `pow` gave.
+        ("str(pow(-8.0, 0.5))", "ok \"nan\""),
+        ("str(pow(-8, 0.5))", "ok \"nan\""),
+        ("str(pow(-8.0, 2.5))", "ok \"nan\""),
+        ("str(pow(-8.0, -0.5))", "ok \"nan\""),
+        // A whole-number exponent is unaffected, which is the other half of the
+        // rule and the half that keeps this from reading as "pow is broken".
+        ("pow(-8.0, 2.0)", "ok 64.0"),
+        ("pow(-8.0, 3.0)", "ok -512.0"),
+        ("pow(-8.0, -2.0)", "ok 0.015625"),
+        ("sqrt(-1)", "err sqrt of a negative number @ 1:1"),
         ("int(\"42\")", "ok 42"),
         ("int(2.9)", "ok 2"),
         ("int(7)", "ok 7"),

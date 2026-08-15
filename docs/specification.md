@@ -490,11 +490,13 @@ zero`.
 Arithmetic never gives `inf` or `nan`. Division by zero is an error, and every
 other operation that could give one of these is an error.
 
-Three operations can give one:
+Four operations can give one:
 
 - `float("inf")` and `float("-inf")` give an infinity.
 - `float("nan")` gives a not-a-number.
 - `pow` gives an infinity when the result is too large.
+- `pow` gives a not-a-number when the base is negative and the exponent is a
+  float that is not a whole number. Section 8.7 gives an example.
 
 A program can hold these values. The rules for them are:
 
@@ -1119,6 +1121,25 @@ of them as a value.
 an array that has one or more floats. Section 5.2 gives the promotion rule.
 Overflow of the integer form is an error, as it is for each other integer
 operation. An element that is not a number is an error.
+
+`pow` gives `nan` when the base is negative and the exponent is a float that is
+not a whole number. A whole-number exponent is not affected.
+
+```
+print(pow(-8.0, 0.5))    // nan
+print(pow(-8.0, 2.0))    // 64.0
+print(pow(-8.0, 3.0))    // -512.0
+print(sqrt(-1))          // Error: sqrt of a negative number
+```
+
+> **Note.** The first and the last lines ask the same question, and the language
+> answers it two ways. `pow` gives `nan` where `sqrt` refuses. A `nan` goes
+> through each arithmetic operation that touches it, and shows itself at a line
+> that has no connection to the line that made it.
+>
+> `pow` is documented here rather than changed. Section 2.3 of the
+> [stability guarantee](stability.md) does not permit a change to what a builtin
+> does, so a `pow` that refuses needs version 2.
 
 ### 8.8 Higher-order
 
