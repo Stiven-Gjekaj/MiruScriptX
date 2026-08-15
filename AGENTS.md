@@ -85,9 +85,18 @@ Three rules earned the hard way:
 
 ## Conventions
 
-- **Commits carry no version prefix and change no version.** Add your entry to
-  `CHANGELOG.md` under `## Unreleased`. Commits before 1.0 carry a `vX.Y.Z:`
-  prefix; that convention is retired, do not copy it.
+- **A commit carries no version prefix, and changes no version.** The one
+  exception is the release commit that bumps `Cargo.toml`, which does nothing
+  else. Commits before 1.0 carry a `vX.Y.Z:` prefix; that convention is retired,
+  do not copy it.
+- **The changelog entry goes in one of two places, depending on which you are
+  doing.** A contribution adds its entry under `## Unreleased`, because it
+  cannot know which release will carry it. A release writes the whole entry
+  under its own version heading, as part of the documentation work, and folds
+  any `## Unreleased` section into it. 1.9 and 1.10 were both written that way,
+  so `CHANGELOG.md` usually has no `## Unreleased` section at all. That is the
+  cycle working rather than a step somebody skipped, and it is written down here
+  because the shorter rule read as though the section should always be there.
 - **One logical change per commit.** Code and its tests together, documentation
   separately, and a wide mechanical rename on its own with no behaviour change
   inside it.
