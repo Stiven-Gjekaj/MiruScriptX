@@ -311,7 +311,10 @@ arguments  = expression { "," expression }
 index      = "[" expression "]"
 field      = "." identifier
 primary    = integer | float | string | "true" | "false" | "nil"
-           | identifier | array | map | closure | "(" expression ")"
+           | identifier | array | map | closure | choice
+           | "(" expression ")"
+choice     = "if" expression "{" expression "}"
+             "else" ( choice | "{" expression "}" )
 array      = "[" [ expression { "," expression } ] "]"
 map        = "{" [ entry { "," entry } ] "}"
 entry      = expression ":" expression
@@ -681,6 +684,48 @@ An empty pattern reads an array of no elements.
 
 A map is not taken apart by a pattern. An assignment does not take an array
 apart: only `let` and `for` do.
+
+### 5.8.2 An `if` that gives a value
+
+An `if` can be a statement or an expression. The position decides which. An `if`
+at the start of a statement is a statement. An `if` where a value is necessary
+is an expression, and its value is the value of the arm that runs.
+
+```
+let step = if target > 3 { "right" } else { "left" }
+```
+
+An `if` that is an expression must have an `else`. Without one it has no value
+when the condition is false. An `if` that is an expression and has no `else`
+gives the error `an 'if' used as a value needs an 'else', because it has no
+value to give when the condition is false`.
+
+Each arm holds one expression. An arm that holds a statement, or holds no
+expression, or holds two, is an error.
+
+Only the arm that runs is evaluated.
+
+An `if` that is an expression is a primary. An operator after it applies to its
+value.
+
+```
+print(if true { 1 } else { 2 } + 3)    // 4
+```
+
+An `else` can be followed by another `if`, which makes a chain.
+
+```
+let size = if n > 100 { "huge" } else if n > 3 { "big" } else { "small" }
+```
+
+An `if` that is a statement does not change. It can have no `else`. It gives no
+value. A function body gives `return`, or `nil`, as section 5.10 says, and a
+trailing expression in a function body does not change this.
+
+```
+fn f() { 1 }
+print(f())    // nil
+```
 
 ### 5.9 Loops
 

@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-4_(57),_1_dev-007ec6?style=for-the-badge" alt="The language declares 4 direct dependencies, two of them platform-specific, over 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-493_passing-427819?style=for-the-badge" alt="493 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-497_passing-427819?style=for-the-badge" alt="497 tests passing"/>
 </p>
 
 <p align="center">
@@ -73,6 +73,7 @@ for name in people {
 - Arrays and maps, with indexing
 - Functions, closures, and recursion
 - `if` / `else if` / `else`, `while`, `for ... in`
+- `if` also where a value goes: `let s = if n > 3 { "big" } else { "small" }`
 - `for key, value in map` to walk a map's entries, and `for i, x in array` for
   the position alongside the element
 - `let [x, y] = pair` to give an array's elements their own names, in a `let`
@@ -225,14 +226,14 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | Stage | Files | Lines | Responsibility |
 | ----- | ----- | ----- | -------------- |
 | **Lexer** | token.rs, lexer.rs | 1509 | Source text to tokens, with line, column, and span tracking |
-| **Parser** | ast.rs, parser.rs | 1957 | Recursive descent plus a Pratt expression parser |
+| **Parser** | ast.rs, parser.rs | 2059 | Recursive descent plus a Pratt expression parser |
 | **Runtime model** | value.rs, ops.rs, builtins.rs, random.rs | 4737 | Values, operator and indexing rules, the builtin library |
-| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4609 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
+| **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4627 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Diagnostics** | suggest.rs | 220 | Chooses the name an error offers back when a program misspells one |
-| **Formatter** | formatter.rs | 813 | Reprints a program in canonical form (`miru fmt`) |
+| **Formatter** | formatter.rs | 854 | Reprints a program in canonical form (`miru fmt`) |
 | **CLI and REPL** | main.rs, repl.rs, keyboard.rs | 1305 | File runner, `fmt` and `disasm` commands, the REPL, and raw-mode key reading |
 | **Library** | lib.rs | 1190 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **19 files** | **16595** | Written from scratch in Rust |
+| **Total** | **19 files** | **16756** | Written from scratch in Rust |
 
 The playground is a separate crate: 775 lines of Rust binding the language to
 WebAssembly, and 1672 of hand-written HTML, CSS, and JavaScript. It is counted
