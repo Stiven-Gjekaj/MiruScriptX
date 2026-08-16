@@ -8,6 +8,25 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## Unreleased
+
+### Changed
+
+- **The playground reports a visit count.** Cloudflare Web Analytics, which
+  uses no cookie and builds no fingerprint, from a deferred script at the end
+  of the body.
+
+  **This is the page's first third-party request**, and the comment in
+  `index.html` that promised there were none has gone rather than been left to
+  be wrong. The font stays vendored, for the reason it always was.
+
+  **What Share promises is unchanged.** The program you write goes in the
+  fragment after the `#`, which a browser never sends to any server, including
+  this one. Nothing on the page reads what the beacon reports.
+
+  The token in the page source is a site token. It says which site is
+  reporting and grants nothing, which is why it belongs in the HTML.
+
 ## 1.11.0 (2026-08-09)
 
 One addition, and one documented inconsistency. `let x = if ..` was a parse
@@ -71,7 +90,7 @@ different here, and section 2.1 of the
 Four additions, and one theme: **arrays and maps, said once.** Share or copy,
 walk a map's entries, take a pair apart, count in either direction. Each was an
 error before this release, so no program that ran on 1.0 means anything
-different here — section 2.1 of the
+different here. Section 2.1 of the
 [stability guarantee](docs/stability.md) is the rule, and it is why none of this
 needed a version 2.
 
@@ -79,7 +98,7 @@ needed a version 2.
 
 - **`copy(v)`** gives an array or a map that shares nothing with the original.
   `let b = a` shares, so `b[0] = 99` changed `a`, and the way to avoid that was
-  `slice(a, 0, len(a))` — "slice the whole thing", which says copy without
+  `slice(a, 0, len(a))`, which is "slice the whole thing" and says copy without
   saying it. `examples/tetris.miru` carried one with a comment explaining why.
 
   **It is shallow, and named so it cannot be mistaken for deep.** A grid is an
@@ -94,7 +113,7 @@ needed a version 2.
 
 - **`range` takes a step**, so a loop can count down. `range(5, 0)` is `[]` and
   has to stay `[]` under section 2.3, so a descending `for` could not be written
-  at all — a `while` and a counter was the whole answer. `range(5, 0, -1)` is
+  at all, and a `while` with a counter was the whole answer. `range(5, 0, -1)` is
   now `[5, 4, 3, 2, 1]`.
 
   **A step of `0` refuses**, because it describes a loop that never ends. A step
@@ -123,7 +142,7 @@ needed a version 2.
 
   **A pattern is a binding target, and both `let` and `for` bind**, so both take
   one: `for [x, y] in cells`, and `for i, [x, y] in cells` for the position as
-  well. Nesting is not a case of its own either — `let [[a, b], c]` falls out of
+  well. Nesting is not a case of its own either, because `let [[a, b], c]` falls out of
   the pattern being recursive.
 
   **A length mismatch refuses, naming both lengths.** Padding with `nil` would
@@ -132,15 +151,15 @@ needed a version 2.
   fit.
 
   Two omissions, recorded in section 5.8.1 as omissions rather than left to look
-  like oversights. **A map is not taken apart** — `let {name, age} = person` has
+  like oversights. **A map is not taken apart**, because `let {name, age} = person` has
   its own question about an absent key. **An assignment does not take an array
-  apart** — `[a, m.x, arr[0]] = ...` raises what a mixed target should mean.
+  apart**, because `[a, m.x, arr[0]] = ...` raises what a mixed target should mean.
   Both are errors today, so both stay additive later.
 
 ## 1.9.0 (2026-08-08)
 
 Six additions and one fix. Every addition was an error before this release, so
-no program that ran on 1.0 means anything different here — section 2.1 of the
+no program that ran on 1.0 means anything different here. Section 2.1 of the
 [stability guarantee](docs/stability.md) is the rule, and it is why none of this
 needed a version 2.
 
