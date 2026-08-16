@@ -52,7 +52,7 @@ while key_ready() { ... }     // everything pressed since the last picture
 ```
 
 **Snake wants one.** It turns once per step, so three keys taken in one turn
-would throw two away — and worse, turning up and then left between two steps
+would throw two away, and worse, turning up and then left between two steps
 walks you into your own neck without that ever being drawn.
 
 **A typing game wants all of them**, because every press is worth a point and
@@ -61,7 +61,7 @@ none should be lost.
 ### Stopping
 
 `key_ready()` answers `true` when the keys have run out, which sounds wrong and
-is what lets a loop finish. It is telling you the read will not make you wait —
+is what lets a loop finish. It is telling you the read will not make you wait,
 and at the end it does not, it gives `nil` at once:
 
 ```
@@ -104,7 +104,7 @@ each row as it arrives, and your eye catches the sweep down the screen.
 
 `hide_cursor()` is worth calling once at the start. Otherwise the cursor blinks
 wherever your last character landed, which in a redrawn picture is the bottom
-right. You do not have to put it back — it returns when your program ends,
+right. You do not have to put it back: it returns when your program ends,
 however it ends.
 
 ## Speed
@@ -164,17 +164,17 @@ show_cursor()
 
 ## Four to read
 
-- **[life.miru](../examples/life.miru)** — no input at all, so it is nothing but
+- **[life.miru](../examples/life.miru)**: no input at all, so it is nothing but
   the drawing half. Start here.
-- **[snake.miru](../examples/snake.miru)** — the whole shape, including growing
+- **[snake.miru](../examples/snake.miru)**: the whole shape, including growing
   an array at the front.
-- **[pong.miru](../examples/pong.miru)** — a ball that never stops, which is the
+- **[pong.miru](../examples/pong.miru)**: a ball that never stops, which is the
   clearest demonstration of why `key_ready()` exists.
-- **[tetris.miru](../examples/tetris.miru)** — a board it both reads and writes,
+- **[tetris.miru](../examples/tetris.miru)**: a board it both reads and writes,
   which is the shape most games with a grid actually have. Read it for two
   things. Turning a piece is not trigonometry: on a grid a quarter turn sends
   the cell at `(x, y)` to `(box - 1 - y, x)`, and that is the whole of it.
-  Clearing a full row is array work — keep the rows with a gap, build as many
+  Clearing a full row is array work: keep the rows with a gap, build as many
   empty rows as went away, and join the two with `+`.
 
 ## Three things that will catch you
@@ -208,7 +208,7 @@ is the one that will waste your afternoon.
 An arrow key is three bytes, `\u{1B}` then `[` then a letter. `read_key` fills
 a buffer sixteen bytes at a time, and on unix, if a read stops in the middle of
 one of those sequences, `poll` fetches the rest. **Windows has no equivalent**,
-so a sequence split across two reads is decoded as a bare Escape — and most
+so a sequence split across two reads is decoded as a bare Escape, and most
 games treat Escape as "quit". A test that pipes five arrow keys is well under
 the buffer and fine. One that pipes fifteen is thirty-seven bytes, splits, and
 ends the game somewhere in the middle, on Windows only.
@@ -221,7 +221,7 @@ number turns gravity off:
 miru run examples/tetris.miru 7 100000
 ```
 
-That is a speed setting, and it is useful in a test for a different reason —
+That is a speed setting, and it is useful in a test for a different reason:
 it takes the falling out of the picture so only the keys move anything. It does
 **not** rescue a long key sequence from the split above.
 

@@ -25,7 +25,7 @@ typos early.
 ## Changing a variable in place
 
 Writing the name twice gets old, and it is somewhere the two halves can drift
-apart — `ball_x = ball_y + 1` is a bug that reads like working code. The five
+apart: `ball_x = ball_y + 1` is a bug that reads like working code. The five
 arithmetic operators have a shorter form:
 
 ```
@@ -57,7 +57,7 @@ a[next()] += 1   // next() is called once, not twice
 
 That is the one thing the short form guarantees which writing it out by hand
 does not, and it is why `a[next()] += 1` is not just a shorter way to type
-`a[next()] = a[next()] + 1` — the long version calls `next` twice and would
+`a[next()] = a[next()] + 1`, because the long version calls `next` twice and would
 read one element while writing another.
 
 These are statements, so you cannot use one as a value. `let y = (x += 1)` is

@@ -10,16 +10,13 @@
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <!--
-      Self-hosted, not fetched from a font service. See fonts/OFL.txt. The
-      font is vendored rather than linked because a page that fetches one
-      phones out on every load, and this page should do as little of that as
-      it can.
+      Self-hosted, not fetched from a font service. The page makes no
+      third-party request at all, which is the same promise Share makes about
+      the program you write: it stays in the browser. See fonts/OFL.txt.
 
-      It is no longer none. The Cloudflare Web Analytics beacon at the end of
-      the body is the page's one third-party request, and the comment that
-      used to claim there were none is gone rather than left to be wrong.
-      What Share promises is unchanged and is a different promise: the program
-      you write goes in the fragment, which a browser never sends anywhere.
+      An analytics beacon was added here and taken out again on the same day.
+      Nothing on this page needs to phone out, and the sentence above is worth
+      more than a visit count.
     -->
     <link
       rel="preload"
@@ -296,19 +293,5 @@
     </footer>
 
     <script type="module" src="main.js"></script>
-    <!--
-      Cloudflare Web Analytics: a visit count, with no cookie and no
-      fingerprint. The token is a site token and belongs in the page source;
-      it identifies which site is reporting and grants nothing.
-
-      Deferred, and last in the body, so a failure to reach Cloudflare costs
-      the page nothing. Nothing on this page reads what it reports, and the
-      program you write never goes near it: Share keeps that in the fragment.
-    -->
-    <script
-      defer
-      src="https://static.cloudflareinsights.com/beacon.min.js"
-      data-cf-beacon='{"token": "ce6030a180d746a9b3d58e4a443ec4db"}'
-    ></script>
   </body>
 </html>

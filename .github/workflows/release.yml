@@ -18,7 +18,7 @@ name: Release
 # of a tag has that single point of failure; this does not.
 #
 # **A dispatch creates the tag as well as the release.** The tag is made on
-# GitHub's side, from the commit being built, before the draft is created — so
+# GitHub's side, from the commit being built, before the draft is created, so
 # somewhere that cannot push a tag can still produce one. The release is still
 # a draft, because publishing stays a person's decision; the tag is not, because
 # a release without one is not a release.

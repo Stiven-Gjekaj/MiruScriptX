@@ -236,7 +236,7 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | **Total** | **19 files** | **16756** | Written from scratch in Rust |
 
 The playground is a separate crate: 775 lines of Rust binding the language to
-WebAssembly, and 1693 of hand-written HTML, CSS, and JavaScript. It is counted
+WebAssembly, and 1676 of hand-written HTML, CSS, and JavaScript. It is counted
 apart because it is not the language, and neither its code nor its dependencies
 are involved in running a `.miru` file.
 

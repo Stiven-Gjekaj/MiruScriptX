@@ -401,7 +401,7 @@ mod tests {
     }
 
     /// An array added to itself. Two `borrow`s of one `RefCell`, which is fine,
-    /// where a `borrow` and a `borrow_mut` would panic — so this is the case
+    /// where a `borrow` and a `borrow_mut` would panic, so this is the case
     /// that would catch an implementation that tried to extend in place.
     #[test]
     fn an_array_can_be_added_to_itself() {

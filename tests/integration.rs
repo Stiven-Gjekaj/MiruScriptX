@@ -496,7 +496,7 @@ fn snake_example_stops_on_q() {
 /// answers false, the read is never made, and the ball keeps going.
 ///
 /// Built on `read_key` alone this would draw its first frame and then stop dead
-/// inside the read until something arrived — which is exactly the shape every
+/// inside the read until something arrived, which is exactly the shape every
 /// game had before this release.
 ///
 /// The bound is loose on purpose. A loaded machine draws fewer frames in a
@@ -543,7 +543,7 @@ fn pong_keeps_moving_while_nothing_is_pressed() {
 ///
 /// The seed argument makes the piece order the same on every machine, so this
 /// knows the first piece is the T. Rotating maps the cell at `(x, y)` to
-/// `(box - 1 - y, x)`, which turns a T pointing up into one pointing right —
+/// `(box - 1 - y, x)`, which turns a T pointing up into one pointing right,
 /// and that is the whole of the arithmetic. The language has no `sin` and no
 /// `cos`, and on a grid it needs neither.
 ///
@@ -668,7 +668,7 @@ fn tetris_example_clears_a_line() {
 /// The unit tests use a scripted keyboard, which cannot exercise `poll` on unix
 /// or `PeekConsoleInputW` on windows. This is the only test that reaches the
 /// platform code, so it is the one that would catch a `key_ready` which said
-/// "no" forever — the shape of failure that makes every game freeze.
+/// "no" forever, the shape of failure that makes every game freeze.
 ///
 /// The loop is bounded so that a wrong answer fails the suite by giving the
 /// wrong count rather than by hanging it.
@@ -682,7 +682,7 @@ fn tetris_example_clears_a_line() {
 ///
 /// A deadline keeps the property the bound was there for. A `key_ready` that
 /// answered "no" forever would spin for five seconds and then report nothing,
-/// which fails the assertion below — it still cannot hang the suite.
+/// which fails the assertion below, it still cannot hang the suite.
 #[test]
 fn key_ready_reports_a_pipe_as_readable_and_the_loop_drains_it() {
     use std::io::Write;

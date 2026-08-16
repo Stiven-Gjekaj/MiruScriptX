@@ -430,7 +430,7 @@ mod platform {
     /// sequence very unlikely anyway: a console delivers a key's whole
     /// sequence at once, and a pipe delivers far more than one key. The second
     /// half is where it went wrong. A pipe does deliver far more than one key
-    /// — and stops at sixteen bytes, which is five whole arrow keys and the
+    /// and it stops at sixteen bytes, which is five whole arrow keys and the
     /// escape of a sixth. The tail was stranded, the escape read as Escape
     /// pressed alone, and a game that quits on Escape quit in the middle of
     /// its input, on windows and nowhere else.
@@ -439,7 +439,7 @@ mod platform {
     /// question since 1.8: [`stdin_is_ready`] asks whether a read would block,
     /// dispatching on the handle type because a console, a pipe, and a file
     /// each answer differently. `key_ready` was built on it. Asking it here
-    /// costs nothing new and keeps both cases right — a pipe holding the rest
+    /// costs nothing new and keeps both cases right: a pipe holding the rest
     /// of a sequence says yes, and Escape pressed alone at a console with
     /// nothing behind it still says no, so it still reads as Escape.
     pub fn read_bytes_soon() -> Result<Vec<u8>, String> {
@@ -463,7 +463,7 @@ mod platform {
     /// was wrong, and it made every game freeze under a pipe.** A pipe whose
     /// writer is still open and has written nothing does not read promptly: it
     /// blocks until something arrives. A game polls, is told it can read, calls
-    /// `read_key`, and stops dead — which is exactly the state this builtin
+    /// `read_key`, and stops dead, which is exactly the state this builtin
     /// exists to prevent. `pong_keeps_moving_while_nothing_is_pressed` holds a
     /// pipe open and silent and is what caught it.
     fn stdin_is_ready() -> Result<bool, String> {

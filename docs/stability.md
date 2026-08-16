@@ -106,7 +106,7 @@ host without it is refused.
 **A host can have a clock and still refuse `sleep`**, which is the one place two
 builtins on one capability part company. A page can say what the time is and
 cannot spend it: a browser paints between turns of its event loop, so blocking
-would freeze the tab rather than pace anything. That split is stable — `now`
+would freeze the tab rather than pace anything. That split is stable: `now`
 working somewhere is not a promise that `sleep` does.
 
 **Where the output is not a terminal, the four drawing builtins do nothing and

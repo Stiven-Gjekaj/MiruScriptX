@@ -141,7 +141,7 @@ for [x, y] in cells {
 }
 ```
 
-Two things it does not do, both on purpose. It does not take a map apart — use
+Two things it does not do, both on purpose. It does not take a map apart, so use
 [a two-variable loop](10-maps.md) for that. And it works with `let` and `for`,
 not with assignment: `[a, b] = pair` is an error.
 
@@ -157,7 +157,7 @@ b[0] = 99
 print(a)      // [99, 2]
 ```
 
-That is often what you want — it is how a function can change an array you pass
+That is often what you want, and it is how a function can change an array you pass
 it. When it is not, `copy` gives you an array that shares nothing:
 
 ```

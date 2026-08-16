@@ -2,8 +2,8 @@
 //!
 //! The companion of [`crate::keyboard`]: that module is about the way in, this
 //! one about the way out. Both are `miru`'s implementation of a capability the
-//! language crate only declares, so a host without a terminal — the browser
-//! playground — gets `NoScreen` and every call refuses.
+//! language crate only declares, so a host without a terminal, such as the
+//! browser playground, gets `NoScreen` and every call refuses.
 //!
 //! # Escapes go to standard output, not through `Output`
 //!

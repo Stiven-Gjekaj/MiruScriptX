@@ -206,7 +206,7 @@ needed a version 2.
   unchanged rather than cut. Widths count characters, as `len` does.
 
 - **A fourth game**: [`tetris.miru`](examples/tetris.miru), which needed no
-  change to the language — 1.8 had shipped everything it uses.
+  change to the language, because 1.8 had shipped everything it uses.
 
   **Turning a piece needs no trigonometry.** On a grid a quarter turn is not an
   angle, it is a swap: the cell at `(x, y)` lands at `(box - 1 - y, x)`.
@@ -230,12 +230,12 @@ needed a version 2.
   asks it. Escape pressed alone at a console still reads as Escape.
 
   `src/keyboard.rs` had predicted this in a comment and judged it unlikely,
-  reasoning that a pipe delivers far more than one key. It does — and stops at
+  reasoning that a pipe delivers far more than one key. It does, and stops at
   sixteen bytes.
 
 - **The editor grammar had been missing eight builtins since 1.8.** Every
-  drawing builtin — `sleep`, `key_ready`, `clear`, `move_to`, `hide_cursor`,
-  `show_cursor`, `term_size`, and `insert` — was absent, so anyone with the
+  drawing builtin (`sleep`, `key_ready`, `clear`, `move_to`, `hide_cursor`,
+  `show_cursor`, `term_size`, and `insert`) was absent, so anyone with the
   VS Code extension installed read the newest part of the language in plain
   text. `scripts/build_grammar.sh` generates that list and simply had not been
   run.
@@ -259,7 +259,7 @@ needed a version 2.
 
   Pong is the one that shows the point: its ball moves every tick whether or
   not anything is pressed. Its test holds standard input open and silent for
-  700ms and counts frames — it drew eleven. Built on `read_key` alone it would
+  700ms and counts frames, and it drew eleven. Built on `read_key` alone it would
   have drawn one and stopped dead inside the read, which is the shape every
   game had before this release.
 
@@ -278,7 +278,7 @@ needed a version 2.
   insert(queue, 0, "a")     // ["a", "b", "c"]
   ```
 
-  Adding gives a **new** array and changes neither operand — `push` remains the
+  Adding gives a **new** array and changes neither operand. `push` remains the
   spelling for growing an array you already have. Only array with array; every
   other pairing stays the error it was.
 
@@ -300,13 +300,13 @@ needed a version 2.
   `move_to` counts from zero, matching how the language indexes an array, so
   `move_to(0, 0)` is the corner `grid[0][0]` draws at.
 
-  **The cursor comes back when the program ends**, however it ends — the same
+  **The cursor comes back when the program ends**, however it ends, by the same
   promise `read_key` already makes about the terminal settings it changes.
 
   **Where the output is not a terminal, the four drawing calls do nothing.**
   Redirect a game to a file and the file holds the text, not a mess of control
   codes. `term_size` is the exception and fails, because a file has no width
-  and a program handed 80 would draw a board that does not fit — the same
+  and a program handed 80 would draw a board that does not fit, by the same
   reasoning that makes `now()` refuse rather than answer 1970. The bundled
   games fix their own size for that reason, which is also what makes them
   testable by piping keys in.
@@ -335,7 +335,7 @@ needed a version 2.
   ```
 
   **It reports whether a read will wait, not whether a key is down**, and the
-  two differ at the end of input, where a read answers `nil` at once — so
+  two differ at the end of input, where a read answers `nil` at once, so
   `key_ready()` is `true` there. That is what lets a loop discover that no key
   is ever coming instead of going round forever on a closed stream, and it is
   what makes a game testable: piping a script of keys runs exactly that many
@@ -347,8 +347,8 @@ needed a version 2.
 - **`sleep(ms)`**, which does nothing for that many milliseconds.
 
   This is what lets a loop run at a speed somebody chose. A loop with nothing
-  slowing it down runs as fast as the machine allows — measured at 7,918,493
-  turns a second on an ordinary one — which pins a processor and makes anything
+  slowing it down runs as fast as the machine allows, measured at 7,918,493
+  turns a second on an ordinary one, which pins a processor and makes anything
   drawn inside it flash past at whatever rate the hardware gives.
 
   A negative duration is an error rather than a wait of no time, because nobody

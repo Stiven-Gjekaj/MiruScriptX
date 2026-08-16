@@ -1249,8 +1249,8 @@ sections gives the same answer each time it is called with the same arguments.
 
 `sleep` takes an integer, and **a negative one is an error** rather than a
 return with nothing done. Nobody means to wait for less than no time, so a
-negative duration is a mistake further up — usually a subtraction that went the
-wrong way while working out how much of a frame was left — and returning at once
+negative duration is a mistake further up, usually a subtraction that went the
+wrong way while working out how much of a frame was left, and returning at once
 would hide it. Zero is not an error, because that same subtraction reaches zero
 honestly on a frame whose work took exactly as long as the frame.
 

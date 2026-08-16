@@ -83,7 +83,7 @@ print(f"{name} scored {score}")   // Aiko scored 12
 
 That saves the `str` calls a `+` chain needs, and a forgotten one is a runtime
 error rather than a mistake anybody meant to make. Only a name goes in the
-braces — not an expression — and `{{` writes a literal brace.
+braces (not an expression), and `{{` writes a literal brace.
 
 **A plain string is untouched.** `"${n}"` prints the braces, exactly as it
 always has, which is why interpolation needs the `f`.
@@ -96,7 +96,7 @@ print(word[0], word[4])   // h o
 ```
 
 There is no character type, so `word[0]` is a string one character long. And
-since a string is measured in characters rather than bytes, so is the index —
+since a string is measured in characters rather than bytes, so is the index.
 `"a\u{1F600}b"[1]` is the whole emoji, not a piece of it.
 
 An index past the end is an error naming the length, rather than `nil`:
@@ -110,7 +110,7 @@ you could not tell "there is no such character" from "there is one, and it is
 nothing". A negative index is an error as well, so `word[-1]` does not mean the
 last character.
 
-Reading a character is all you can do — `word[0] = "H"` is an error. Build a
+Reading a character is all you can do: `word[0] = "H"` is an error. Build a
 new string instead, with `+` or `slice`.
 
 ## Arrays

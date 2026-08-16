@@ -418,7 +418,7 @@ impl value::Keyboard for ScriptedKeyboard {
     ///
     /// A read here never waits: either a key is left, or the script has run out
     /// and the read gives `None` at once. Both are "a read will not block", so
-    /// this is `true` even when the script is empty — the same answer a real
+    /// this is `true` even when the script is empty, the same answer a real
     /// keyboard gives at end of input, and the reason a loop guarded by it ends
     /// instead of spinning.
     fn key_ready(&mut self) -> Result<bool, String> {
@@ -866,7 +866,7 @@ mod tests {
     /// `key_ready` reports that a read will not wait, not that a key exists, so
     /// it stays `true` once the keys have run out. The read then gives `nil`
     /// and the loop breaks. Were it `false` at the end instead, this program
-    /// would still terminate — but a game's outer loop, which asks again every
+    /// would still terminate. A game's outer loop, which asks again every
     /// frame, would never learn that the input had closed.
     #[test]
     fn key_ready_stays_true_at_the_end_so_the_read_can_report_it() {

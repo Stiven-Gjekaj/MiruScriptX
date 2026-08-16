@@ -244,7 +244,7 @@ fn push(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resu
 /// returns the array.
 ///
 /// The companion of `push`, which can only append. Putting something at the
-/// front is the common case — a queue, or the new head of a snake — and without
+/// front is the common case (a queue, or the new head of a snake), and without
 /// this it takes a fresh array and a loop.
 ///
 /// **The index must be from 0 to the length, and anything else is an error.**
@@ -496,7 +496,7 @@ fn upper(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Res
 /// which is a copy spelled as a slice and needs the width in scope to say.
 ///
 /// **Shallow, and named so it cannot be read as deep.** A grid is an array of
-/// arrays, and copying one shallowly shares every row — `map(grid, copy)` is
+/// arrays, and copying one shallowly shares every row, so `map(grid, copy)` is
 /// the documented way to copy that, and the golden corpus pins it. A deep form
 /// can be added later under section 2.3; a shallow `copy` that later started
 /// copying deeply could not, because that would change what a builtin does. A
@@ -1403,8 +1403,8 @@ fn now(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
 /// `sleep(ms)` does nothing for that many milliseconds.
 ///
 /// This is what lets a loop hold a frame rate. Without it a loop runs as fast as
-/// the machine allows — measured at just under eight million turns a second on
-/// an ordinary one — which is a pegged processor and a game whose speed depends
+/// the machine allows, measured at just under eight million turns a second on
+/// an ordinary one, which is a pegged processor and a game whose speed depends
 /// on what it is running on.
 ///
 /// **A negative duration is an error rather than a no-op.** Nobody means to wait
@@ -1553,7 +1553,7 @@ fn key_ready(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
 /// a row at a time works and can be seen doing it, because the terminal draws
 /// each row as it arrives and the eye catches the sweep.
 ///
-/// Where standard output is not a terminal — a pipe, a file — this does
+/// Where standard output is not a terminal (a pipe, a file) this does
 /// nothing, because there is no screen to clear. That is what keeps a game's
 /// output readable when it is redirected, and comparable in a test.
 fn clear(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
@@ -1587,7 +1587,7 @@ fn move_to(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String> {
 /// character was written, which in a redrawn frame is the bottom right, and it
 /// blinks there through the whole game.
 ///
-/// **The cursor comes back by itself when the program ends**, however it ends —
+/// **The cursor comes back by itself when the program ends**, however it ends:
 /// normally, on an error, or through `exit`. A program does not have to pair
 /// this with `show_cursor`, for the same reason it does not have to put the
 /// terminal back after `read_key`.
@@ -1606,7 +1606,7 @@ fn show_cursor(ambient: &mut Ambient, args: Vec<Value>) -> Result<Value, String>
 ///
 /// **It refuses where there is no terminal**, rather than answering with the
 /// traditional 80 by 24. That would be a wrong answer and not an absent one,
-/// and a program handed it draws a board that does not fit — the same reasoning
+/// and a program handed it draws a board that does not fit, by the same reasoning
 /// that makes `now()` refuse rather than answering 1970.
 ///
 /// The consequence is worth stating: a program that calls this cannot run under

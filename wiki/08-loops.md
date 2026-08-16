@@ -98,7 +98,7 @@ for i in range(5, 0, -1) {
 A negative step counts down. The end is still left out, the same as counting
 up, so `range(5, 0, -1)` stops at 1.
 
-A step of `0` is an error — that loop would never end. A step pointing the
+A step of `0` is an error, because that loop would never end. A step pointing the
 wrong way gives nothing at all rather than an error, so `range(0, 10, -1)` is
 an empty array and the loop body simply does not run.
 

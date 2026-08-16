@@ -438,7 +438,7 @@ Five things worth carrying forward:
 
 - **Read the issue's examples before building what the issue asks for.** #48
   wanted `match` to replace the `else if` chains in three games. Every one of
-  those chains carries an extra predicate — `&& fits(..)`, `&& facing_y == 0` —
+  those chains carries an extra predicate (`&& fits(..)`, `&& facing_y == 0`)
   and two of them want several cases in one arm. A `match` on the value alone
   fixes none of them. That is two more design decisions than the issue had
   settled, discovered in the time it took to grep for `pressed ==`. Section 2.1
@@ -494,14 +494,14 @@ Five things worth carrying forward:
   reversible.
 
 - **The empirical test for whether a 1.x may add syntax is "does it error
-  today?"** — and running it takes seconds. `for k, v in m` was
+  today?"**, and running it takes seconds. `for k, v in m` was
   `expected 'in' after the loop variable but found ','`. `let [` was
   `expected an identifier after 'let' but found '['`. Neither needed an argument
   about the guarantee; both needed one command.
 
 - **A feature that falls out of a recursion is smaller than one that enumerates
   its cases.** A pattern is a binding target, `let` and `for` both bind, so both
-  take one — and `let [[a, b], c]`, `for [x, y] in cells`, and
+  take one, and `let [[a, b], c]`, `for [x, y] in cells`, and
   `for i, [x, y] in cells` are then not features at all. The alternative was
   three special cases and a decision about each. One new opcode checks the array;
   every element comes out through the `Index` a program would have written.
@@ -515,7 +515,7 @@ Five things worth carrying forward:
 
 - **A limit that protects one recursive walk protects all of them, but only if
   something counts.** A pattern is walked by the compiler and the formatter, so
-  an uncounted one aborts the process rather than reporting — the class v1.0
+  an uncounted one aborts the process rather than reporting, which is the class v1.0
   spent a milestone closing. The parser's existing `enter` covered it for the
   cost of two lines. The test for it belongs in `tests/golden.rs`, which spawns
   the 64 MiB thread the language assumes; written as a unit test it overflowed
@@ -539,12 +539,12 @@ Five things worth carrying forward:
   grammar had been missing all eight of 1.8's builtins since the day it shipped,
   and `editors/README.md` said 53 where the answer was 61. Both are generated
   from `BUILTIN_NAMES`; the generator had simply not been run. The script's own
-  comment predicted exactly this. **Being generated is not a guard — running the
+  comment predicted exactly this. **Being generated is not a guard; running the
   generator in CI is**, and that check now exists and has passed on every run
   since.
 
 - **A verification that can only confirm what you already believe is not one.**
-  A tetris test failed on Windows. The diagnosis — gravity racing key arrival —
+  A tetris test failed on Windows. The diagnosis, gravity racing key arrival,
   was plausible, and it was checked against all eight gravity phases and found
   solid. That check shifted the race uniformly, which a pipe never does. The
   fix shipped, and the next run came back **byte-identical**, which was the real
@@ -599,14 +599,14 @@ Three things worth carrying forward.
   well; a loop cannot tell those apart and spins forever on a closed stream. A
   second builtin keeps the old meaning intact. **`key_ready` reports that a read
   will not wait, not that a key exists**, and it is therefore `true` at end of
-  input — which reads oddly and is the property the whole design rests on.
+  input, which reads oddly and is the property the whole design rests on.
 
 - **A capability is not an output stream.** `clear` writes an escape sequence,
   and the short way to ship it was through `Output`. That would have put
   `\x1b[2J` inside every `run_capture` string, so a golden test of any program
   that happened to clear would assert on control codes. It is a fourth
   capability instead, and the four drawing calls do nothing when the output is
-  not a terminal — which is exactly what makes the games testable by piping.
+  not a terminal, which is exactly what makes the games testable by piping.
 
 - **One key per tick was a game design decision that looked like a testing
   compromise.** Snake drained its input queue at first, which made it untestable
@@ -635,7 +635,7 @@ because time is what a hang is made of.**
 
 **The risk that could not be closed from here was the Windows half of
 `key_ready`.** `GetNumberOfConsoleInputEvents` counts mouse movement, resizes,
-focus changes, and key releases, none of which yield a byte — so counting would
+focus changes, and key releases, none of which yield a byte, so counting would
 report ready and the following read would block, hanging the game on a mouse
 twitch. It peeks for a key-down record carrying a character instead. That path
 has no test that runs on Linux and rests on the Windows leg of CI, which found
@@ -665,7 +665,7 @@ approval**, and the logs never say so. Four deploys in a row hit
 `github-pages` environment: every deployment sat pending a reviewer, and the
 action has no way to report that, because from where it stands a queued
 deployment and an unapproved one look identical. **The Actions run page says it
-in one line — `is waiting for github-pages deployment approval` — and the job
+in one line, `is waiting for github-pages deployment approval`, and the job
 log never will.** Read the run page before the log.
 
 **Such a deploy cannot be fixed by re-running it either**, which is worth

@@ -259,7 +259,7 @@ typos early.
 ## Changing a variable in place
 
 Writing the name twice gets old, and it is somewhere the two halves can drift
-apart — `ball_x = ball_y + 1` is a bug that reads like working code. The five
+apart: `ball_x = ball_y + 1` is a bug that reads like working code. The five
 arithmetic operators have a shorter form:
 
 ```
@@ -291,7 +291,7 @@ a[next()] += 1   // next() is called once, not twice
 
 That is the one thing the short form guarantees which writing it out by hand
 does not, and it is why `a[next()] += 1` is not just a shorter way to type
-`a[next()] = a[next()] + 1` — the long version calls `next` twice and would
+`a[next()] = a[next()] + 1`, because the long version calls `next` twice and would
 read one element while writing another.
 
 These are statements, so you cannot use one as a value. `let y = (x += 1)` is
@@ -398,7 +398,7 @@ print(f"{name} scored {score}")   // Aiko scored 12
 
 That saves the `str` calls a `+` chain needs, and a forgotten one is a runtime
 error rather than a mistake anybody meant to make. Only a name goes in the
-braces — not an expression — and `{{` writes a literal brace.
+braces (not an expression), and `{{` writes a literal brace.
 
 **A plain string is untouched.** `"${n}"` prints the braces, exactly as it
 always has, which is why interpolation needs the `f`.
@@ -411,7 +411,7 @@ print(word[0], word[4])   // h o
 ```
 
 There is no character type, so `word[0]` is a string one character long. And
-since a string is measured in characters rather than bytes, so is the index —
+since a string is measured in characters rather than bytes, so is the index.
 `"a\u{1F600}b"[1]` is the whole emoji, not a piece of it.
 
 An index past the end is an error naming the length, rather than `nil`:
@@ -425,7 +425,7 @@ you could not tell "there is no such character" from "there is one, and it is
 nothing". A negative index is an error as well, so `word[-1]` does not mean the
 last character.
 
-Reading a character is all you can do — `word[0] = "H"` is an error. Build a
+Reading a character is all you can do: `word[0] = "H"` is an error. Build a
 new string instead, with `+` or `slice`.
 
 ## Arrays
@@ -700,7 +700,7 @@ for i in range(5, 0, -1) {
 A negative step counts down. The end is still left out, the same as counting
 up, so `range(5, 0, -1)` stops at 1.
 
-A step of `0` is an error — that loop would never end. A step pointing the
+A step of `0` is an error, because that loop would never end. A step pointing the
 wrong way gives nothing at all rather than an error, so `range(0, 10, -1)` is
 an empty array and the loop body simply does not run.
 
@@ -848,7 +848,7 @@ for [x, y] in cells {
 }
 ```
 
-Two things it does not do, both on purpose. It does not take a map apart — use
+Two things it does not do, both on purpose. It does not take a map apart, so use
 [a two-variable loop](#maps) for that. And it works with `let` and `for`,
 not with assignment: `[a, b] = pair` is an error.
 
@@ -864,7 +864,7 @@ b[0] = 99
 print(a)      // [99, 2]
 ```
 
-That is often what you want — it is how a function can change an array you pass
+That is often what you want, and it is how a function can change an array you pass
 it. When it is not, `copy` gives you an array that shares nothing:
 
 ```
@@ -1327,7 +1327,7 @@ print(repeat("ab", 3))   // ababab
 
 `pad_left` and `pad_right` fill a string out to a width so columns line up. The
 name says where the fill goes, so `pad_left` puts spaces in front and lines the
-text up on the **right** — which is what a column of numbers wants:
+text up on the **right**, which is what a column of numbers wants:
 
 ```
 print("[" + pad_left("7", 4) + "]")    // [   7]
@@ -1336,7 +1336,7 @@ print(pad_left("7", 3, "0"))           // 007
 ```
 
 A third argument sets the fill, and it has to be a single character. A string
-already at the width or longer comes back untouched rather than cut — a ragged
+already at the width or longer comes back untouched rather than cut, since a ragged
 column is a smaller problem than silently losing text.
 
 `ord(c)` gives the number behind a character, and `chr(n)` turns a number back
@@ -1346,7 +1346,7 @@ into one:
 print(ord("A"), chr(65))   // 65 A
 ```
 
-Together with indexing, that lets a program do arithmetic on letters — a
+Together with indexing, that lets a program do arithmetic on letters: a
 Caesar shift is a loop and one addition:
 
 ```
@@ -1481,7 +1481,7 @@ terminal, that reads a file, writes one, and takes arguments.
   The program's own path is not one of them.
 
 ```
-// upper.miru — read a file named on the command line and shout it
+// upper.miru: read a file named on the command line and shout it
 let names = args()
 if len(names) == 0 {
   print("give me a file to read")
@@ -1572,7 +1572,7 @@ if is_error(k) {
 `read_key()` waits. That is usually what you want, and for anything that moves
 it is exactly what you do not: **your program only gets to do something when
 somebody presses a key.** A ball cannot fall while you sit still, because your
-program is not running — it is waiting inside `read_key()`.
+program is not running. It is waiting inside `read_key()`.
 
 `key_ready()` tells you whether `read_key()` would answer straight away, so you
 can look without committing to a wait:
@@ -1596,7 +1596,7 @@ one key. Somebody who presses three keys quickly gets all three handled now,
 instead of one now and the others over the next two pictures.
 
 **It answers `true` when the keys have run out**, which sounds wrong and is the
-useful part. It is telling you the read will not make you wait — and a read at
+useful part. It is telling you the read will not make you wait, and a read at
 the end does not, it gives `nil` at once. That is what lets the loop above
 notice the end and stop. If it said `false` there instead, the loop would go
 round forever waiting for a key that is never coming.
@@ -1669,8 +1669,8 @@ while true {
 ```
 
 A negative number is an error rather than a wait of no time. Nobody means to
-wait for less than nothing, so it is a mistake somewhere earlier — usually a
-subtraction that came out the wrong way round — and it is better to hear about
+wait for less than nothing, so it is a mistake somewhere earlier, usually a
+subtraction that came out the wrong way round, and it is better to hear about
 it than to have your loop quietly run flat out. `sleep(0)` is fine, because that
 same subtraction reaches zero honestly.
 
@@ -1713,7 +1713,7 @@ at a time works, and you can see it happening: the terminal draws each row as it
 arrives, and the eye catches the sweep down the screen.
 
 `move_to(column, row)` puts the cursor somewhere without clearing. It counts
-from zero, so `move_to(0, 0)` is the top left — the same corner `grid[0][0]`
+from zero, so `move_to(0, 0)` is the top left, the same corner `grid[0][0]`
 means.
 
 `hide_cursor()` stops the terminal drawing the cursor, which otherwise sits
@@ -2283,7 +2283,7 @@ while key_ready() { ... }     // everything pressed since the last picture
 ```
 
 **Snake wants one.** It turns once per step, so three keys taken in one turn
-would throw two away — and worse, turning up and then left between two steps
+would throw two away, and worse, turning up and then left between two steps
 walks you into your own neck without that ever being drawn.
 
 **A typing game wants all of them**, because every press is worth a point and
@@ -2292,7 +2292,7 @@ none should be lost.
 ### Stopping
 
 `key_ready()` answers `true` when the keys have run out, which sounds wrong and
-is what lets a loop finish. It is telling you the read will not make you wait —
+is what lets a loop finish. It is telling you the read will not make you wait,
 and at the end it does not, it gives `nil` at once:
 
 ```
@@ -2335,7 +2335,7 @@ each row as it arrives, and your eye catches the sweep down the screen.
 
 `hide_cursor()` is worth calling once at the start. Otherwise the cursor blinks
 wherever your last character landed, which in a redrawn picture is the bottom
-right. You do not have to put it back — it returns when your program ends,
+right. You do not have to put it back: it returns when your program ends,
 however it ends.
 
 ## Speed
@@ -2395,17 +2395,17 @@ show_cursor()
 
 ## Four to read
 
-- **[life.miru](../examples/life.miru)** — no input at all, so it is nothing but
+- **[life.miru](../examples/life.miru)**: no input at all, so it is nothing but
   the drawing half. Start here.
-- **[snake.miru](../examples/snake.miru)** — the whole shape, including growing
+- **[snake.miru](../examples/snake.miru)**: the whole shape, including growing
   an array at the front.
-- **[pong.miru](../examples/pong.miru)** — a ball that never stops, which is the
+- **[pong.miru](../examples/pong.miru)**: a ball that never stops, which is the
   clearest demonstration of why `key_ready()` exists.
-- **[tetris.miru](../examples/tetris.miru)** — a board it both reads and writes,
+- **[tetris.miru](../examples/tetris.miru)**: a board it both reads and writes,
   which is the shape most games with a grid actually have. Read it for two
   things. Turning a piece is not trigonometry: on a grid a quarter turn sends
   the cell at `(x, y)` to `(box - 1 - y, x)`, and that is the whole of it.
-  Clearing a full row is array work — keep the rows with a gap, build as many
+  Clearing a full row is array work: keep the rows with a gap, build as many
   empty rows as went away, and join the two with `+`.
 
 ## Three things that will catch you
@@ -2439,7 +2439,7 @@ is the one that will waste your afternoon.
 An arrow key is three bytes, `\u{1B}` then `[` then a letter. `read_key` fills
 a buffer sixteen bytes at a time, and on unix, if a read stops in the middle of
 one of those sequences, `poll` fetches the rest. **Windows has no equivalent**,
-so a sequence split across two reads is decoded as a bare Escape — and most
+so a sequence split across two reads is decoded as a bare Escape, and most
 games treat Escape as "quit". A test that pipes five arrow keys is well under
 the buffer and fine. One that pipes fifteen is thirty-seven bytes, splits, and
 ends the game somewhere in the middle, on Windows only.
@@ -2452,7 +2452,7 @@ number turns gravity off:
 miru run examples/tetris.miru 7 100000
 ```
 
-That is a speed setting, and it is useful in a test for a different reason —
+That is a speed setting, and it is useful in a test for a different reason:
 it takes the falling out of the picture so only the keys move anything. It does
 **not** rescue a long key sequence from the split above.
 

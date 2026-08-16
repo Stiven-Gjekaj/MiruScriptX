@@ -53,7 +53,7 @@ their editor stopped colouring half the language.
 
 That check exists because this section was not enough on its own. 1.8 added
 eight builtins, nobody ran the script, and the grammar went out with 53 names
-against a language that had 61 — every drawing builtin plain, in a released
+against a language that had 61. Every drawing builtin was plain, in a released
 extension, until 1.9. **Generated is not the same as current.** A generated
 file still needs something that runs the generator, and asking a person in
 prose is what had just failed.

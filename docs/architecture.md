@@ -543,7 +543,7 @@ compare against an expected string. Clearing the screen is an effect on a
 device. Sending `\x1b[2J` through `Output` would put control codes inside every
 `run_capture` string, so a golden test of any program that happened to clear
 would be asserting on them. `src/screen.rs` writes to standard output directly,
-and does nothing at all when standard output is not a terminal — which is what
+and does nothing at all when standard output is not a terminal, which is what
 keeps a game's output comparable when it is piped into a test.
 
 **Neither is conditional compilation, and this is the reason.** `std::fs` in a

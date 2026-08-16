@@ -211,7 +211,7 @@ print(repeat("ab", 3))   // ababab
 
 `pad_left` and `pad_right` fill a string out to a width so columns line up. The
 name says where the fill goes, so `pad_left` puts spaces in front and lines the
-text up on the **right** — which is what a column of numbers wants:
+text up on the **right**, which is what a column of numbers wants:
 
 ```
 print("[" + pad_left("7", 4) + "]")    // [   7]
@@ -220,7 +220,7 @@ print(pad_left("7", 3, "0"))           // 007
 ```
 
 A third argument sets the fill, and it has to be a single character. A string
-already at the width or longer comes back untouched rather than cut — a ragged
+already at the width or longer comes back untouched rather than cut, since a ragged
 column is a smaller problem than silently losing text.
 
 `ord(c)` gives the number behind a character, and `chr(n)` turns a number back
@@ -230,7 +230,7 @@ into one:
 print(ord("A"), chr(65))   // 65 A
 ```
 
-Together with indexing, that lets a program do arithmetic on letters — a
+Together with indexing, that lets a program do arithmetic on letters: a
 Caesar shift is a loop and one addition:
 
 ```
@@ -365,7 +365,7 @@ terminal, that reads a file, writes one, and takes arguments.
   The program's own path is not one of them.
 
 ```
-// upper.miru — read a file named on the command line and shout it
+// upper.miru: read a file named on the command line and shout it
 let names = args()
 if len(names) == 0 {
   print("give me a file to read")
@@ -456,7 +456,7 @@ if is_error(k) {
 `read_key()` waits. That is usually what you want, and for anything that moves
 it is exactly what you do not: **your program only gets to do something when
 somebody presses a key.** A ball cannot fall while you sit still, because your
-program is not running — it is waiting inside `read_key()`.
+program is not running. It is waiting inside `read_key()`.
 
 `key_ready()` tells you whether `read_key()` would answer straight away, so you
 can look without committing to a wait:
@@ -480,7 +480,7 @@ one key. Somebody who presses three keys quickly gets all three handled now,
 instead of one now and the others over the next two pictures.
 
 **It answers `true` when the keys have run out**, which sounds wrong and is the
-useful part. It is telling you the read will not make you wait — and a read at
+useful part. It is telling you the read will not make you wait, and a read at
 the end does not, it gives `nil` at once. That is what lets the loop above
 notice the end and stop. If it said `false` there instead, the loop would go
 round forever waiting for a key that is never coming.
@@ -553,8 +553,8 @@ while true {
 ```
 
 A negative number is an error rather than a wait of no time. Nobody means to
-wait for less than nothing, so it is a mistake somewhere earlier — usually a
-subtraction that came out the wrong way round — and it is better to hear about
+wait for less than nothing, so it is a mistake somewhere earlier, usually a
+subtraction that came out the wrong way round, and it is better to hear about
 it than to have your loop quietly run flat out. `sleep(0)` is fine, because that
 same subtraction reaches zero honestly.
 
@@ -597,7 +597,7 @@ at a time works, and you can see it happening: the terminal draws each row as it
 arrives, and the eye catches the sweep down the screen.
 
 `move_to(column, row)` puts the cursor somewhere without clearing. It counts
-from zero, so `move_to(0, 0)` is the top left — the same corner `grid[0][0]`
+from zero, so `move_to(0, 0)` is the top left, the same corner `grid[0][0]`
 means.
 
 `hide_cursor()` stops the terminal drawing the cursor, which otherwise sits
