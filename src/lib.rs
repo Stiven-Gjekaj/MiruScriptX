@@ -24,6 +24,7 @@ pub mod compiler;
 pub mod formatter;
 pub mod globals;
 pub mod lexer;
+pub mod migrate;
 pub mod ops;
 pub mod parser;
 pub mod random;

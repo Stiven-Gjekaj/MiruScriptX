@@ -13,6 +13,8 @@ Usage:
   miru --eval <program>     Evaluate a program supplied on the command line
   miru fmt <file.miru>      Format a program and print it to standard output
   miru fmt -w <file.miru>   Format a program and rewrite the file in place
+  miru migrate <file.miru>  Report what version 2.0 changes about a program
+  miru migrate -w <file>    Rename what it can, and report the rest
   miru disasm <file.miru>   Show the bytecode a program compiles to
   miru                      Start the interactive REPL
   miru repl                 Start the interactive REPL
@@ -61,6 +63,7 @@ fn dispatch() -> ExitCode {
             "run" => run_file(rest),
             "-e" | "--eval" => eval_source(rest),
             "fmt" => fmt_file(rest),
+            "migrate" => migrate_file(rest),
             "disasm" => disasm_file(rest),
             "repl" => {
                 if rest.is_empty() {
@@ -294,6 +297,114 @@ fn fmt_file(args: &[String]) -> ExitCode {
     } else {
         print!("{formatted}");
         ExitCode::SUCCESS
+    }
+}
+
+/// `miru migrate`, the off-ramp to version 2.0.
+///
+/// Reports by default and rewrites only with `-w`, the same way `fmt` does.
+/// The report is the part that matters: a rename is something the tool can
+/// finish, and the notes are the part it deliberately will not touch.
+fn migrate_file(args: &[String]) -> ExitCode {
+    let mut write = false;
+    let mut path: Option<&str> = None;
+    for arg in args {
+        match arg.as_str() {
+            "--write" | "-w" => write = true,
+            other if other.starts_with('-') => {
+                return usage_error(&format!("unknown option '{other}' for 'migrate'"));
+            }
+            other => {
+                if path.is_some() {
+                    return usage_error("the 'migrate' command takes a single file path");
+                }
+                path = Some(other);
+            }
+        }
+    }
+
+    let Some(path) = path else {
+        return usage_error("the 'migrate' command needs a file path");
+    };
+
+    let source = match std::fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(err) => {
+            eprintln!("miru: cannot read '{path}': {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let migration = match miruscriptx::migrate::migrate(&source) {
+        Ok(migration) => migration,
+        Err(err) => {
+            eprintln!("miru: {}", err.render(&source));
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if migration.is_empty() {
+        println!("{path}: nothing to change for version 2.0");
+        return ExitCode::SUCCESS;
+    }
+
+    if !migration.renames.is_empty() {
+        let count = migration.renames.len();
+        if write {
+            if let Err(err) = std::fs::write(path, &migration.source) {
+                eprintln!("miru: cannot write '{path}': {err}");
+                return ExitCode::FAILURE;
+            }
+            println!("{path}: renamed {}", plural(count, "name", "names"));
+        } else {
+            println!(
+                "{path}: {} version 2.0 reserves. Run 'miru migrate -w {path}' to rename them.",
+                plural(count, "name that", "names that")
+            );
+        }
+        for rename in &migration.renames {
+            println!(
+                "  {} -> {}   {}",
+                rename.from,
+                rename.to,
+                lines_phrase(&rename.lines)
+            );
+        }
+    }
+
+    if !migration.notes.is_empty() {
+        if !migration.renames.is_empty() {
+            println!();
+        }
+        println!(
+            "{path}: {} version 2.0 gives a different meaning. No tool can decide these.",
+            plural(migration.notes.len(), "place where", "places where")
+        );
+        for note in &migration.notes {
+            println!("  line {}: {}", note.line, note.message);
+        }
+    }
+
+    ExitCode::SUCCESS
+}
+
+/// "1 name" or "3 names", with the caller supplying both spellings so the rule
+/// lives in one place rather than in every message that counts something.
+fn plural(count: usize, one: &str, many: &str) -> String {
+    if count == 1 {
+        format!("{count} {one}")
+    } else {
+        format!("{count} {many}")
+    }
+}
+
+/// "line 4" or "lines 4, 9, 17".
+fn lines_phrase(lines: &[usize]) -> String {
+    let numbers: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+    if lines.len() == 1 {
+        format!("line {}", numbers[0])
+    } else {
+        format!("lines {}", numbers.join(", "))
     }
 }
 

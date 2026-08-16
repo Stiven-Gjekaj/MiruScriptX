@@ -1131,6 +1131,125 @@ fn fmt_reports_a_syntax_error_and_fails() {
 }
 
 #[test]
+fn migrate_reports_without_touching_the_file() {
+    let path = std::env::temp_dir().join("miru_integration_migrate_report.miru");
+    let source = "let match = 1\nprint(match)\n";
+    std::fs::write(&path, source).expect("write temp file");
+
+    let output = miru().arg("migrate").arg(&path).output().expect("runs");
+    let on_disk = std::fs::read_to_string(&path).expect("read back");
+    let _ = std::fs::remove_file(&path);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf-8");
+    assert!(stdout.contains("match -> match_"), "stdout was: {stdout}");
+    assert!(stdout.contains("lines 1, 2"), "stdout was: {stdout}");
+    // Reporting must never write. `-w` is the whole difference.
+    assert_eq!(on_disk, source);
+}
+
+#[test]
+fn migrate_write_renames_and_the_program_still_runs() {
+    let path = std::env::temp_dir().join("miru_integration_migrate_write.miru");
+    std::fs::write(
+        &path,
+        "let match = [1, 2]\nlet loop = 3\nprint(f\"{match} {loop}\")\n",
+    )
+    .expect("write temp file");
+
+    let migrate = miru()
+        .arg("migrate")
+        .arg("-w")
+        .arg(&path)
+        .output()
+        .expect("runs");
+    assert!(migrate.status.success());
+
+    let after = std::fs::read_to_string(&path).expect("read back");
+    assert_eq!(
+        after,
+        "let match_ = [1, 2]\nlet loop_ = 3\nprint(f\"{match_} {loop_}\")\n"
+    );
+
+    let run = miru().arg("run").arg(&path).output().expect("runs");
+    let _ = std::fs::remove_file(&path);
+    assert!(run.status.success());
+    assert_eq!(
+        String::from_utf8(run.stdout).expect("utf-8"),
+        "[1, 2] 3\n",
+        "the migrated program does not do what the original did"
+    );
+}
+
+#[test]
+fn migrate_says_so_when_a_program_needs_nothing() {
+    let output = miru()
+        .arg("migrate")
+        .arg("examples/fib.miru")
+        .output()
+        .expect("runs");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf-8");
+    assert!(stdout.contains("nothing to change"), "stdout was: {stdout}");
+}
+
+#[test]
+fn migrate_leaves_every_example_running_exactly_as_it_did() {
+    // The corpus that matters. A synthetic test proves the tool does what it
+    // was written to do; this proves it does nothing to programs that were
+    // already fine, over every program this project ships. The games read the
+    // keyboard, so only the ones that run to completion on their own are run.
+    let quiet = ["fib.miru", "greet.miru", "keys.miru", "life.miru"];
+    let mut checked = 0;
+    for entry in std::fs::read_dir("examples").expect("read the examples directory") {
+        let source_path = entry.expect("an entry").path();
+        if source_path.extension().and_then(|e| e.to_str()) != Some("miru") {
+            continue;
+        }
+        let name = source_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("a name")
+            .to_string();
+
+        let copy = std::env::temp_dir().join(format!("miru_migrated_{name}"));
+        std::fs::copy(&source_path, &copy).expect("copy the example");
+        let migrate = miru()
+            .arg("migrate")
+            .arg("-w")
+            .arg(&copy)
+            .output()
+            .expect("runs");
+        assert!(
+            migrate.status.success(),
+            "migrate failed on {name}: {}",
+            String::from_utf8_lossy(&migrate.stderr)
+        );
+
+        // Whatever it reported, the file it leaves behind has to be a program.
+        let parses = miru().arg("disasm").arg(&copy).output().expect("runs");
+        assert!(
+            parses.status.success(),
+            "the migrated {name} no longer compiles: {}",
+            String::from_utf8_lossy(&parses.stderr)
+        );
+
+        if quiet.contains(&name.as_str()) {
+            let before = miru().arg("run").arg(&source_path).output().expect("runs");
+            let after = miru().arg("run").arg(&copy).output().expect("runs");
+            assert_eq!(
+                before.stdout, after.stdout,
+                "{name} prints something different after migrating"
+            );
+        }
+
+        let _ = std::fs::remove_file(&copy);
+        checked += 1;
+    }
+    assert!(checked >= 8, "only {checked} examples were checked");
+}
+
+#[test]
 fn disasm_prints_bytecode_for_a_program() {
     let output = miru()
         .arg("disasm")

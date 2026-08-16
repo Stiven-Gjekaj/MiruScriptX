@@ -10,6 +10,30 @@ semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- **`miru migrate`, the off-ramp to version 2.0.** Version 2.0 turns sixteen
+  ordinary identifiers into keywords, and a 2.0 binary cannot read a program
+  that uses one as a name. So the tool that fixes such a program has to ship
+  before the release that breaks it, and this is it.
+
+  ```
+  miru migrate old.miru        # say what 2.0 changes, and change nothing
+  miru migrate -w old.miru     # rename what it can, and report the rest
+  ```
+
+  It renames, because a rename is decidable. It **will not touch a call whose
+  meaning changes**, because deciding those needs to know what a value will be
+  when the program runs. Those come back as a line number and a sentence:
+  `slice` with a bound that could be negative, which clamps to 0 today and will
+  count from the end, and `index_of` and `find`, which return `-1` today and
+  will return `nil`.
+
+  The rewrite works from token positions rather than by reprinting the program,
+  so nothing moves except the names that had to. The diff a person reviews is
+  the rename and nothing else, which is the difference between a migration you
+  can check and one you have to trust.
+
 ### Fixed
 
 - **An `import` alias that was a builtin's name replaced that builtin for every

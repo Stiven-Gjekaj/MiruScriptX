@@ -9,7 +9,7 @@ _Compiled to bytecode, run on a stack virtual machine_
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.94%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/dependencies-4_(57),_1_dev-007ec6?style=for-the-badge" alt="The language declares 4 direct dependencies, two of them platform-specific, over 57 total crates, 1 of them a dev dependency"/>
-  <img src="https://img.shields.io/badge/tests-499_passing-427819?style=for-the-badge" alt="499 tests passing"/>
+  <img src="https://img.shields.io/badge/tests-517_passing-427819?style=for-the-badge" alt="517 tests passing"/>
 </p>
 
 <p align="center">
@@ -100,6 +100,8 @@ for name in people {
 - Higher-order builtins: `map`, `filter`, and `reduce`
 - File runner, a source formatter (`miru fmt`), and a REPL with history
 - A disassembler (`miru disasm`) that prints the bytecode for a program
+- A migration tool (`miru migrate`) that says what version 2.0 changes about a
+  program, and renames the half of it a tool can decide
 - Errors with a line, a column, and an underline under the token at fault
 - Errors you can catch as values, carrying the call path they came through
 - Minimal dependencies: rustyline at runtime, nix or windows-sys for raw-mode
@@ -231,9 +233,10 @@ compiled to bytecode, and the bytecode runs on a stack virtual machine.
 | **Bytecode engine** | chunk.rs, globals.rs, compiler.rs, vm.rs | 4636 | Compiles the AST to bytecode, runs it on a stack VM, loads modules, and catches errors |
 | **Diagnostics** | suggest.rs | 220 | Chooses the name an error offers back when a program misspells one |
 | **Formatter** | formatter.rs | 854 | Reprints a program in canonical form (`miru fmt`) |
-| **CLI and REPL** | main.rs, repl.rs, keyboard.rs | 1305 | File runner, `fmt` and `disasm` commands, the REPL, and raw-mode key reading |
-| **Library** | lib.rs | 1190 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
-| **Total** | **19 files** | **16797** | Written from scratch in Rust |
+| **Migration** | migrate.rs | 606 | Renames what version 2.0 reserves, and reports what no tool should rewrite (`miru migrate`) |
+| **CLI and REPL** | main.rs, repl.rs, keyboard.rs | 1416 | File runner, `fmt`, `migrate` and `disasm` commands, the REPL, and raw-mode key reading |
+| **Library** | lib.rs | 1191 | Ties it together (`parse_program`, `run_source`, `disassemble_source`) |
+| **Total** | **20 files** | **17515** | Written from scratch in Rust |
 
 The playground is a separate crate: 775 lines of Rust binding the language to
 WebAssembly, and 1699 of hand-written HTML, CSS, and JavaScript. It is counted
