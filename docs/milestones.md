@@ -422,6 +422,54 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 1.12: the last version 1
+
+Shipped. It adds nothing to the language. It closes the two defects the 2.0
+audits turned up and builds the way across, in four parts.
+
+- **An import alias no longer overwrites a builtin for every file.**
+- **`min` and `max` compare two large integers exactly**, the way `<` and `sort`
+  already did.
+- **`miru migrate`**, which renames the sixteen words 2.0 reserves and reports
+  the two places where a working call changes meaning.
+- **The guarantee gains a section 7**: 1.x ends here, and there is no
+  maintenance branch.
+
+Five things worth carrying forward:
+
+- **An audit aimed at the next major found two defects for this one.** Both
+  were confirmed by running the shipped 1.11 binary rather than by reading the
+  source, and both were legal to fix in a 1.x because the specification already
+  said what should happen. Neither would have been found by looking for defects:
+  they turned up while asking what 2.0 would have to change.
+
+- **A fix that a type exists to prevent still has to use the type.** `Ordered`
+  was extracted so the two forms of `sort` could not come to disagree about how
+  values order, and its doc comment says so. `min` and `max` were left outside
+  it and duplicated the decision, so they came apart exactly as predicted, and
+  gave the smaller of two large integers. Extracting a decision is only half of
+  it; the other half is that every caller asks.
+
+- **Cargo can be wrong about what it built.** The first run of a new test failed
+  identically before and after the fix, and the reason was a binary from the
+  previous day that `cargo build` reported as up to date. Fifteen minutes went
+  into re-reading correct code. `cargo clean -p miruscriptx` is in AGENTS.md for
+  the opposite case, a test passing that should not; it is worth reaching for in
+  this one too, whenever a change appears to have no effect at all.
+
+- **A migration tool should not reformat.** Reprinting from the AST was the
+  obvious reuse, and it would have buried two renamed words in a diff touching
+  every line. Working from token spans keeps everything else exactly where the
+  author left it, so the change a person has to review is the change that was
+  made. A migration nobody can check is one they have to trust.
+
+- **Check a keyword list against the builtin names before reserving it.** Of the
+  seventeen words settled for 2.0, exactly one collided: `type` is a builtin
+  that this repository's own documentation calls in eleven places. Reserving it
+  would have deleted `type(x)` in exchange for a construct no issue has asked
+  for. The check took one shell loop and came after the list was agreed, which
+  is one step later than it should have.
+
 ## 1.11: a branch that gives a value
 
 Shipped. One addition and one documented inconsistency, in three parts. The

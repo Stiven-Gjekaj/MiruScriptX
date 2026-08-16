@@ -8,7 +8,13 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
-## Unreleased
+## 1.12.0 (2026-08-16)
+
+**The last version 1.** It adds nothing to the language, closes the two defects
+an audit aimed at version 2 turned up, and ships the way across. Every program
+that is correct on 1.0 is correct here, which is the whole of what the
+[stability guarantee](docs/stability.md) promised. Its new section 7 says where
+version 1 ends and what version 2 changes.
 
 ### Added
 

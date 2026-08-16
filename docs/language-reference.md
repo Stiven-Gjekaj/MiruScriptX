@@ -2459,7 +2459,7 @@ it takes the falling out of the picture so only the keys move anything. It does
 
 # Next steps
 
-You now know all of MiruScriptX 1.8. Here is where to go from here.
+You now know all of MiruScriptX 1.12. Here is where to go from here.
 
 ## Try it without installing anything
 
@@ -2519,5 +2519,41 @@ miru disasm hello.miru
 
 The [roadmap](../docs/milestones.md) lists what has shipped, milestone by
 milestone, and what is planned next.
+
+## Getting ready for version 2
+
+**1.12 is the last version 1.** Version 2 turns sixteen ordinary words into
+keywords, so a program that uses one as a name stops parsing:
+
+```
+async  await  case   const   default  defer  enum   finally
+is     loop   match  pub     struct   until  use    yield
+```
+
+A version 2 binary cannot read such a program to fix it, so the tool that fixes
+it ships here instead:
+
+```
+miru migrate hello.miru        // say what changes, and change nothing
+miru migrate -w hello.miru     // rename what it can, and report the rest
+```
+
+It renames those words wherever you used them, including inside an `f"..."`
+string, and it changes nothing else about the file: your spacing, your comments
+and your blank lines are exactly where you left them, so the only thing in the
+diff is the rename.
+
+**It will not rewrite a call whose meaning changes**, because deciding those
+needs to know what a value will be while the program runs. There are two, and
+it reports both with a line number:
+
+- `slice` with a bound that can be negative. Today a negative bound counts as
+  `0`, so `slice(a, -2, 3)` is the first three elements. In version 2 it counts
+  from the end.
+- `index_of` and `find`, which give `-1` today when they find nothing and will
+  give `nil`. A program that writes `if index_of(a, x) == -1` needs
+  `if index_of(a, x) == nil` instead.
+
+A program that uses none of those is told so and left alone.
 
 

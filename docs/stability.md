@@ -1,6 +1,6 @@
 # The MiruScriptX Stability Guarantee
 
-Version 1.11
+Version 1.12
 
 This document tells you what will not change while MiruScriptX has the version
 number 1. It is short on purpose. A promise that nobody can check is not a
@@ -127,6 +127,10 @@ what one does.
 
 These commands and options keep their behaviour: `run`, `-e` and its long form
 `--eval`, `fmt`, `fmt -w`, `disasm`, `repl`, `--version`, and `--help`.
+
+1.12 adds `migrate` and `migrate -w`, stable from 1.12 in the way section 2.1
+describes for syntax. It is the last release with a later 1.x to be stable for,
+and it says what version 2 changes about a program. Section 7 covers it.
 
 `0` and `1` keep their meanings. `0` means the program did all its work. `1`
 means an error stopped it.
@@ -316,3 +320,34 @@ includes:
 If the implementation and the specification disagree, one of the two has a
 defect. Tell the maintainer. Do not write a program that depends on the
 disagreement.
+
+---
+
+## 7. Where version 1 ends
+
+**1.12 is the last version 1.** There is no maintenance branch. A program that
+is correct on 1.0 is correct on 1.12, which is the whole of the promise this
+document makes, and 1.12 keeps it.
+
+Version 2 breaks it deliberately, and section 5 lists the kinds of change that
+require doing so. Two of them are why version 2 exists at all:
+
+- **Sixteen ordinary words become keywords.** A program that uses one as a name
+  stops parsing. Every future construct the language may want needs a word, and
+  reserving them one at a time means a major version for each.
+- **A negative index counts from the end.** `a[-1]` is the last element rather
+  than an error, and `slice` with a negative bound counts back rather than
+  clamping to `0`.
+
+**`miru migrate`, in 1.12, is the way across.** It has to live in a version 1
+because only a version 1 parser can read a program that calls a variable
+`match`. Run it before you upgrade, not after.
+
+It renames the sixteen words, and it reports rather than rewrites the two
+places where a working call changes meaning: `slice` with a bound that can be
+negative, and `index_of` or `find`, which return `-1` today and will return
+`nil`.
+
+That is the offer. This document promised that a program written for 1.0 keeps
+working for as long as the version starts with a 1, and it did. What it did not
+promise is that the 1 lasts forever.
