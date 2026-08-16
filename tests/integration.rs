@@ -269,6 +269,35 @@ fn assigning_to_a_builtin_name_cannot_reach_into_another_file() {
 }
 
 #[test]
+fn an_import_alias_that_is_a_builtin_name_cannot_reach_into_another_file() {
+    // The third of the three ways to introduce a name, and the one v1.0 missed
+    // when it fixed `let` and assignment. `resolve_imports` asked for the alias
+    // slot with `slot_for`, which falls through to the builtins, so binding the
+    // module wrote over the builtin's slot and every other file lost `print`.
+    //
+    // Section 7.6 of the specification: "A module that declares the name of a
+    // builtin changes that name for itself only."
+    let (out, err) = run_module_set(
+        "alias_builtin",
+        &[
+            (
+                "main.miru",
+                "import \"./lib.miru\" as lib\nimport \"./m.miru\" as print\nlib.greet(\"world\")\nlib.show(print.n)\n",
+            ),
+            (
+                "lib.miru",
+                "fn greet(name) {\n  print(\"hello \" + name)\n  return 1\n}\nfn show(v) {\n  print(v)\n  return 1\n}\n",
+            ),
+            ("m.miru", "let n = 7\n"),
+        ],
+    );
+    assert_eq!(err, "", "stderr was: {err}");
+    // The first line is lib keeping the builtin. The second is main keeping the
+    // module it asked for, which is the half a fix could break by overshooting.
+    assert_eq!(out, "hello world\n7\n");
+}
+
+#[test]
 fn a_missing_module_says_so_rather_than_failing_to_canonicalise() {
     let (_, err) = run_module_set("missing", &[("m.miru", "import \"./nope.miru\" as n\n")]);
     assert!(

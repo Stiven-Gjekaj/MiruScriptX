@@ -10,26 +10,27 @@ semantic versioning.
 
 ## Unreleased
 
-### Changed
-
-- **The playground reports a visit count.** Cloudflare Web Analytics, which
-  uses no cookie and builds no fingerprint, from a deferred script at the end
-  of the body.
-
-  **This is the page's first third-party request**, and the comment in
-  `index.html` that promised there were none has gone rather than been left to
-  be wrong. The font stays vendored, for the reason it always was.
-
-  **What Share promises is unchanged.** The program you write goes in the
-  fragment after the `#`, which a browser never sends to any server, including
-  this one. Nothing on the page reads what the beacon reports.
-
-  The token in the page source is a site token. It says which site is
-  reporting and grants nothing, which is why it belongs in the HTML.
-
-## Unreleased
-
 ### Fixed
+
+- **An `import` alias that was a builtin's name replaced that builtin for every
+  file in the program.** `import "./m.miru" as print` bound the module to the
+  builtin's own slot, and builtin slots are shared by every module, so a file
+  that never mentioned the alias lost `print`:
+
+  ```
+  import "./b.miru" as b
+  import "./m.miru" as print
+  b.shout("hello")
+  // miru: error (./b.miru, line 2, column 3): a map is not callable
+  //   in shout, called from line 3
+  ```
+
+  Section 7.6 of the [specification](docs/specification.md) already said what
+  should happen: "A module that declares the name of a builtin changes that name
+  for itself only." Version 1.0 made that true for `let` and for assignment and
+  missed the third way a name gets introduced. An alias now takes a slot of its
+  own, so the importing file sees its module and every other file still sees the
+  builtin.
 
 - **The playground's caret drifted out of its line.** The highlighted text and
   the textarea over it stepped different amounts per line, so the caret met the

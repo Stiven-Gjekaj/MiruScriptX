@@ -383,13 +383,22 @@ impl Vm {
                 ));
             };
             let value = self.load_module(spec, base, stmt.line, *column)?;
-            let slot = self.globals.slot_for(module, alias).ok_or_else(|| {
-                MiruError::with_column(
-                    stmt.line,
-                    *column,
-                    "too many global variables in one program",
-                )
-            })?;
+            // `slot_for_declaration`, not `slot_for`: an alias introduces this
+            // module's own name. `slot_for` falls through to the builtins, and
+            // a builtin's slot is shared by every module, so binding a module
+            // as `print` used to overwrite `print` everywhere. See section 7.6
+            // of the specification, and the note on `Globals::slot_for`
+            // recording v1.0 fixing the same thing for `let`.
+            let slot = self
+                .globals
+                .slot_for_declaration(module, alias)
+                .ok_or_else(|| {
+                    MiruError::with_column(
+                        stmt.line,
+                        *column,
+                        "too many global variables in one program",
+                    )
+                })?;
             self.globals.define(slot, value);
         }
         Ok(())
