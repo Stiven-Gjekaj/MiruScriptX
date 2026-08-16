@@ -202,7 +202,7 @@ fn apply(
 ) -> String {
     let mut out = chars;
     let mut order: Vec<&Occurrence> = occurrences.iter().collect();
-    order.sort_by(|a, b| b.start.cmp(&a.start));
+    order.sort_by_key(|occurrence| std::cmp::Reverse(occurrence.start));
     for occurrence in order {
         let Some(to) = replacements.get(&occurrence.word) else {
             continue;
