@@ -27,6 +27,26 @@ semantic versioning.
   The token in the page source is a site token. It says which site is
   reporting and grants nothing, which is why it belongs in the HTML.
 
+## Unreleased
+
+### Fixed
+
+- **The playground's caret drifted out of its line.** The highlighted text and
+  the textarea over it stepped different amounts per line, so the caret met the
+  text on line one and sat a pixel lower on each line after it. Far enough down
+  a file it straddled two lines, which is what "the cursor is bigger than the
+  line" looks like.
+
+  A browser's own stylesheet sets `code { font-family: monospace }`, and that
+  beats inheritance, so the one element holding the highlighted text rendered in
+  a different font from the textarea and the gutter. Measured in Chromium: the
+  gutter and the caret stepped 21.43px per line and the text stepped 22.43px, a
+  full line apart by line 22. All three reported the same computed
+  `line-height`, which is why reading the stylesheet did not show it.
+
+  `#highlight code` now inherits its font rather than being left to the browser,
+  and the three layers step together to the pixel.
+
 ## 1.11.0 (2026-08-09)
 
 One addition, and one documented inconsistency. `let x = if ..` was a parse

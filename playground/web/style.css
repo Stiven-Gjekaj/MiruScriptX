@@ -479,6 +479,29 @@ main {
   background: transparent;
 }
 
+/*
+ * The <code> inside it, which is where the highlighted text actually lives.
+ *
+ * **This inherits rather than being left alone, and the reason is a defect.**
+ * A browser's own stylesheet sets `code { font-family: monospace }`, and that
+ * beats inheritance, so this one element rendered in a different font from the
+ * textarea above it and the gutter beside it. All three reported the same
+ * computed `line-height`, and the highlighted text still stepped 19.84px per
+ * line where the gutter stepped 18.84px: the same leading around a taller
+ * font. The layers met on line one and were a pixel further apart on each line
+ * after it, so the caret sat lower in its line the further down the file it
+ * went, and eventually straddled two.
+ *
+ * Everything is inherited rather than restated so the three layers cannot be
+ * changed apart.
+ */
+#highlight code {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  tab-size: inherit;
+}
+
 #source {
   width: 100%;
   height: 100%;
