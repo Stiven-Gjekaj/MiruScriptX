@@ -1094,6 +1094,12 @@ fn abs(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resul
 
 /// Shared implementation of `min` and `max`: pick the argument that compares as
 /// `want` against the running best. Preserves the winning value's own type.
+///
+/// The comparison goes through [`Ordered`], which is the type whose whole
+/// purpose is that this decision exists once. It did not, and the two copies
+/// came apart: this function compared through `f64` even when every argument
+/// was an integer, so `max(9223372036854775806, 9223372036854775807)` gave the
+/// smaller of the two, while `<` and `sort` both ordered them correctly.
 fn extreme(name: &str, args: Vec<Value>, want: Ordering) -> Result<Value, String> {
     if args.is_empty() {
         return Err(format!("{name} expects at least one argument"));
@@ -1109,12 +1115,14 @@ fn extreme(name: &str, args: Vec<Value>, want: Ordering) -> Result<Value, String
             return Err(format!("{name} cannot compare NaN"));
         }
     }
+    // The loop above has already refused everything `Ordered::of` refuses, and
+    // in this order deliberately, so the two refusals a program can reach are
+    // worded for `min` and `max` rather than for `sort`. What survives to here
+    // is `Ints` or `Numbers`.
+    let ordered = Ordered::of(&args)?;
     let mut best = args[0].clone();
     for value in &args[1..] {
-        let ordering = number_as_f64(value)
-            .partial_cmp(&number_as_f64(&best))
-            .unwrap_or(Ordering::Equal);
-        if ordering == want {
+        if ordered.compare(value, &best) == want {
             best = value.clone();
         }
     }
@@ -2491,6 +2499,30 @@ mod tests {
     #[test]
     fn min_requires_arguments() {
         assert!(err("min()").contains("at least one"));
+    }
+
+    #[test]
+    fn min_and_max_compare_large_integers_exactly() {
+        // Both of these round to the same `f64`, so comparing through one made
+        // `max` answer with whichever argument came first. The three lines
+        // below have to agree: `sort` orders an all-int array with `i64::cmp`
+        // and so does `<`, and nothing should be able to tell a program that
+        // the largest of two numbers is the smaller one.
+        let big = "9223372036854775807";
+        let smaller = "9223372036854775806";
+        assert_eq!(
+            out(&format!("print(max({smaller}, {big}))")),
+            format!("{big}\n")
+        );
+        assert_eq!(
+            out(&format!("print(min({big}, {smaller}))")),
+            format!("{smaller}\n")
+        );
+        assert_eq!(out(&format!("print({smaller} < {big})")), "true\n");
+        assert_eq!(
+            out(&format!("print(sort([{big}, {smaller}]))")),
+            format!("[{smaller}, {big}]\n")
+        );
     }
 
     #[test]

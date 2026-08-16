@@ -32,6 +32,20 @@ semantic versioning.
   own, so the importing file sees its module and every other file still sees the
   builtin.
 
+- **`min` and `max` gave the wrong answer for two large integers.** Both
+  compared through a float, and two integers far enough apart to matter round to
+  the same float, so the first argument won:
+
+  ```
+  max(9223372036854775806, 9223372036854775807)   // 9223372036854775806
+  9223372036854775806 < 9223372036854775807       // true
+  ```
+
+  `<` and `sort` were both exact, so the language disagreed with itself about
+  which of two numbers is larger. `min` and `max` now compare the way `sort`
+  does, through the one type that decides how a set of values is ordered, which
+  is what that type was extracted for.
+
 - **The playground's caret drifted out of its line.** The highlighted text and
   the textarea over it stepped different amounts per line, so the caret met the
   text on line one and sat a pixel lower on each line after it. Far enough down
