@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 
 use crate::formatter::{Comment, Trivia};
-use crate::token::{FStringPart, Token, TokenKind};
+use crate::token::{reserved_as_a_name, reserved_word, FStringPart, Token, TokenKind};
 use crate::MiruError;
 
 /// The largest number of hexadecimal digits a `\u{...}` escape takes.
@@ -58,6 +58,10 @@ pub struct Lexer {
     token_start: usize,
     /// The last line that carried a token or comment, used to spot blank lines.
     last_content_line: usize,
+    /// When set, the words version 2 reserves lex as identifiers, the way
+    /// version 1 read them. Set only by
+    /// [`tokenize_1x_with_spans`](Lexer::tokenize_1x_with_spans).
+    reserved_words_are_names: bool,
 }
 
 impl Lexer {
@@ -76,6 +80,7 @@ impl Lexer {
             spans: Spans::default(),
             token_start: 0,
             last_content_line: 0,
+            reserved_words_are_names: false,
         }
     }
 
@@ -108,6 +113,27 @@ impl Lexer {
     pub fn tokenize_with_spans(source: &str) -> Result<(Vec<Token>, Spans), MiruError> {
         let mut lexer = Lexer::new(source);
         lexer.collect_spans = true;
+        let tokens = lexer.run()?;
+        Ok((tokens, lexer.spans))
+    }
+
+    /// Tokenize like [`tokenize_with_spans`](Lexer::tokenize_with_spans), but
+    /// read the words in [`RESERVED_WORDS`] as ordinary names, the way version
+    /// 1 did.
+    ///
+    /// **This exists so the off-ramp still works from inside version 2.** The
+    /// program that needs migrating is exactly the program this lexer refuses,
+    /// so a `miru migrate` built on the 2.0 lexer could not read a single file
+    /// it was written for. Without this, upgrading first and migrating second,
+    /// which is the order most people will do it in, would mean reinstalling
+    /// 1.12 to get out.
+    ///
+    /// Nothing else may use it. It is not a compatibility mode for running old
+    /// programs: it lexes them, and 2.0 still means what 2.0 means.
+    pub fn tokenize_1x_with_spans(source: &str) -> Result<(Vec<Token>, Spans), MiruError> {
+        let mut lexer = Lexer::new(source);
+        lexer.collect_spans = true;
+        lexer.reserved_words_are_names = true;
         let tokens = lexer.run()?;
         Ok((tokens, lexer.spans))
     }
@@ -456,7 +482,13 @@ impl Lexer {
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,
-            _ => TokenKind::Ident(text),
+            // The sixteen version 2 reserved, which have no grammar yet. They
+            // are refused as names rather than given a meaning, so that the
+            // release which gives one of them a meaning costs nothing.
+            other => match reserved_word(other) {
+                Some(word) if !self.reserved_words_are_names => TokenKind::Reserved(word),
+                _ => TokenKind::Ident(text),
+            },
         };
         Token::new(kind, line, column)
     }
@@ -528,6 +560,20 @@ impl Lexer {
                             name_column,
                             "an f-string needs a name between '{' and '}'",
                         ));
+                    }
+                    // A name here never becomes a token, so the check that
+                    // catches `let match = 1` cannot see it. Without this,
+                    // `f"{match}"` would compile to a reference to a global
+                    // nothing is allowed to declare, and fail at run time as an
+                    // undefined variable rather than here as what it is.
+                    if !self.reserved_words_are_names {
+                        if let Some(word) = reserved_word(&name) {
+                            return Err(MiruError::with_column(
+                                name_line,
+                                name_column,
+                                reserved_as_a_name(word),
+                            ));
+                        }
                     }
                     // A name only, deliberately. Any expression is what people
                     // will eventually want, and it puts the parser inside the

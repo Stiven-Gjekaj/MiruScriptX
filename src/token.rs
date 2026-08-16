@@ -29,6 +29,50 @@ pub enum FStringPart {
     },
 }
 
+/// The words version 2 reserves, which version 1 allowed as names.
+///
+/// **This is the whole keyword budget, spent once.** Sixteen words were already
+/// keywords, so this doubles the count in a single release, and that is the
+/// point: a language that reserves one word per major version needs a major
+/// version for every feature that wants a word. Each of these is wanted by a
+/// construct somebody has asked for, and reserving them together costs one
+/// break instead of sixteen.
+///
+/// **`type` is not here although it nearly was.** It is the only candidate that
+/// collided with a builtin, and reserving it would have deleted `type(x)` from
+/// the language in exchange for a type-alias construct no issue has asked for.
+/// Check a keyword list against the builtin names before agreeing to it.
+///
+/// Sorted, and no word here ends in an underscore, which is what lets
+/// [`crate::migrate`] rename `match` to `match_` and know the result is free.
+pub const RESERVED_WORDS: [&str; 16] = [
+    "async", "await", "case", "const", "default", "defer", "enum", "finally", "is", "loop",
+    "match", "pub", "struct", "until", "use", "yield",
+];
+
+/// The reserved word `name` spells, as a `'static` string, or `None`.
+///
+/// Returns the entry from [`RESERVED_WORDS`] rather than the caller's string so
+/// that a token can hold a `&'static str` and stay cheap to clone.
+pub fn reserved_word(name: &str) -> Option<&'static str> {
+    RESERVED_WORDS.iter().copied().find(|word| *word == name)
+}
+
+/// What to say when a program uses a reserved word where a name belongs.
+///
+/// One wording, because a program reaches it from eight positions (`let`, a
+/// `fn` name, a parameter, a loop variable, an `import` alias, a field, a read
+/// of the variable, and inside an f-string) through five call sites, and being
+/// told the same thing each time is what makes it read as one change rather
+/// than eight. It names the fix, because the fix is a command the reader
+/// already has.
+pub fn reserved_as_a_name(word: &str) -> String {
+    format!(
+        "'{word}' is a keyword and cannot be a name. \
+         'miru migrate -w' renames it, and reads a version 1 program to do it."
+    )
+}
+
 /// Every kind of token MiruScriptX recognizes.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -57,6 +101,15 @@ pub enum TokenKind {
     True,
     False,
     Nil,
+
+    /// One of the words in [`RESERVED_WORDS`]: a keyword with no grammar yet.
+    ///
+    /// **One variant for all sixteen, rather than sixteen variants.** None of
+    /// them means anything yet, so a variant each would be sixteen names the
+    /// parser never matches on. A release that gives one of these words a
+    /// grammar takes it out of the table and gives it a variant then, which is
+    /// where the variant earns its place.
+    Reserved(&'static str),
 
     // Operators.
     Plus,    // +
@@ -122,6 +175,7 @@ impl TokenKind {
             TokenKind::True => "'true'".to_string(),
             TokenKind::False => "'false'".to_string(),
             TokenKind::Nil => "'nil'".to_string(),
+            TokenKind::Reserved(word) => format!("'{word}'"),
             TokenKind::Plus => "'+'".to_string(),
             TokenKind::Minus => "'-'".to_string(),
             TokenKind::Star => "'*'".to_string(),
@@ -154,6 +208,85 @@ impl TokenKind {
             TokenKind::Dot => "'.'".to_string(),
             TokenKind::Newline => "end of line".to_string(),
             TokenKind::Eof => "end of input".to_string(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_reserved_word_is_also_a_builtin() {
+        // The check that came one step too late. `type` was agreed onto the
+        // reserved list and then found to be a builtin that the specification,
+        // the wiki and the examples call in eleven places: reserving it would
+        // have deleted `type(x)` in exchange for a construct nobody has asked
+        // for. Nothing stops that happening again except this.
+        let collisions: Vec<&str> = RESERVED_WORDS
+            .iter()
+            .copied()
+            .filter(|word| crate::builtins::BUILTIN_NAMES.contains(word))
+            .collect();
+        assert!(
+            collisions.is_empty(),
+            "reserving {collisions:?} would delete a builtin of the same name"
+        );
+    }
+
+    #[test]
+    fn no_reserved_word_ends_in_an_underscore() {
+        // What lets `miru migrate` rename `match` to `match_` and know the
+        // result is a name rather than another refusal. Its loop appends
+        // underscores until the result is free, and would not terminate if a
+        // reserved word could be reached that way.
+        for word in RESERVED_WORDS {
+            assert!(!word.ends_with('_'), "{word} ends in an underscore");
+        }
+    }
+
+    #[test]
+    fn the_reserved_words_are_sorted_and_distinct() {
+        let mut sorted = RESERVED_WORDS;
+        sorted.sort_unstable();
+        assert_eq!(sorted, RESERVED_WORDS, "the list is not in order");
+        let mut seen = std::collections::HashSet::new();
+        for word in RESERVED_WORDS {
+            assert!(seen.insert(word), "{word} appears twice");
+        }
+    }
+
+    #[test]
+    fn no_word_that_was_already_a_keyword_is_reserved_again() {
+        // A word here would be reserved twice and refused with the wrong
+        // message: the lexer matches the older arm first, so `let fn = 1` would
+        // keep saying "expected an identifier" while the list claimed to cover
+        // it.
+        for word in RESERVED_WORDS {
+            assert!(
+                reserved_word(word).is_some(),
+                "{word} is not in its own list"
+            );
+            let tokens = crate::lexer::Lexer::tokenize(&format!("{word}\n")).expect("lexes");
+            assert_eq!(
+                tokens[0].kind,
+                TokenKind::Reserved(word),
+                "{word} lexes as something else"
+            );
+        }
+    }
+
+    #[test]
+    fn the_version_1_lexer_reads_every_reserved_word_as_a_name() {
+        // The whole reason `miru migrate` still works from a version 2 binary.
+        for word in RESERVED_WORDS {
+            let (tokens, _) =
+                crate::lexer::Lexer::tokenize_1x_with_spans(&format!("{word}\n")).expect("lexes");
+            assert_eq!(
+                tokens[0].kind,
+                TokenKind::Ident(word.to_string()),
+                "{word} is not readable as a name by the version 1 lexer"
+            );
         }
     }
 }

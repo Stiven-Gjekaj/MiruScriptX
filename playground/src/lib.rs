@@ -445,7 +445,11 @@ fn class_of(kind: &TokenKind) -> Option<&'static str> {
         | TokenKind::Continue
         | TokenKind::Import
         | TokenKind::As
-        | TokenKind::Try => "keyword",
+        | TokenKind::Try
+        // The sixteen version 2 reserved. They have no grammar yet and are
+        // still keywords: a reader who types `match` needs to see immediately
+        // that it is no longer a name they can use.
+        | TokenKind::Reserved(_) => "keyword",
         TokenKind::True | TokenKind::False | TokenKind::Nil => "literal",
         TokenKind::Ident(name) if is_builtin(name) => "builtin",
         // Identifiers, operators, delimiters, newlines, and end of input are
@@ -710,6 +714,26 @@ mod tests {
             assert!(
                 keywords.iter().any(|found| found == word),
                 "'{word}' was not coloured as a keyword; found {keywords:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_reserved_word_is_coloured_as_a_keyword() {
+        // Read from the list rather than typed out, so a word added to it is
+        // covered here without anyone remembering to come back. A reserved word
+        // left as ordinary text would tell a reader it is still a name.
+        for word in miruscriptx::token::RESERVED_WORDS {
+            let spans = highlight(word);
+            assert!(
+                spans.iter().any(|span| span.class == "keyword"
+                    && span.start == 0
+                    && span.len == word.chars().count()),
+                "'{word}' was not coloured as a keyword; got {:?}",
+                spans
+                    .iter()
+                    .map(|span| (span.class.clone(), span.start, span.len))
+                    .collect::<Vec<_>>()
             );
         }
     }

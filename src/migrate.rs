@@ -20,23 +20,13 @@ use crate::lexer::Lexer;
 use crate::token::{FStringPart, TokenKind};
 use crate::MiruError;
 
-/// The words version 2.0 makes keywords, and that a program may still use as
-/// names today.
+/// The words version 2 reserves, which this tool renames.
 ///
-/// Sixteen words are keywords already, so this doubles the count in one
-/// release. That is deliberate: a language that reserves one word per major
-/// version spends a major on every feature that needs a word. The reason each
-/// of these is here is recorded in the 2.0 notes rather than in code, but the
-/// short version is that every one of them is wanted by a construct somebody
-/// has actually asked for.
-///
-/// **`type` is not on this list although it was.** It is the only candidate
-/// that collides with a builtin, and reserving it would delete `type(x)` from
-/// the language.
-pub const RESERVED_IN_2: [&str; 16] = [
-    "async", "await", "case", "const", "default", "defer", "enum", "finally", "is", "loop",
-    "match", "pub", "struct", "until", "use", "yield",
-];
+/// One list, in [`crate::token`], because the lexer refuses these and this tool
+/// renames them and they have to be the same sixteen. Two copies is how a word
+/// gets reserved that the off-ramp does not cover, and that is the one failure
+/// this tool cannot recover from: the file it would have fixed no longer lexes.
+pub use crate::token::RESERVED_WORDS as RESERVED_IN_2;
 
 /// One name the tool renamed, and every line it was written on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,7 +66,17 @@ impl Migration {
 /// not a program has nothing to migrate.
 pub fn migrate(source: &str) -> Result<Migration, MiruError> {
     let (renamed, renames) = rename_reserved(source)?;
-    let program = crate::parse_program(source)?;
+    // Parsed from the tokens this module already read, rather than through
+    // `crate::parse_program`, which lexes with the version 2 rules. The program
+    // being migrated is the one those rules refuse, and a note has to point at
+    // a line in the file the author has, so both passes read the original.
+    let (tokens, _) = Lexer::tokenize_1x_with_spans(source)?;
+    let program = crate::parser::Parser::parse(tokens).map_err(|errors| {
+        errors
+            .into_iter()
+            .next()
+            .expect("a failed parse has at least one error")
+    })?;
     Ok(Migration {
         source: renamed,
         renames,
@@ -100,7 +100,7 @@ struct Occurrence {
 /// change, so the change has to be reviewable: nothing moves except the names
 /// that had to.
 fn rename_reserved(source: &str) -> Result<(String, Vec<Rename>), MiruError> {
-    let (tokens, spans) = Lexer::tokenize_with_spans(source)?;
+    let (tokens, spans) = Lexer::tokenize_1x_with_spans(source)?;
     let chars: Vec<char> = source.chars().collect();
     let line_starts = line_starts(&chars);
 

@@ -187,6 +187,75 @@ fn syntax_errors_render_with_a_caret() {
 }
 
 #[test]
+fn a_reserved_word_is_refused_wherever_a_name_belongs() {
+    // Version 2 reserves sixteen words that version 1 allowed as names, and a
+    // program hits that from seven directions. All seven say the same thing and
+    // name the same fix, because being told "expected an identifier" in one
+    // place and "expected a field name" in another would hide that these are
+    // one change rather than seven.
+    // Built by concatenation rather than by `format!`, because half of these
+    // programs contain braces and escaping each one would make the expected
+    // text harder to read than the thing it is checking.
+    let refused = |line: usize, column: usize, word: &str| {
+        format!(
+            "error (line {line}, column {column}): '{word}' is a keyword and cannot be a \
+             name. 'miru migrate -w' renames it, and reads a version 1 program to do it."
+        )
+    };
+    check_rendered(&[
+        (
+            "let match = 1",
+            &(refused(1, 5, "match") + "\n    let match = 1\n        ^^^^^"),
+        ),
+        (
+            "print(const)",
+            &(refused(1, 7, "const") + "\n    print(const)\n          ^^^^^"),
+        ),
+        // Routed to the named-function path on purpose. Without that, this
+        // complains about a missing '(' and never mentions `loop`.
+        (
+            "fn loop() { return 1 }",
+            &(refused(1, 4, "loop") + "\n    fn loop() { return 1 }\n       ^^^^"),
+        ),
+        (
+            "fn f(defer) { return defer }",
+            &(refused(1, 6, "defer") + "\n    fn f(defer) { return defer }\n         ^^^^^"),
+        ),
+        (
+            "for is in [1] { print(is) }",
+            &(refused(1, 5, "is") + "\n    for is in [1] { print(is) }\n        ^^"),
+        ),
+        (
+            "import \"./m.miru\" as use",
+            &(refused(1, 22, "use")
+                + "\n    import \"./m.miru\" as use\n                         ^^^"),
+        ),
+        (
+            "let m = {}\nprint(m.enum)",
+            &(refused(2, 9, "enum") + "\n    print(m.enum)\n            ^^^^"),
+        ),
+        // The eighth is caught in the lexer rather than the parser, because a
+        // name inside an f-string never becomes a token. One caret, the same as
+        // every other error inside an f-string: there is no token to measure.
+        (
+            "print(f\"{yield}\")",
+            &(refused(1, 10, "yield") + "\n    print(f\"{yield}\")\n             ^"),
+        ),
+    ]);
+}
+
+#[test]
+fn a_reserved_word_with_an_underscore_is_still_a_name() {
+    // What `miru migrate` renames to. If this ever failed, the tool would be
+    // renaming one refusal into another.
+    check_all(&[
+        ("let match_ = 1\nmatch_", "ok 1"),
+        ("let loop_ = 2\nloop_ * 3", "ok 6"),
+        ("let is_ = \"y\"\nis_", "ok \"y\""),
+    ]);
+}
+
+#[test]
 fn errors_underline_the_token_they_blame() {
     // The cases above mostly point at operators, which are one character wide
     // and render identically before and after underlining. These are the shape

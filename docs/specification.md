@@ -110,12 +110,24 @@ letter, a digit, or `_`. Letters and digits include Unicode letters and digits.
 
 ### 2.5 Keywords
 
-These 16 words are keywords. A program cannot use a keyword as an identifier.
+These 32 words are keywords. A program cannot use a keyword as an identifier.
 
 ```
 fn      let     return  if      else    while   for     in
 break   continue import  as      try     true    false   nil
+async   await   case    const   default defer   enum    finally
+is      loop    match   pub     struct  until   use     yield
 ```
+
+**The lower sixteen have no meaning yet.** They are reserved and nothing else:
+using one is an error, and no construct in this document uses them. They are
+listed here because a keyword that is not written down is a name a program can
+be surprised by. A later 2.x may give one of them a grammar, which is an
+addition rather than a change, because using one is an error today.
+
+Version 1 allowed all sixteen as ordinary names. `miru migrate -w` renames
+them, and reads a version 1 program in order to do it, so it still works from a
+version 2 binary.
 
 A keyword is also not permitted as a field name after `.`. Use the bracket form
 for a map key that is a keyword.

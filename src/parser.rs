@@ -329,7 +329,17 @@ impl Parser {
             TokenKind::For => self.for_statement(line),
             TokenKind::Break => self.break_statement(line),
             TokenKind::Continue => self.continue_statement(line),
-            TokenKind::Fn if matches!(self.peek_at_kind(1), Some(TokenKind::Ident(_))) => {
+            // `Reserved` routes here too, although it is not a name. Without
+            // it, `fn loop() { .. }` looks like an anonymous function and
+            // complains about a missing '(' rather than about `loop`, which is
+            // the thing that actually changed. `function_statement` asks for an
+            // identifier and gives the message that says so.
+            TokenKind::Fn
+                if matches!(
+                    self.peek_at_kind(1),
+                    Some(TokenKind::Ident(_) | TokenKind::Reserved(_))
+                ) =>
+            {
                 self.function_statement(line)
             }
             _ => self.expr_or_assign_statement(line),
@@ -363,6 +373,13 @@ impl Parser {
         let name = self.peek().clone();
         let alias = match &name.kind {
             TokenKind::Ident(alias) => alias.clone(),
+            TokenKind::Reserved(word) => {
+                return Err(MiruError::with_column(
+                    name.line,
+                    name.column,
+                    crate::token::reserved_as_a_name(word),
+                ))
+            }
             other => {
                 return Err(MiruError::with_column(
                     name.line,
@@ -913,6 +930,16 @@ impl Parser {
                     let field = self.peek().clone();
                     let name = match &field.kind {
                         TokenKind::Ident(name) => name.clone(),
+                        // A module that named something `match` cannot be read
+                        // through `m.match` either, and it is the same fix:
+                        // migrate the module, which renames the field with it.
+                        TokenKind::Reserved(word) => {
+                            return Err(MiruError::with_column(
+                                field.line,
+                                field.column,
+                                crate::token::reserved_as_a_name(word),
+                            ))
+                        }
                         other => {
                             return Err(MiruError::with_column(
                                 field.line,
@@ -1010,6 +1037,14 @@ impl Parser {
                 self.advance();
                 Ok(Expr::new(ExprKind::Identifier(name), line, column))
             }
+            // Where a value was wanted and a reserved word arrived, the program
+            // is almost certainly reading a variable it used to be allowed to
+            // name. Say that rather than "expected an expression".
+            TokenKind::Reserved(word) => Err(MiruError::with_column(
+                line,
+                column,
+                crate::token::reserved_as_a_name(word),
+            )),
             TokenKind::LParen => {
                 self.advance();
                 let expr = self.expression()?;
@@ -1186,19 +1221,27 @@ impl Parser {
 
     fn expect_identifier(&mut self, context: &str) -> Result<String, MiruError> {
         let token = self.peek().clone();
-        if let TokenKind::Ident(name) = token.kind {
-            self.advance();
-            Ok(name)
-        } else {
-            Err(MiruError::with_column(
+        match token.kind {
+            TokenKind::Ident(name) => {
+                self.advance();
+                Ok(name)
+            }
+            // A reserved word in a name's place is not "the wrong token", it is
+            // a name that used to be legal, so it gets told what happened to it
+            // rather than what was expected instead.
+            TokenKind::Reserved(word) => Err(MiruError::with_column(
+                token.line,
+                token.column,
+                crate::token::reserved_as_a_name(word),
+            )),
+            other => Err(MiruError::with_column(
                 token.line,
                 token.column,
                 format!(
-                    "expected an identifier {} but found {}",
-                    context,
-                    token.kind.describe()
+                    "expected an identifier {context} but found {}",
+                    other.describe()
                 ),
-            ))
+            )),
         }
     }
 }
