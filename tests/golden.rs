@@ -938,6 +938,98 @@ fn one_loop_variable_over_a_map_is_refused_and_names_the_fix() {
 }
 
 #[test]
+fn match_branches_on_a_value() {
+    // Every case here puts the `match` where a value goes. A bare `match` at
+    // the top level is a *statement*, whose value is nil, which is the whole
+    // point of there being two forms and the same thing `if` does.
+    check_all(&[
+        ("let v = match 2 {\n  1 { \"one\" }\n  2 { \"two\" }\n}\nv", "ok \"two\""),
+        // Several cases share an arm, which is what the quit checks in the
+        // games want: one decision written three times today.
+        (
+            "let v = match \"escape\" {\n  \"q\", \"ctrl+c\", \"escape\" { \"quit\" }\n  else { \"go on\" }\n}\nv",
+            "ok \"quit\"",
+        ),
+        // A guard, without which none of the chains #48 pointed at can be
+        // written as a match at all.
+        (
+            "let ok = false\nlet v = match 5 {\n  5 if ok { \"guarded\" }\n  5 { \"fell through\" }\n}\nv",
+            "ok \"fell through\"",
+        ),
+        (
+            "let ok = true\nlet v = match 5 {\n  5 if ok { \"guarded\" }\n  5 { \"fell through\" }\n}\nv",
+            "ok \"guarded\"",
+        ),
+        ("let v = match 9 {\n  1 { \"a\" }\n  else { \"b\" }\n}\nv", "ok \"b\""),
+        // Cases are compared with `==`, so the rules of section 5.4 apply and
+        // nothing new decides what equal means.
+        (
+            "let v = match [1, 2] {\n  [1, 2] { \"same shape\" }\n  else { \"no\" }\n}\nv",
+            "ok \"same shape\"",
+        ),
+        (
+            "let v = match 1 {\n  1.0 { \"float\" }\n  else { \"no\" }\n}\nv",
+            "ok \"float\"",
+        ),
+        // **No arm and no else refuses.** Falling through silently would let a
+        // forgotten case look like a working program, which is what `match` was
+        // filed to prevent rather than to introduce.
+        (
+            "let v = match 9 {\n  1 { \"a\" }\n}\nv",
+            "err no arm of this match takes 9 @ 1:9",
+        ),
+        (
+            "match 9 {\n  1 { print(1) }\n}",
+            "err no arm of this match takes 9 @ 1:1",
+        ),
+        // The statement form, which is the one the games need because their
+        // arms assign rather than produce.
+        (
+            "let x = 5\nmatch \"left\" {\n  \"left\" { x = x - 1 }\n  \"right\" { x = x + 1 }\n  else { }\n}\nx",
+            "ok 4",
+        ),
+        // A `match` is not a loop, so `break` inside one leaves the loop around
+        // it. There is no `break` for a match and none is needed: no arm falls
+        // through to the next.
+        (
+            "let seen = []\nfor i in [1, 2, 3] {\n  match i {\n    2 { break }\n    else { push(seen, i) }\n  }\n}\nseen",
+            "ok [1]",
+        ),
+        // The subject is evaluated once. If it were evaluated per case this
+        // would count up and never match.
+        (
+            "let n = 0\nfn bump() {\n  n = n + 1\n  return 3\n}\nlet v = match bump() {\n  1 { 0 }\n  2 { 0 }\n  3 { n }\n}\nv",
+            "ok 1",
+        ),
+        // Arms are tried in order, so the first that matches wins and a later
+        // duplicate is simply unreachable. There is no duplicate check: a guard
+        // makes two arms with one case a reasonable thing to write.
+        (
+            "let v = match 1 {\n  1 { \"first\" }\n  1 { \"second\" }\n}\nv",
+            "ok \"first\"",
+        ),
+    ]);
+}
+
+#[test]
+fn a_match_refuses_the_shapes_that_cannot_be_read() {
+    check_rendered(&[
+        (
+            "match 1 { else { print(1) } 2 { print(2) } }",
+            "error (line 1, column 29): 'else' takes any value no other arm took, so nothing can follow it\n    match 1 { else { print(1) } 2 { print(2) } }\n                                ^",
+        ),
+        (
+            "match 1 { else if true { print(1) } }",
+            "error (line 1, column 16): 'else' is the arm that always matches, so it takes no 'if'\n    match 1 { else if true { print(1) } }\n                   ^^",
+        ),
+        (
+            "match 1 { }",
+            "error (line 1, column 11): a match needs at least one arm\n    match 1 { }\n              ^",
+        ),
+    ]);
+}
+
+#[test]
 fn a_parameter_can_have_a_default_or_collect_the_rest() {
     check_all(&[
         // A default fills a parameter the call left out.

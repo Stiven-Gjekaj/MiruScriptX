@@ -283,6 +283,11 @@ impl<'g> Compiler<'g> {
                 // Return unwinds the whole call frame, so locals need no cleanup.
                 self.chunk.write_op(OpCode::Return, stmt.line, 1);
             }
+            StmtKind::Match {
+                subject,
+                arms,
+                column,
+            } => self.match_statement(subject, arms, *column)?,
             StmtKind::Function { name, params, body } => {
                 self.function(Some(name), params, body, stmt.line, 1)?;
                 if self.scope_depth == 0 {
@@ -510,6 +515,134 @@ impl<'g> Compiler<'g> {
     ///
     /// With a `value` pattern the snapshot holds pairs instead, and each
     /// iteration binds both halves of the pair it is given.
+    /// Compile the arms of a `match`, in either form.
+    ///
+    /// **The subject is a hidden local rather than a value juggled on the
+    /// stack.** Every case has to compare against it, so it is read once per
+    /// comparison from a slot, the same trick the `for` loop uses for its
+    /// snapshot. `$match` is not a name a program can write.
+    ///
+    /// Each arm lays out as:
+    ///
+    /// ```text
+    ///   for each case:  GetLocal $match ; <case> ; Equal ; JumpIfTrue -> A ; Pop
+    ///   Jump -> B                       ; no case matched
+    /// A: Pop                            ; drop the true JumpIfTrue left
+    ///   [guard: <guard> ; JumpIfFalse -> C ; Pop]
+    ///   <body>
+    ///   Jump -> END
+    /// C: Pop                            ; drop the false, and fall into
+    /// B:                                ; the next arm
+    /// ```
+    ///
+    /// An `else` arm has no cases, so it has neither jump and simply runs. The
+    /// `body` closure emits an arm's body and says nothing else about it, which
+    /// is what lets the statement and value forms share all of this.
+    fn match_arms<B>(
+        &mut self,
+        subject: &Expr,
+        arms: &[crate::ast::MatchArm<B>],
+        column: usize,
+        mut body: impl FnMut(&mut Self, &B) -> Result<(), MiruError>,
+    ) -> Result<u16, MiruError> {
+        let line = subject.line;
+        self.begin_scope();
+        self.expression(subject)?;
+        let subject_slot = u16::try_from(self.locals.len())
+            .map_err(|_| MiruError::with_column(line, column, TOO_MANY_LOCALS))?;
+        self.declare_local("$match", line)?;
+
+        let mut ends = Vec::with_capacity(arms.len());
+        for arm in arms {
+            let (arm_line, arm_column) = arm
+                .cases
+                .first()
+                .map_or((line, column), |case| (case.line, case.column));
+            let mut to_body = Vec::with_capacity(arm.cases.len());
+            for case in &arm.cases {
+                self.local_access(
+                    OpCode::GetLocal,
+                    OpCode::GetLocalLong,
+                    subject_slot,
+                    case.line,
+                    case.column,
+                );
+                self.expression(case)?;
+                self.chunk.write_op(OpCode::Equal, case.line, case.column);
+                to_body.push(self.emit_jump(OpCode::JumpIfTrue, case.line, case.column));
+                self.chunk.write_op(OpCode::Pop, case.line, case.column);
+            }
+            let no_case = if arm.cases.is_empty() {
+                None
+            } else {
+                Some(self.emit_jump(OpCode::Jump, arm_line, arm_column))
+            };
+            for jump in to_body {
+                self.patch_jump(jump, arm_line, arm_column)?;
+            }
+            if !arm.cases.is_empty() {
+                self.chunk.write_op(OpCode::Pop, arm_line, arm_column);
+            }
+
+            let guard_failed = match &arm.guard {
+                None => None,
+                Some(guard) => {
+                    self.expression(guard)?;
+                    let jump = self.emit_jump(OpCode::JumpIfFalse, guard.line, guard.column);
+                    self.chunk.write_op(OpCode::Pop, guard.line, guard.column);
+                    Some((jump, guard.line, guard.column))
+                }
+            };
+
+            body(self, &arm.body)?;
+            ends.push(self.emit_jump(OpCode::Jump, arm_line, arm_column));
+
+            if let Some((jump, guard_line, guard_column)) = guard_failed {
+                self.patch_jump(jump, guard_line, guard_column)?;
+                self.chunk.write_op(OpCode::Pop, guard_line, guard_column);
+            }
+            if let Some(jump) = no_case {
+                self.patch_jump(jump, arm_line, arm_column)?;
+            }
+        }
+
+        // Reached only when no arm took the value, which cannot happen once an
+        // `else` arm exists, because an `else` arm always runs its body and
+        // jumps to the end.
+        if !arms.iter().any(|arm| arm.cases.is_empty()) {
+            self.local_access(
+                OpCode::GetLocal,
+                OpCode::GetLocalLong,
+                subject_slot,
+                line,
+                column,
+            );
+            self.chunk.write_op(OpCode::NoMatch, line, column);
+        }
+        for jump in ends {
+            self.patch_jump(jump, line, column)?;
+        }
+        Ok(subject_slot)
+    }
+
+    fn match_statement(
+        &mut self,
+        subject: &Expr,
+        arms: &[crate::ast::MatchArm<Vec<Stmt>>],
+        column: usize,
+    ) -> Result<(), MiruError> {
+        self.match_arms(subject, arms, column, |compiler, body| {
+            for stmt in body {
+                compiler.statement(stmt)?;
+            }
+            Ok(())
+        })?;
+        // The arms leave the stack as they found it, so the hidden local is
+        // still the top of it and the ordinary scope teardown pops it.
+        self.end_scope(subject.line, column);
+        Ok(())
+    }
+
     fn for_statement(
         &mut self,
         name: &Pattern,
@@ -810,6 +943,31 @@ impl<'g> Compiler<'g> {
                 self.chunk.write_op(OpCode::Pop, line, column);
                 self.expression(else_value)?;
                 self.patch_jump(end_jump, line, column)?;
+            }
+            // The value form. Each arm's expression is written into the hidden
+            // local's slot, which puts the match's value exactly where the
+            // subject was and leaves the stack one deeper than it started, as
+            // any expression must. `SetLocal` pops, so that is one instruction
+            // rather than a shuffle.
+            ExprKind::Match { subject, arms } => {
+                let slot = self.match_arms(subject, arms, expr.column, |compiler, body| {
+                    compiler.expression(body)
+                })?;
+                self.local_access(
+                    OpCode::SetLocal,
+                    OpCode::SetLocalLong,
+                    slot,
+                    expr.line,
+                    expr.column,
+                );
+                self.local_access(
+                    OpCode::GetLocal,
+                    OpCode::GetLocalLong,
+                    slot,
+                    expr.line,
+                    expr.column,
+                );
+                self.end_scope(expr.line, expr.column);
             }
             ExprKind::Try(inner) => {
                 // Both ways out leave exactly one value where this expression's

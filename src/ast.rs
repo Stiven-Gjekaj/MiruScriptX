@@ -100,6 +100,31 @@ impl Params {
     }
 }
 
+/// One arm of a `match`.
+///
+/// `B` is what the arm holds: `Vec<Stmt>` for a `match` used as a statement and
+/// `Expr` for one used as a value. That mirrors `if`, which has had the same
+/// two forms since 1.11 for the same reason: an arm that declares a local
+/// leaves it underneath the arm's value, and restricting the value form to one
+/// expression is what avoids needing an instruction to reach past it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm<B> {
+    /// The values this arm takes, compared with `==`. **Empty means `else`**,
+    /// the arm that always matches.
+    ///
+    /// Several cases share one arm because the code this was filed for wants
+    /// that: `pressed == "q" || pressed == "ctrl+c" || pressed == "escape"` is
+    /// one decision written three times.
+    pub cases: Vec<Expr>,
+    /// An extra test, run only when one of the cases matched.
+    ///
+    /// Not optional to the feature, whatever the issue first assumed. Every
+    /// chain #48 pointed at carries an extra predicate (`&& fits(..)`,
+    /// `&& facing_y == 0`), so a `match` on the value alone fixes none of them.
+    pub guard: Option<Expr>,
+    pub body: B,
+}
+
 /// The different kinds of statements in the language.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StmtKind {
@@ -166,6 +191,17 @@ pub enum StmtKind {
         name: String,
         params: Params,
         body: Vec<Stmt>,
+    },
+    /// `match subject { case { .. } else { .. } }`, used for its effects.
+    ///
+    /// The value form is [`ExprKind::Match`]. Which one is built follows which
+    /// position it was written in, exactly as it does for `if`.
+    Match {
+        subject: Expr,
+        arms: Vec<MatchArm<Vec<Stmt>>>,
+        /// Where the `match` keyword sits, so a value that no arm takes can
+        /// point a caret at the construct that refused it.
+        column: usize,
     },
 }
 
@@ -252,6 +288,16 @@ impl ExprKind {
                 else_value,
             } => condition.height.max(then_value.height).max(else_value.height),
             ExprKind::Try(inner) => inner.height,
+            ExprKind::Match { subject, arms } => arms
+                .iter()
+                .map(|arm| {
+                    tallest(&arm.cases)
+                        .max(arm.guard.as_ref().map_or(0, |g| g.height))
+                        .max(arm.body.height)
+                })
+                .max()
+                .unwrap_or(0)
+                .max(subject.height),
         };
         below + 1
     }
@@ -323,6 +369,17 @@ pub enum ExprKind {
         condition: Box<Expr>,
         then_value: Box<Expr>,
         else_value: Box<Expr>,
+    },
+    /// `match subject { case { value } else { value } }`, used where a value
+    /// is wanted. The value is the arm's.
+    ///
+    /// **An arm holds one expression, as an `if` arm does**, for the reason
+    /// recorded on [`ExprKind::If`]: a local declared in an arm would sit
+    /// underneath the arm's value with no instruction able to reach it. The
+    /// general form stays addable, because it is an error now.
+    Match {
+        subject: Box<Expr>,
+        arms: Vec<MatchArm<Expr>>,
     },
     /// `try expr`. Evaluates the expression and yields its value, or, if
     /// evaluating it fails at any depth, the error itself as a value.

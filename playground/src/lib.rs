@@ -446,6 +446,7 @@ fn class_of(kind: &TokenKind) -> Option<&'static str> {
         | TokenKind::Import
         | TokenKind::As
         | TokenKind::Try
+        | TokenKind::Match
         // The sixteen version 2 reserved. They have no grammar yet and are
         // still keywords: a reader who types `match` needs to see immediately
         // that it is no longer a name they can use.

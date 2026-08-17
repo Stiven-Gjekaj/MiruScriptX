@@ -226,12 +226,18 @@ pub enum OpCode {
     /// fail; assigning to one that is absent is how a field gets there in the
     /// first place, which is what `m["a"] = 1` has always done.
     SetField,
+    /// Raise "no arm of this match matched", popping the value nothing took.
+    ///
+    /// An opcode rather than a call to something, because the error has to name
+    /// the value and only the running machine has it. It is the last byte of a
+    /// `match` with no `else`; a `match` that has one never reaches it.
+    NoMatch,
 }
 
 /// Every opcode in declaration order, so a byte decodes by indexing rather than
 /// by comparison. The order must match the enum, which `opcodes_match_their_byte`
 /// checks.
-const OPCODES: [OpCode; 51] = [
+const OPCODES: [OpCode; 52] = [
     OpCode::Constant,
     OpCode::Nil,
     OpCode::True,
@@ -283,6 +289,7 @@ const OPCODES: [OpCode; 51] = [
     OpCode::BeginTry,
     OpCode::EndTry,
     OpCode::SetField,
+    OpCode::NoMatch,
 ];
 
 impl OpCode {
@@ -363,6 +370,7 @@ impl OpCode {
             OpCode::BeginTry => "BEGIN_TRY",
             OpCode::EndTry => "END_TRY",
             OpCode::SetField => "SET_FIELD",
+            OpCode::NoMatch => "NO_MATCH",
         }
     }
 }

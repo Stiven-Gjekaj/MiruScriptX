@@ -1072,6 +1072,20 @@ impl Vm {
                     OpCode::Pop => {
                         self.pop();
                     }
+                    // The last byte of a `match` with no `else`. A value has
+                    // reached the end of the arms, and refusing is the answer
+                    // the issue asked for: falling through silently would make
+                    // a forgotten case look like a working program, which is
+                    // the failure `match` was filed to prevent rather than to
+                    // introduce.
+                    OpCode::NoMatch => {
+                        let value = self.pop();
+                        return Err(runtime_error(
+                            chunk,
+                            op_ip,
+                            format!("no arm of this match takes {}", value.display()),
+                        ));
+                    }
                     // The two stack moves compound assignment is built from.
                     // Both are pure rearrangement: nothing is read, written, or
                     // dropped, so neither can fail.

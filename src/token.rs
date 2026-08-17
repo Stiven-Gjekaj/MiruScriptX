@@ -43,6 +43,13 @@ pub enum FStringPart {
 /// the language in exchange for a type-alias construct no issue has asked for.
 /// Check a keyword list against the builtin names before agreeing to it.
 ///
+/// **This is the rename list, not the token list.** A word here is one that
+/// version 1 allowed as a name and version 2 does not, which is exactly what
+/// `miru migrate` has to rewrite. Whether the lexer gives it a token of its own
+/// is a separate question: `match` has a grammar and a [`TokenKind::Match`],
+/// and the other fifteen share [`TokenKind::Reserved`] because they mean
+/// nothing yet. Both are still words a version 1 program may have used.
+///
 /// Sorted, and no word here ends in an underscore, which is what lets
 /// [`crate::migrate`] rename `match` to `match_` and know the result is free.
 pub const RESERVED_WORDS: [&str; 16] = [
@@ -101,6 +108,10 @@ pub enum TokenKind {
     True,
     False,
     Nil,
+    /// `match subject { .. }`. Reserved by version 2 along with the fifteen
+    /// below, and given a grammar in the same release, which is why it has a
+    /// variant of its own and they do not.
+    Match,
 
     /// One of the words in [`RESERVED_WORDS`]: a keyword with no grammar yet.
     ///
@@ -158,6 +169,21 @@ pub enum TokenKind {
 }
 
 impl TokenKind {
+    /// The reserved word this token spells, if it is one.
+    ///
+    /// **A word promoted out of [`TokenKind::Reserved`] keeps its message.**
+    /// `match` has a grammar and a token of its own, and it is still a word
+    /// version 1 allowed as a name, so `let match = 1` has to say what happened
+    /// to it rather than "expected an identifier". Every reserved word answers
+    /// here whether or not it has a variant.
+    pub fn reserved_name(&self) -> Option<&'static str> {
+        match self {
+            TokenKind::Reserved(word) => Some(word),
+            TokenKind::Match => Some("match"),
+            _ => None,
+        }
+    }
+
     /// A short, human friendly description used in parser error messages.
     pub fn describe(&self) -> String {
         match self {
@@ -181,6 +207,7 @@ impl TokenKind {
             TokenKind::True => "'true'".to_string(),
             TokenKind::False => "'false'".to_string(),
             TokenKind::Nil => "'nil'".to_string(),
+            TokenKind::Match => "'match'".to_string(),
             TokenKind::Reserved(word) => format!("'{word}'"),
             TokenKind::Plus => "'+'".to_string(),
             TokenKind::Minus => "'-'".to_string(),
@@ -264,21 +291,39 @@ mod tests {
     }
 
     #[test]
-    fn no_word_that_was_already_a_keyword_is_reserved_again() {
-        // A word here would be reserved twice and refused with the wrong
-        // message: the lexer matches the older arm first, so `let fn = 1` would
-        // keep saying "expected an identifier" while the list claimed to cover
-        // it.
+    fn no_reserved_word_lexes_as_a_name() {
+        // What the list is for. Whether a word gets a token of its own is a
+        // separate question, and `match` has one because it has a grammar; what
+        // matters here is that none of them arrives as an identifier, because
+        // an identifier is what the whole break was about.
         for word in RESERVED_WORDS {
             assert!(
                 reserved_word(word).is_some(),
                 "{word} is not in its own list"
             );
             let tokens = crate::lexer::Lexer::tokenize(&format!("{word}\n")).expect("lexes");
+            assert!(
+                !matches!(tokens[0].kind, TokenKind::Ident(_)),
+                "{word} still lexes as a name: {:?}",
+                tokens[0].kind
+            );
+        }
+    }
+
+    #[test]
+    fn a_reserved_word_with_a_grammar_gets_a_token_of_its_own() {
+        // The rule `TokenKind::Reserved` states: a release that gives one of
+        // these words a grammar takes it out of the shared variant then. If
+        // `match` were still `Reserved("match")`, the parser would be matching
+        // on a string to find a construct.
+        let tokens = crate::lexer::Lexer::tokenize("match\n").expect("lexes");
+        assert_eq!(tokens[0].kind, TokenKind::Match);
+        for word in RESERVED_WORDS.iter().filter(|w| **w != "match") {
+            let tokens = crate::lexer::Lexer::tokenize(&format!("{word}\n")).expect("lexes");
             assert_eq!(
                 tokens[0].kind,
                 TokenKind::Reserved(word),
-                "{word} lexes as something else"
+                "{word} has no grammar, so it should share the reserved variant"
             );
         }
     }

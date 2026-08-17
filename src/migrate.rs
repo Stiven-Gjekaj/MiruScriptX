@@ -287,6 +287,13 @@ fn bound_in_stmt(stmt: &Stmt, into: &mut HashSet<String>) {
         StmtKind::Import { alias, .. } => {
             into.insert(alias.clone());
         }
+        StmtKind::Match { arms, .. } => {
+            for arm in arms {
+                for stmt in &arm.body {
+                    bound_in_stmt(stmt, into);
+                }
+            }
+        }
         StmtKind::If {
             then_branch,
             else_branch,
@@ -350,6 +357,20 @@ fn notes_in_stmt(stmt: &Stmt, bound: &HashSet<String>, notes: &mut Vec<Note>) {
                 notes_in_stmt(stmt, bound, notes);
             }
         }
+        StmtKind::Match { subject, arms, .. } => {
+            notes_in_expr(subject, bound, notes);
+            for arm in arms {
+                for case in &arm.cases {
+                    notes_in_expr(case, bound, notes);
+                }
+                if let Some(guard) = &arm.guard {
+                    notes_in_expr(guard, bound, notes);
+                }
+                for stmt in &arm.body {
+                    notes_in_stmt(stmt, bound, notes);
+                }
+            }
+        }
         StmtKind::Import { .. } | StmtKind::Break | StmtKind::Continue => {}
     }
 }
@@ -408,6 +429,18 @@ fn notes_in_expr(expr: &Expr, bound: &HashSet<String>, notes: &mut Vec<Note>) {
         ExprKind::Function { body, .. } => {
             for stmt in body {
                 notes_in_stmt(stmt, bound, notes);
+            }
+        }
+        ExprKind::Match { subject, arms } => {
+            notes_in_expr(subject, bound, notes);
+            for arm in arms {
+                for case in &arm.cases {
+                    notes_in_expr(case, bound, notes);
+                }
+                if let Some(guard) = &arm.guard {
+                    notes_in_expr(guard, bound, notes);
+                }
+                notes_in_expr(&arm.body, bound, notes);
             }
         }
         ExprKind::FString(_)

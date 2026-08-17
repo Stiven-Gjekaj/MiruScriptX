@@ -112,6 +112,18 @@ impl Printer<'_> {
                 self.print_stmts(body, indent + 1);
                 self.push_line(indent, "}".to_string());
             }
+            StmtKind::Match { subject, arms, .. } => {
+                let header = format!("match {} {{", fmt_expr(subject));
+                let header = self.attach_trailing(stmt.line, header);
+                self.push_line(indent, header);
+                for arm in arms {
+                    let head = format!("{} {{", fmt_arm_head(&arm.cases, &arm.guard));
+                    self.push_line(indent + 1, head);
+                    self.print_stmts(&arm.body, indent + 2);
+                    self.push_line(indent + 1, "}".to_string());
+                }
+                self.push_line(indent, "}".to_string());
+            }
             StmtKind::Function { name, params, body } => {
                 let header = format!("fn {name}({}) {{", fmt_params(params));
                 let header = self.attach_trailing(stmt.line, header);
@@ -298,6 +310,19 @@ fn stmt_inline(stmt: &Stmt) -> String {
         StmtKind::Function { name, params, body } => {
             format!("fn {name}({}) {}", fmt_params(params), block_inline(body))
         }
+        StmtKind::Match { subject, arms, .. } => {
+            let arms: Vec<String> = arms
+                .iter()
+                .map(|arm| {
+                    format!(
+                        "{} {}",
+                        fmt_arm_head(&arm.cases, &arm.guard),
+                        block_inline(&arm.body)
+                    )
+                })
+                .collect();
+            format!("match {} {{ {} }}", fmt_expr(subject), arms.join(" "))
+        }
     }
 }
 
@@ -308,6 +333,22 @@ fn else_inline(else_branch: &Option<Vec<Stmt>>) -> String {
             Some(nested) => format!(" else {}", stmt_inline(nested)),
             None => format!(" else {}", block_inline(branch)),
         },
+    }
+}
+
+/// Render the head of a match arm: `1`, `1, 2`, `1 if p`, or `else`.
+///
+/// One function, because the statement form prints it above a block and the
+/// value form prints it inline, and they must agree about what an arm looks
+/// like.
+fn fmt_arm_head(cases: &[Expr], guard: &Option<Expr>) -> String {
+    if cases.is_empty() {
+        return "else".to_string();
+    }
+    let listed: Vec<String> = cases.iter().map(fmt_expr).collect();
+    match guard {
+        Some(guard) => format!("{} if {}", listed.join(", "), fmt_expr(guard)),
+        None => listed.join(", "),
     }
 }
 
@@ -512,6 +553,19 @@ fn fmt_expr(expr: &Expr) -> String {
         }
         ExprKind::Function { params, body } => {
             format!("fn({}) {}", fmt_params(params), block_inline(body))
+        }
+        ExprKind::Match { subject, arms } => {
+            let arms: Vec<String> = arms
+                .iter()
+                .map(|arm| {
+                    format!(
+                        "{} {{ {} }}",
+                        fmt_arm_head(&arm.cases, &arm.guard),
+                        fmt_expr(&arm.body)
+                    )
+                })
+                .collect();
+            format!("match {} {{ {} }}", fmt_expr(subject), arms.join(" "))
         }
     }
 }

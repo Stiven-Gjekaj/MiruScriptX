@@ -59,10 +59,16 @@ reserved="$(
     tr -d '"'
 )"
 
-keyword_count="$(printf '%s\n%s\n' "$keywords" "$reserved" | wc -l | tr -d ' ')"
+# Deduplicated, because a word can be in both lists. `match` is reserved by
+# version 2 *and* has a grammar, so it appears in the lexer's table and in
+# RESERVED_WORDS, and an alternation that named it twice would be a generator
+# leaking its own bookkeeping into the output.
+all_keywords="$(printf '%s\n%s\n' "$keywords" "$reserved" | sort -u)"
+
+keyword_count="$(printf '%s\n' "$all_keywords" | wc -l | tr -d ' ')"
 
 keyword_alternation="$(
-  printf '%s\n%s\n' "$keywords" "$reserved" |
+  printf '%s\n' "$all_keywords" |
     awk '{ print length($0), $0 }' |
     sort -rn -k1,1 -k2,2 |
     cut -d' ' -f2- |

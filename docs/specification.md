@@ -274,7 +274,7 @@ at the quotation mark.
 ```
 program   = { statement }
 statement = import | let | assign | compound | function | return
-          | if | while | for | break | continue | expression
+          | if | match | while | for | break | continue | expression
 ```
 
 A statement ends at a newline or a semicolon. Section 2.3 gives the rule.
@@ -298,6 +298,10 @@ param     = identifier [ "=" expression ]
 return    = "return" [ expression ]
 
 if        = "if" expression block [ "else" ( if | block ) ]
+
+match     = "match" expression "{" arm { arm } "}"
+arm       = ( cases [ "if" expression ] | "else" ) block
+cases     = expression { "," expression }
 
 while     = "while" expression block
 
@@ -741,6 +745,73 @@ trailing expression in a function body does not change this.
 fn f() { 1 }
 print(f())    // nil
 ```
+
+### 5.8.3 `match`
+
+A `match` chooses one arm by the value of one expression.
+
+```
+match pressed {
+  "left" if fits(x - 1)  { x = x - 1 }
+  "right" if fits(x + 1) { x = x + 1 }
+  "q", "ctrl+c", "escape" { running = false }
+  else { }
+}
+```
+
+**Like `if`, a `match` is a statement or an expression, and the position decides
+which.** A `match` that is an expression takes one expression per arm, and its
+value is that of the arm taken. A `match` that is a statement takes a block of
+statements per arm and gives no value.
+
+```
+let name = match code {
+  1 { "one" }
+  2, 3 { "a few" }
+  else { "many" }
+}
+```
+
+**The subject is evaluated one time**, before any arm. Each arm is then tried in
+the order written:
+
+1. Each case of the arm is evaluated in order and compared to the subject with
+   `==`. Section 5.4 gives the rule for equality; a case is an ordinary
+   expression and nothing here decides what equal means. Evaluation of the cases
+   of an arm stops at the first that is equal.
+2. If a case is equal, and the arm has a guard, the guard is evaluated. An arm
+   whose guard is not true is not taken, and the next arm is tried.
+3. The arm that is taken runs its body. No other arm runs.
+
+An arm with no cases is written `else`. It takes any value no other arm took.
+**`else` is last, there is at most one, and it takes no guard**, which is what
+makes a `match` with an `else` unable to fail.
+
+**There is no fallthrough.** An arm does not continue into the next.
+
+**A value that no arm takes is an error** in a `match` with no `else`:
+
+```
+no arm of this match takes 9
+```
+
+Falling through silently is the other possibility and is not what happens. An
+error is what a forgotten case should give.
+
+`break` and `continue` inside a `match` belong to the loop around it. A `match`
+is not a loop, and there is no `break` for one, because no arm falls through.
+
+Two arms can hold the same case. The first one taken wins, and the language does
+not refuse the second: two arms with one case that differ by guard is a
+reasonable thing to write, so a duplicate is not by itself a mistake.
+
+These are the errors:
+
+| Source | Error |
+| ------ | ----- |
+| `match 1 { }` | `a match needs at least one arm` |
+| `match 1 { else { } 2 { } }` | `'else' takes any value no other arm took, so nothing can follow it` |
+| `match 1 { else if p { } }` | `'else' is the arm that always matches, so it takes no 'if'` |
 
 ### 5.9 Loops
 

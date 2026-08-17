@@ -6,7 +6,7 @@
 //! indexing are handled by [`Parser::unary`] and [`Parser::postfix`].
 
 use crate::ast::{
-    BinaryOp, Expr, ExprKind, LogicalOp, Param, Params, Pattern, Stmt, StmtKind, UnaryOp,
+    BinaryOp, Expr, ExprKind, LogicalOp, MatchArm, Param, Params, Pattern, Stmt, StmtKind, UnaryOp,
 };
 use crate::token::{FStringPart, Token, TokenKind};
 use crate::MiruError;
@@ -329,6 +329,7 @@ impl Parser {
             TokenKind::If => self.if_statement(line),
             TokenKind::While => self.while_statement(line),
             TokenKind::For => self.for_statement(line),
+            TokenKind::Match => self.match_statement(line),
             TokenKind::Break => self.break_statement(line),
             TokenKind::Continue => self.continue_statement(line),
             // `Reserved` routes here too, although it is not a name. Without
@@ -337,10 +338,9 @@ impl Parser {
             // the thing that actually changed. `function_statement` asks for an
             // identifier and gives the message that says so.
             TokenKind::Fn
-                if matches!(
-                    self.peek_at_kind(1),
-                    Some(TokenKind::Ident(_) | TokenKind::Reserved(_))
-                ) =>
+                if self.peek_at_kind(1).is_some_and(|next| {
+                    matches!(next, TokenKind::Ident(_)) || next.reserved_name().is_some()
+                }) =>
             {
                 self.function_statement(line)
             }
@@ -375,11 +375,11 @@ impl Parser {
         let name = self.peek().clone();
         let alias = match &name.kind {
             TokenKind::Ident(alias) => alias.clone(),
-            TokenKind::Reserved(word) => {
+            other if other.reserved_name().is_some() => {
                 return Err(MiruError::with_column(
                     name.line,
                     name.column,
-                    crate::token::reserved_as_a_name(word),
+                    crate::token::reserved_as_a_name(other.reserved_name().expect("just checked")),
                 ))
             }
             other => {
@@ -482,7 +482,7 @@ impl Parser {
     fn if_expression_inner(&mut self, line: usize, column: usize) -> Result<Expr, MiruError> {
         self.advance(); // 'if'
         let condition = self.expression()?;
-        let then_value = self.arm_value("after the condition")?;
+        let then_value = self.arm_value("after the condition", "an arm of an 'if'")?;
         // `else` may sit on the closing brace's line or the next, as it may in
         // the statement form.
         self.skip_newlines();
@@ -502,7 +502,7 @@ impl Parser {
             let token = self.peek().clone();
             self.if_expression(token.line, token.column)?
         } else {
-            self.arm_value("after 'else'")?
+            self.arm_value("after 'else'", "an arm of an 'if'")?
         };
         self.checked(Expr::new(
             ExprKind::If {
@@ -516,8 +516,8 @@ impl Parser {
     }
 
     /// One brace-wrapped expression: the arm of an `if` used as a value.
-    fn arm_value(&mut self, context: &str) -> Result<Expr, MiruError> {
-        self.expect(TokenKind::LBrace, context)?;
+    fn arm_value(&mut self, opening: &str, what: &str) -> Result<Expr, MiruError> {
+        self.expect(TokenKind::LBrace, opening)?;
         self.skip_newlines();
         let value = self.expression()?;
         self.skip_newlines();
@@ -526,7 +526,7 @@ impl Parser {
             return Err(MiruError::with_column(
                 token.line,
                 token.column,
-                "an arm of an 'if' used as a value holds one expression".to_string(),
+                format!("{what} used as a value holds one expression"),
             ));
         }
         self.advance(); // '}'
@@ -700,6 +700,118 @@ impl Parser {
         }
         self.expect(TokenKind::RBrace, "to close a block")?;
         Ok(statements)
+    }
+
+    /// The arms of a `match`, from the opening brace to the closing one.
+    ///
+    /// **Shared by both forms**, with the caller saying how to read an arm's
+    /// body: a `match` in statement position takes blocks of statements, one in
+    /// expression position takes a single expression, and everything about the
+    /// cases, the guards and the `else` is identical either way.
+    ///
+    /// A case list ends where a `{` begins, and no lookahead is needed for
+    /// that: `{` is only a map literal where an expression is expected, and
+    /// after a complete case expression an expression is not expected. This is
+    /// the same reason `if m { .. }` does not read its block as a map.
+    fn match_arms<B>(
+        &mut self,
+        body: impl Fn(&mut Self) -> Result<B, MiruError>,
+    ) -> Result<Vec<MatchArm<B>>, MiruError> {
+        self.expect(TokenKind::LBrace, "to start the arms of a match")?;
+        self.skip_newlines();
+        let mut arms: Vec<MatchArm<B>> = Vec::new();
+        while !self.check(&TokenKind::RBrace) && !self.check(&TokenKind::Eof) {
+            let token = self.peek().clone();
+            if arms.last().is_some_and(|arm| arm.cases.is_empty()) {
+                return Err(MiruError::with_column(
+                    token.line,
+                    token.column,
+                    "'else' takes any value no other arm took, so nothing can follow it",
+                ));
+            }
+            let mut cases = Vec::new();
+            let mut guard = None;
+            if self.check(&TokenKind::Else) {
+                self.advance();
+                // No guard on `else`. It is the arm that always matches, and
+                // that is what makes "a match with an else cannot fail" true.
+                if self.check(&TokenKind::If) {
+                    return Err(MiruError::with_column(
+                        self.peek().line,
+                        self.peek().column,
+                        "'else' is the arm that always matches, so it takes no 'if'",
+                    ));
+                }
+            } else {
+                loop {
+                    cases.push(self.expression()?);
+                    if !self.check(&TokenKind::Comma) {
+                        break;
+                    }
+                    self.advance();
+                }
+                if self.check(&TokenKind::If) {
+                    self.advance();
+                    guard = Some(self.expression()?);
+                }
+            }
+            arms.push(MatchArm {
+                cases,
+                guard,
+                body: body(self)?,
+            });
+            self.skip_newlines();
+        }
+        let closing = self.peek().clone();
+        self.expect(TokenKind::RBrace, "to close the arms of a match")?;
+        if arms.is_empty() {
+            return Err(MiruError::with_column(
+                closing.line,
+                closing.column,
+                "a match needs at least one arm",
+            ));
+        }
+        Ok(arms)
+    }
+
+    /// `match subject { .. }` used for its effects, with blocks for arms.
+    fn match_statement(&mut self, line: usize) -> Result<Stmt, MiruError> {
+        let column = self.peek().column;
+        self.advance(); // 'match'
+        let subject = self.expression()?;
+        let arms = self.match_arms(|parser| parser.block())?;
+        Ok(Stmt::new(
+            StmtKind::Match {
+                subject,
+                arms,
+                column,
+            },
+            line,
+        ))
+    }
+
+    /// `match subject { .. }` used where a value is wanted, one expression per
+    /// arm.
+    fn match_expression(&mut self, line: usize, column: usize) -> Result<Expr, MiruError> {
+        self.enter(line, column)?;
+        let result = self.match_expression_inner(line, column);
+        self.leave();
+        result
+    }
+
+    fn match_expression_inner(&mut self, line: usize, column: usize) -> Result<Expr, MiruError> {
+        self.advance(); // 'match'
+        let subject = self.expression()?;
+        let arms =
+            self.match_arms(|parser| parser.arm_value("to start an arm", "an arm of a match"))?;
+        self.checked(Expr::new(
+            ExprKind::Match {
+                subject: Box::new(subject),
+                arms,
+            },
+            line,
+            column,
+        ))
     }
 
     /// `(a, b = 1, ...rest)`.
@@ -974,11 +1086,13 @@ impl Parser {
                         // A module that named something `match` cannot be read
                         // through `m.match` either, and it is the same fix:
                         // migrate the module, which renames the field with it.
-                        TokenKind::Reserved(word) => {
+                        other if other.reserved_name().is_some() => {
                             return Err(MiruError::with_column(
                                 field.line,
                                 field.column,
-                                crate::token::reserved_as_a_name(word),
+                                crate::token::reserved_as_a_name(
+                                    other.reserved_name().expect("just checked"),
+                                ),
                             ))
                         }
                         other => {
@@ -1092,6 +1206,10 @@ impl Parser {
                 self.expect(TokenKind::RParen, "to close a grouped expression")?;
                 Ok(expr)
             }
+            // `match` reached from expression position, the same way `if` is
+            // below: the statement form is parsed by `match_statement`, and
+            // which one is built follows which position it was written in.
+            TokenKind::Match => self.match_expression(line, column),
             // `if` reached from expression position. The statement form is
             // parsed by `if_statement` and is untouched; which one is built
             // depends only on where the word was found, so no program that
@@ -1270,10 +1388,10 @@ impl Parser {
             // A reserved word in a name's place is not "the wrong token", it is
             // a name that used to be legal, so it gets told what happened to it
             // rather than what was expected instead.
-            TokenKind::Reserved(word) => Err(MiruError::with_column(
+            ref other if other.reserved_name().is_some() => Err(MiruError::with_column(
                 token.line,
                 token.column,
-                crate::token::reserved_as_a_name(word),
+                crate::token::reserved_as_a_name(other.reserved_name().expect("just checked")),
             )),
             other => Err(MiruError::with_column(
                 token.line,

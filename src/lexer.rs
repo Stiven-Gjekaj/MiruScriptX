@@ -473,6 +473,13 @@ impl Lexer {
             }
         }
         let text: String = self.chars[start..self.pos].iter().collect();
+        // Version 1 read every word in `RESERVED_WORDS` as a name, and this
+        // mode reads them the same way so `miru migrate` can still open the
+        // files it exists to fix. It comes before the table rather than after
+        // it, because `match` is in the table with a token of its own.
+        if self.reserved_words_are_names && reserved_word(&text).is_some() {
+            return Token::new(TokenKind::Ident(text), line, column);
+        }
         let kind = match text.as_str() {
             "fn" => TokenKind::Fn,
             "let" => TokenKind::Let,
@@ -490,12 +497,13 @@ impl Lexer {
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,
-            // The sixteen version 2 reserved, which have no grammar yet. They
-            // are refused as names rather than given a meaning, so that the
-            // release which gives one of them a meaning costs nothing.
+            "match" => TokenKind::Match,
+            // The fifteen version 2 reserved without giving a grammar. They are
+            // refused as names rather than given a meaning, so that the release
+            // which gives one of them a meaning costs nothing.
             other => match reserved_word(other) {
-                Some(word) if !self.reserved_words_are_names => TokenKind::Reserved(word),
-                _ => TokenKind::Ident(text),
+                Some(word) => TokenKind::Reserved(word),
+                None => TokenKind::Ident(text),
             },
         };
         Token::new(kind, line, column)

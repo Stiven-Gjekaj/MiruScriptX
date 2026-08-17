@@ -12,6 +12,50 @@ semantic versioning.
 
 ### Added
 
+- **`match`, with guards and several cases per arm.** Closes #48. Branching on
+  one value meant naming it once per arm and hoping the arms stayed about the
+  same thing:
+
+  ```
+  match pressed {
+    "left" if fits(x - 1)  { x = x - 1 }
+    "right" if fits(x + 1) { x = x + 1 }
+    "q", "ctrl+c", "escape" { running = false }
+    else { }
+  }
+  ```
+
+  **The guards and the multi-case arms are why this waited.** The issue was
+  filed for three `else if` chains in the example games, and checking them
+  found that every one carries an extra predicate and the quit checks want
+  three values in one arm. A `match` on the value alone would have fixed none
+  of the code it was filed for.
+
+  Like `if`, it is a statement or an expression and the position decides which.
+  As an expression its value is the arm's, and each arm holds one expression:
+
+  ```
+  let name = match code {
+    1 { "one" }
+    2, 3 { "a few" }
+    else { "many" }
+  }
+  ```
+
+  Settled, and written into section 5.8.3 of the specification rather than left
+  to be discovered: the subject is evaluated once; cases are compared with `==`
+  and nothing new decides what equal means; arms are tried in order and there is
+  **no fallthrough**; `else` is last, singular, and takes no guard; **a value no
+  arm takes is an error** rather than a silent skip; and `break` inside a
+  `match` belongs to the loop around it, because a `match` is not a loop.
+
+  There is no duplicate-case check. Two arms with one case that differ by guard
+  is a reasonable thing to write, so a duplicate is not by itself a mistake.
+
+  A case is an expression, not a binding pattern. `case` stays reserved and
+  unused, so a later release can give the binding form its own word rather than
+  changing what `match v { [1, 2] { .. } }` already means.
+
 - **A parameter can have a default, and a function can take any number of
   arguments.** Closes #45 and #50, which are one complaint written twice: the
   language uses both shapes in its own builtins and offered neither to a
