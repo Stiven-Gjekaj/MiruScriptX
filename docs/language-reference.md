@@ -422,8 +422,16 @@ print(word[9])   // index 9 is out of range for a string of length 5
 
 That is deliberate. A missing map key gives `nil` already, so if this did too
 you could not tell "there is no such character" from "there is one, and it is
-nothing". A negative index is an error as well, so `word[-1]` does not mean the
-last character.
+nothing".
+
+**A negative index counts back from the end**, so `word[-1]` is the last
+character and `word[-len(word)]` is the first. Going further back than the
+string is long is an error, the same as going past the front:
+
+```
+print(word[-1])   // o
+print(word[-9])   // index -9 is out of range for a string of length 5
+```
 
 Reading a character is all you can do: `word[0] = "H"` is an error. Build a
 new string instead, with `+` or `slice`.
@@ -717,8 +725,19 @@ print(fruits[0])   // apple
 print(fruits[2])   // cherry
 ```
 
-Indexing is zero-based. Reading past the end, or with a negative index, is an
-error.
+Indexing is zero-based. Reading past the end is an error.
+
+**A negative index counts back from the end.** `-1` is the last element, `-2`
+the one before it, and `-len(a)` the first, which saves writing
+`a[len(a) - 1]` for the commonest of those:
+
+```
+print(fruits[-1])   // cherry
+print(fruits[-3])   // apple
+print(fruits[-4])   // index -4 is out of range for an array of length 3
+```
+
+`slice` and `insert` count the same way, and so does indexing a string.
 
 ## Changing an element
 
@@ -1300,7 +1319,8 @@ them apart.
 - `join(array, sep)` joins an array's displayed elements with `sep`.
 - `contains(seq, value)` reports whether a string holds a substring, or an array
   holds an element.
-- `find(s, sub)` returns the character index of the first `sub`, or -1.
+- `find(s, sub)` returns the character index of the first `sub`, or `nil` when
+  there is none.
 - `starts_with(s, prefix)` and `ends_with(s, suffix)` report whether a string
   begins or ends with another. An empty needle gives `true`, and one longer
   than the string gives `false`.
@@ -1313,6 +1333,7 @@ print(split("a,b,c", ","))          // ["a", "b", "c"]
 print(join(["a", "b", "c"], "-"))   // a-b-c
 print(contains("hello", "ell"))     // true
 print(find("hello", "l"))           // 2
+print(find("hello", "z"))           // nil
 print(starts_with("hello.miru", "hello"))   // true
 print(ends_with("hello.miru", ".miru"))     // true
 ```
@@ -1371,8 +1392,10 @@ print(chr(55296))   // '\u{D800}' is not a character
 ## Array functions
 
 - `pop(array)` removes and returns the last element.
-- `index_of(array, value)` returns the index of the first match, or -1.
-- `slice(seq, start, end)` returns the half-open slice of an array or string.
+- `index_of(array, value)` returns the index of the first match, or `nil` when
+  there is none.
+- `slice(seq, start, end)` returns the half-open slice of an array or string. A
+  negative bound counts from the end.
 - `sort(array)` returns a sorted copy (all numbers or all strings).
   `sort(array, key)` sorts by something else; see below.
 - `reverse(seq)` returns a reversed copy of an array or string.
@@ -1383,6 +1406,7 @@ print(sort(xs))                // [1, 2, 3]
 print(reverse(xs))             // [2, 1, 3]
 print(slice(xs, 0, 2))         // [3, 1]
 print(index_of([10, 20], 20))  // 1
+print(index_of([10, 20], 99))  // nil
 ```
 
 ### Sorting by something other than the value

@@ -8,6 +8,50 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
+## Unreleased
+
+### Changed
+
+- **A negative index counts from the end.** `-1` is the last element, `-2` the
+  one before it, and `-len` the first, everywhere the language takes a
+  position:
+
+  ```
+  let a = [1, 2, 3, 4]
+  a[-1]                 // 4
+  "hello"[-1]           // "o"
+  slice(a, -2, 4)       // [3, 4]
+  slice(a, 1, -1)       // [2, 3]
+  insert(a, -1, 9)      // [1, 2, 3, 9, 4]
+  ```
+
+  Version 1 refused `a[-1]` and `s[-1]`, and `slice` clamped a negative bound to
+  `0` without saying so. The refusal was kept deliberately, and 1.9's note in
+  the source said why: a refusal can become a meaning and a meaning cannot
+  become a refusal. This is the release that takes it.
+
+  `insert` accepts one position more than `[]` does, because there is one more
+  place to put an element than there are elements. `slice` still limits rather
+  than refusing, before and after counting back, because a slice names a stretch
+  and asking for more than there is means "as much as there is".
+
+- **`index_of` and `find` give `nil` rather than `-1`.** This is the same change
+  as the one above rather than a second one. `-1` was a safe way to say "not
+  here" only while no index could be negative:
+
+  ```
+  let i = index_of(items, missing)
+  items[i]        // version 1: an error. Without this change: the last element.
+  ```
+
+  A wrong answer would have replaced an error, which is the failure this
+  language refuses everywhere else, so shipping the two apart was never an
+  option. `nil` is not an index, so the mistake still stops.
+
+  A program that tested `== -1` must test `== nil`. `miru migrate` reports every
+  call site; it cannot rewrite them, because whether the result is compared or
+  used is not something a tool can decide.
+
 ## 1.12.0 (2026-08-16)
 
 **The last version 1.** It adds nothing to the language, closes the two defects

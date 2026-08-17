@@ -166,8 +166,32 @@ fn numeric_pair(left: &Value, right: &Value, verb: &str) -> Result<Num, String> 
     }
 }
 
-/// Validate an array index: it must be a non-negative integer within bounds.
-/// Returns the usize index, or a message naming the problem.
+/// Turn an index that may count from the end into a position in `0..len`.
+///
+/// A negative index counts back from the end: `-1` is the last element and
+/// `-len` is the first. `None` means it lands outside the sequence either way.
+///
+/// **This is where every negative index in the language is decided**, so that
+/// `a[-1]`, `s[-1]`, and `insert(a, -1, v)` cannot come to disagree about what
+/// `-1` means. `slice` is the one caller that does not use it, because `slice`
+/// clamps rather than refusing and has to keep doing so.
+///
+/// The addition is checked because `n` can be `i64::MIN`, and the comparison
+/// goes through `i64` rather than casting to `usize` because a cast would turn
+/// a negative that fell short into an enormous positive.
+pub fn resolve_index(n: i64, len: usize) -> Option<usize> {
+    let from_start = if n < 0 { n.checked_add(len as i64)? } else { n };
+    if from_start < 0 || from_start >= len as i64 {
+        return None;
+    }
+    Some(from_start as usize)
+}
+
+/// Validate an array index and give the position it names.
+///
+/// The message names the index **as the program wrote it**, so `a[-5]` on three
+/// elements says `-5` rather than the position it worked out to. The number in
+/// the message is then a number the reader can find on the line.
 pub fn array_index(index: &Value, len: usize) -> Result<usize, String> {
     if let Some(message) = unhandled(index) {
         return Err(message);
@@ -178,16 +202,8 @@ pub fn array_index(index: &Value, len: usize) -> Result<usize, String> {
             index.type_name()
         ));
     };
-    if *n < 0 {
-        return Err(format!("index {n} is out of range (negative)"));
-    }
-    let index = *n as usize;
-    if index >= len {
-        return Err(format!(
-            "index {index} is out of range for an array of length {len}"
-        ));
-    }
-    Ok(index)
+    resolve_index(*n, len)
+        .ok_or_else(|| format!("index {n} is out of range for an array of length {len}"))
 }
 
 /// Validate an index against a string and give the character it names.
@@ -201,11 +217,11 @@ pub fn array_index(index: &Value, len: usize) -> Result<usize, String> {
 /// Indexing an array and indexing a string are one mistake made two ways, and a
 /// program should not have to learn two vocabularies for it.
 ///
-/// **A negative index refuses rather than counting from the end.** `slice`
-/// clamps one silently, which is recorded as a wart version 1 cannot fix; this
-/// is the chance not to add a second place with the same problem. Counting from
-/// the end stays available to a later release, because a refusal can become a
-/// meaning and a meaning cannot become a refusal.
+/// **A negative index counts back from the end**, so `s[-1]` is the last
+/// character. Version 1 refused it, and 1.9's note here said the refusal was
+/// kept so that a later release could give it this meaning: a refusal can
+/// become a meaning and a meaning cannot become a refusal. This is that
+/// release.
 ///
 /// Finding the character costs a walk from the front, since a character index
 /// is not a byte offset. A loop over every character is therefore quadratic and
@@ -220,15 +236,17 @@ pub fn string_index(index: &Value, s: &str) -> Result<String, String> {
             index.type_name()
         ));
     };
-    if *n < 0 {
-        return Err(format!("index {n} is out of range (negative)"));
-    }
-    let wanted = *n as usize;
+    // The length is counted first rather than after a failure, because a
+    // negative index needs it to resolve at all.
+    let len = s.chars().count();
+    let wanted = resolve_index(*n, len)
+        .ok_or_else(|| format!("index {n} is out of range for a string of length {len}"))?;
     match s.chars().nth(wanted) {
         Some(found) => Ok(found.to_string()),
+        // Unreachable: `resolve_index` has already held `wanted` below `len`,
+        // and `len` is this string's own character count.
         None => Err(format!(
-            "index {wanted} is out of range for a string of length {}",
-            s.chars().count()
+            "index {n} is out of range for a string of length {len}"
         )),
     }
 }

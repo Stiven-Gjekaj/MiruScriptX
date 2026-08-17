@@ -1227,11 +1227,13 @@ fn arrays_maps_and_indexing() {
             "\"\"[0]",
             "err index 0 is out of range for a string of length 0 @ 1:4",
         ),
-        // Refused rather than counted from the end, so that meaning stays
-        // available to a later release.
+        // Counted from the end. Version 1 refused this and said so in order to
+        // keep the meaning available, which is the release that took it.
+        ("\"abc\"[-1]", "ok \"c\""),
+        ("\"abc\"[-3]", "ok \"a\""),
         (
-            "\"abc\"[-1]",
-            "err index -1 is out of range (negative) @ 1:7",
+            "\"abc\"[-4]",
+            "err index -4 is out of range for a string of length 3 @ 1:7",
         ),
         (
             "\"abc\"[\"x\"]",
@@ -1241,9 +1243,21 @@ fn arrays_maps_and_indexing() {
             "[1, 2, 3][5]",
             "err index 5 is out of range for an array of length 3 @ 1:11",
         ),
+        ("[1, 2, 3][-1]", "ok 3"),
+        ("[1, 2, 3][-3]", "ok 1"),
+        // The message names the index the program wrote, not the position it
+        // worked out to, so the number in it is a number on the line.
         (
-            "[1, 2, 3][-1]",
-            "err index -1 is out of range (negative) @ 1:11",
+            "[1, 2, 3][-4]",
+            "err index -4 is out of range for an array of length 3 @ 1:11",
+        ),
+        // `i64::MIN` has no positive counterpart, so counting from the end has
+        // to be a checked addition rather than a cast. Held in a name so the
+        // caret lands on the index rather than on the subtraction that built
+        // it, which is where a binary expression reports.
+        (
+            "let n = -9223372036854775807 - 1\n[1, 2, 3][n]",
+            "err index -9223372036854775808 is out of range for an array of length 3 @ 2:11",
         ),
         (
             "[1, 2][\"x\"]",
@@ -1299,7 +1313,10 @@ fn builtins_and_their_errors() {
         ("contains([1, 2], 2)", "ok true"),
         ("contains([1, 2], 9)", "ok false"),
         ("find(\"hello\", \"l\")", "ok 2"),
-        ("find(\"hello\", \"z\")", "ok -1"),
+        // `nil` rather than `-1`, and the two changes are one change: `-1` is
+        // the last character now, so a sentinel of `-1` fed back into `[]`
+        // would answer with it.
+        ("find(\"hello\", \"z\")", "ok nil"),
         ("starts_with(\"hello.miru\", \"hello\")", "ok true"),
         ("ends_with(\"hello.miru\", \".miru\")", "ok true"),
         ("starts_with(\"hello\", \"jelly\")", "ok false"),
@@ -1323,10 +1340,26 @@ fn builtins_and_their_errors() {
         ("sum([2.0])", "ok 2.0"),
         ("pop([1, 2, 3])", "ok 3"),
         ("index_of([10, 20], 20)", "ok 1"),
-        ("index_of([1], 9)", "ok -1"),
+        ("index_of([1], 9)", "ok nil"),
+        // The trap this release would have shipped with the sentinel left
+        // alone: an error, not the last element.
+        (
+            "let a = [1, 2, 3]\na[index_of(a, 99)]",
+            "err array index must be an int, not a nil @ 2:3",
+        ),
         ("slice([1,2,3,4], 1, 3)", "ok [2, 3]"),
         ("slice(\"hello\", 1, 4)", "ok \"ell\""),
         ("slice([1, 2], 0, 99)", "ok [1, 2]"),
+        // A negative bound counts from the end here too. It clamps rather than
+        // refusing, which `[]` does not: a slice names a stretch and asking for
+        // more than there is means "as much as you have".
+        ("slice([1,2,3,4], -2, 4)", "ok [3, 4]"),
+        ("slice([1,2,3,4], 1, -1)", "ok [2, 3]"),
+        ("slice(\"hello\", -3, -1)", "ok \"ll\""),
+        ("slice([1,2,3], -100, 2)", "ok [1, 2]"),
+        // Reversed after counting back, so it gives nothing rather than
+        // refusing, exactly as a reversed pair of positive bounds does.
+        ("slice([1,2,3,4], -1, 1)", "ok []"),
         ("sort([3, 1, 2])", "ok [1, 2, 3]"),
         ("sort([\"c\", \"a\"])", "ok [\"a\", \"c\"]"),
         ("reverse([1, 2, 3])", "ok [3, 2, 1]"),

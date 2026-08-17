@@ -184,7 +184,8 @@ them apart.
 - `join(array, sep)` joins an array's displayed elements with `sep`.
 - `contains(seq, value)` reports whether a string holds a substring, or an array
   holds an element.
-- `find(s, sub)` returns the character index of the first `sub`, or -1.
+- `find(s, sub)` returns the character index of the first `sub`, or `nil` when
+  there is none.
 - `starts_with(s, prefix)` and `ends_with(s, suffix)` report whether a string
   begins or ends with another. An empty needle gives `true`, and one longer
   than the string gives `false`.
@@ -197,6 +198,7 @@ print(split("a,b,c", ","))          // ["a", "b", "c"]
 print(join(["a", "b", "c"], "-"))   // a-b-c
 print(contains("hello", "ell"))     // true
 print(find("hello", "l"))           // 2
+print(find("hello", "z"))           // nil
 print(starts_with("hello.miru", "hello"))   // true
 print(ends_with("hello.miru", ".miru"))     // true
 ```
@@ -255,8 +257,10 @@ print(chr(55296))   // '\u{D800}' is not a character
 ## Array functions
 
 - `pop(array)` removes and returns the last element.
-- `index_of(array, value)` returns the index of the first match, or -1.
-- `slice(seq, start, end)` returns the half-open slice of an array or string.
+- `index_of(array, value)` returns the index of the first match, or `nil` when
+  there is none.
+- `slice(seq, start, end)` returns the half-open slice of an array or string. A
+  negative bound counts from the end.
 - `sort(array)` returns a sorted copy (all numbers or all strings).
   `sort(array, key)` sorts by something else; see below.
 - `reverse(seq)` returns a reversed copy of an array or string.
@@ -267,6 +271,7 @@ print(sort(xs))                // [1, 2, 3]
 print(reverse(xs))             // [2, 1, 3]
 print(slice(xs, 0, 2))         // [3, 1]
 print(index_of([10, 20], 20))  // 1
+print(index_of([10, 20], 99))  // nil
 ```
 
 ### Sorting by something other than the value

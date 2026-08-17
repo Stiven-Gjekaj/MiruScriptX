@@ -573,14 +573,16 @@ in characters like everything else. `"abc"[0]` is `"a"`, and
 `"a\u{1F600}b"[1]` is the emoji rather than a fragment of its four bytes.
 Indexing agrees with `split(s, "")` for every `i` both accept.
 
-The index must be an integer, from `0` up to one less than `len(s)`. Anything
-else is an error, in the words `slice` and array indexing already use:
+The index must be an integer. **A negative index counts back from the end**, so
+`-1` is the last character and `-len(s)` is the first. `"abc"[-1]` is `"c"`.
+Anything outside the string either way is an error, in the words `slice` and
+array indexing already use. The message names the index the program wrote:
 
 | Expression | Error |
 | ---------- | ----- |
 | `"abc"[3]` | `index 3 is out of range for a string of length 3` |
 | `""[0]` | `index 0 is out of range for a string of length 0` |
-| `"abc"[-1]` | `index -1 is out of range (negative)` |
+| `"abc"[-4]` | `index -4 is out of range for a string of length 3` |
 | `"abc"["x"]` | `string index must be an int, not a string` |
 
 An index past the end is an error rather than `nil`, because an absent map key
@@ -1051,10 +1053,10 @@ of one gives it back.
 | Builtin | Arguments | Result |
 | ------- | --------- | ------ |
 | `push(a, v)` | 2 | Adds `v` to the end of `a`. Changes `a`. Gives `a`. |
-| `insert(a, i, v)` | 3 | Puts `v` at position `i`. Changes `a`. Gives `a`. |
+| `insert(a, i, v)` | 3 | Puts `v` at position `i`, which may count from the end. Changes `a`. Gives `a`. |
 | `pop(a)` | 1 | Removes the last element and gives it. Refuses an empty array. |
-| `index_of(a, v)` | 2 | The index of the first equal element, or `-1`. |
-| `slice(v, s, e)` | 3 | A new array or string, from `s` to `e`. The language limits `s` and `e` to the length. |
+| `index_of(a, v)` | 2 | The index of the first equal element, or `nil`. |
+| `slice(v, s, e)` | 3 | A new array or string, from `s` to `e`. A negative bound counts from the end. The language limits `s` and `e` to the length. |
 | `sort(a)` or `sort(a, key)` | 1 or 2 | A new array, sorted. Section 8.8 gives the two-argument form. |
 | `reverse(v)` | 1 | A new array or string, reversed. |
 | `range(e)` or `range(s, e)` | 1 or 2 | An array of integers, from `s` (or 0) to `e`. `e` is not in the result. |
@@ -1069,6 +1071,41 @@ A negative `k` counts down, and `e` is still not in the result:
 A `k` whose sign disagrees with the bounds gives an empty array, not an error.
 `range(0, 10, -1)` is `[]`, in the same way `range(5, 0)` is `[]`.
 
+### 8.4.1 A negative index counts from the end
+
+**`-1` is the last element**, `-2` the one before it, and `-len` the first. This
+holds in every place the language takes a position:
+
+```
+let a = [1, 2, 3, 4]
+print(a[-1])              // 4
+print("hello"[-1])        // "o"
+print(slice(a, -2, 4))    // [3, 4]
+print(slice(a, 1, -1))    // [2, 3]
+insert(a, -1, 9)          // [1, 2, 3, 9, 4]
+```
+
+`s[i]` and `a[i]` refuse an index outside the sequence, counting either way. The
+message names the index the program wrote: `a[-5]` on three elements gives
+`index -5 is out of range for an array of length 3`.
+
+`insert` accepts one position more than `a[i]` does, because there is one more
+place to put an element than there are elements: `insert(a, len(a), v)` appends
+and is the same as `push(a, v)`. `insert(a, -1, v)` puts `v` where `a[-1]` is
+and moves the last element along.
+
+**`slice` limits rather than refusing**, both before and after counting from the
+end. An index names one element and getting it wrong is a mistake. A slice names
+a stretch, and asking for more than there is means "as much as there is":
+`slice(a, -100, 2)` is the first two elements, and `slice(a, 0, 999)` is all of
+them. A start after the end gives `[]`.
+
+**`index_of` and `find` give `nil` when they find nothing**, not `-1`. Version 1
+gave `-1`, which was safe while no index could be negative. It is not safe now:
+`a[index_of(a, missing)]` would give the last element rather than an error, and
+that is a wrong answer where the language promises a refusal. `nil` is not an
+index, so the mistake still stops.
+
 ### 8.5 Strings
 
 | Builtin | Arguments | Result |
@@ -1080,7 +1117,7 @@ A `k` whose sign disagrees with the bounds gives an empty array, not an error.
 | `split(s, sep)` | 2 | An array of strings. An empty `sep` gives each character. |
 | `join(a, sep)` | 2 | The elements of `a` as one string, with `sep` between. |
 | `contains(v, x)` | 2 | `true` if the string holds the substring, or the array holds an equal element. |
-| `find(s, x)` | 2 | The character index of the first `x`, or `-1`. |
+| `find(s, x)` | 2 | The character index of the first `x`, or `nil`. |
 | `starts_with(s, prefix)` | 2 strings | `true` if `s` begins with `prefix`. |
 | `ends_with(s, suffix)` | 2 strings | `true` if `s` ends with `suffix`. |
 | `ord(s)` | 1 string of one character | The code point of the character. |
@@ -1385,8 +1422,11 @@ The terminal is a capability. Section 8.2 gives the rule for the file system,
 8.9 for the clock, and 8.11 for the keyboard. The terminal is the fourth. A host
 can have any of these without the others.
 
-**`move_to` counts from zero.** `move_to(0, 0)` is the top left corner. This
-matches how the language indexes an array. A negative column or row is an error.
+**`move_to` counts from zero.** `move_to(0, 0)` is the top left corner, matching
+how the language indexes an array. A negative column or row is an error. This is
+the one place a negative number does not count from the far end: a screen has no
+end to count from, because its size is the terminal's and can change between one
+call and the next.
 
 **The cursor returns when the program ends.** This happens for all three ways a
 program can end: the last statement, an error, and `exit`. A program does not

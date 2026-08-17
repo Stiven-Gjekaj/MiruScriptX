@@ -274,17 +274,23 @@ fn insert(
     match &args[0] {
         Value::Array(items) => {
             let mut items = items.borrow_mut();
-            if index < 0 {
-                return Err(format!("index {index} is out of range (negative)"));
-            }
-            // Equal to the length is allowed and appends; past it is not.
-            if index as usize > items.len() {
+            let len = items.len();
+            // One past the end is allowed and appends, which is what makes
+            // `insert(a, len(a), v)` the same as `push`. A negative index counts
+            // back from the end, so `insert(a, -1, v)` puts the new element
+            // where `a[-1]` is and pushes the last one along. That is the
+            // reading that agrees with `[]`: both give `-1` the same element.
+            //
+            // `resolve_index` is not used here because its range stops at
+            // `len - 1`, and inserting has one more legal position than
+            // indexing does.
+            let at = if index < 0 { index + len as i64 } else { index };
+            if at < 0 || at > len as i64 {
                 return Err(format!(
-                    "index {index} is out of range for inserting into an array of length {}",
-                    items.len()
+                    "index {index} is out of range for inserting into an array of length {len}"
                 ));
             }
-            items.insert(index as usize, args[2].clone());
+            items.insert(at as usize, args[2].clone());
             drop(items);
             Ok(args[0].clone())
         }
@@ -842,13 +848,16 @@ fn contains(
 fn find(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Result<Value, String> {
     check_arity("find", &args, 2)?;
     match (&args[0], &args[1]) {
-        (Value::Str(s), Value::Str(sub)) => {
-            let index = match s.find(sub.as_str()) {
-                Some(byte_index) => s[..byte_index].chars().count() as i64,
-                None => -1,
-            };
-            Ok(Value::Int(index))
-        }
+        // `nil` for "not here", not `-1`. Version 1 answered `-1` because a
+        // negative index could not name an element, so no confusion was
+        // possible. Now that `-1` is the last element, `s[find(s, x)]` would
+        // give the last character of a string that does not contain `x`: a
+        // wrong answer where there used to be an error. The two changes had to
+        // ship together or this release would have shipped a trap.
+        (Value::Str(s), Value::Str(sub)) => Ok(match s.find(sub.as_str()) {
+            Some(byte_index) => Value::Int(s[..byte_index].chars().count() as i64),
+            None => Value::Nil,
+        }),
         _ => Err("find expects two string arguments".to_string()),
     }
 }
@@ -917,15 +926,17 @@ fn index_of(
         Value::Array(items) => {
             // A loop rather than `position`, because a comparison can now refuse
             // and a closure cannot carry that out of an iterator adaptor. The
-            // refusal has to travel: swallowing it would answer -1, which reads
-            // as "not present" and is the wrong answer rather than no answer.
+            // refusal has to travel: swallowing it would answer "not present",
+            // which is the wrong answer rather than no answer.
             let items = items.borrow();
             for (index, item) in items.iter().enumerate() {
                 if item.equals(&args[1])? {
                     return Ok(Value::Int(index as i64));
                 }
             }
-            Ok(Value::Int(-1))
+            // `nil`, not `-1`. See `find`: since this release `-1` is the last
+            // element, so `a[index_of(a, missing)]` would answer with it.
+            Ok(Value::Nil)
         }
         other => Err(format!(
             "index_of expects an array but got a {}",
@@ -934,11 +945,24 @@ fn index_of(
     }
 }
 
-/// Clamp a half-open `[start, end)` range to `0..=len`, keeping `end >= start`.
+/// Resolve a half-open `[start, end)` range, counting a negative bound from the
+/// end, then clamp it to `0..=len` keeping `end >= start`.
+///
+/// **`slice` clamps where `[]` refuses, and that difference is deliberate.**
+/// An index names one element and getting it wrong is a mistake worth stopping
+/// for. A slice names a stretch, and asking for more than there is usually
+/// means "as much as you have": `slice(a, 0, n)` should give what it can rather
+/// than refuse because the array was short. So this does not use
+/// [`crate::ops::resolve_index`], which refuses; it borrows only its rule for
+/// what a negative bound means, and the two must not drift apart.
+///
+/// A bound that is still negative after counting back clamps to 0, so
+/// `slice(a, -100, 2)` on three elements is the first two rather than an error.
 fn clamp_range(start: i64, end: i64, len: usize) -> (usize, usize) {
     let len = len as i64;
-    let lo = start.clamp(0, len) as usize;
-    let hi = end.clamp(0, len) as usize;
+    let from_end = |n: i64| if n < 0 { n.saturating_add(len) } else { n };
+    let lo = from_end(start).clamp(0, len) as usize;
+    let hi = from_end(end).clamp(0, len) as usize;
     (lo, hi.max(lo))
 }
 
@@ -2384,10 +2408,10 @@ mod tests {
     }
 
     #[test]
-    fn find_returns_char_index_or_negative_one() {
+    fn find_returns_a_char_index_or_nil() {
         assert_eq!(
             out("print(find(\"hello\", \"l\"), find(\"hello\", \"z\"))"),
-            "2 -1\n"
+            "2 nil\n"
         );
     }
 
@@ -2402,11 +2426,26 @@ mod tests {
     }
 
     #[test]
-    fn index_of_finds_first_match_or_negative_one() {
+    fn index_of_finds_the_first_match_or_gives_nil() {
         assert_eq!(
             out("print(index_of([10, 20, 30], 20), index_of([1], 9))"),
-            "1 -1\n"
+            "1 nil\n"
         );
+    }
+
+    /// The trap this release would have shipped if the sentinel had stayed.
+    ///
+    /// `-1` used to be a safe way to say "not here", because no index could be
+    /// negative. Now `-1` is the last element, so a `-1` from `index_of` fed
+    /// back into `[]` would answer with it: a wrong answer replacing an error,
+    /// which is the failure this project refuses everywhere else. `nil` is not
+    /// an index, so the mistake still stops.
+    #[test]
+    fn a_missing_element_fed_back_into_an_index_is_still_an_error() {
+        assert!(err("let a = [1, 2, 3]\nprint(a[index_of(a, 99)])")
+            .contains("array index must be an int, not a nil"));
+        assert!(err("let s = \"abc\"\nprint(s[find(s, \"z\")])")
+            .contains("string index must be an int, not a nil"));
     }
 
     #[test]
@@ -2457,9 +2496,31 @@ mod tests {
             err("insert([1], 99, 0)"),
             "index 99 is out of range for inserting into an array of length 1"
         );
+        // The far end of the same rule. `-1` is now a position rather than a
+        // refusal, so what falls off is one further back than it used to be.
         assert_eq!(
-            err("insert([1], -1, 0)"),
-            "index -1 is out of range (negative)"
+            err("insert([1, 2], -3, 0)"),
+            "index -3 is out of range for inserting into an array of length 2"
+        );
+    }
+
+    /// `insert` gives `-1` the element that `a[-1]` gives, and puts the new
+    /// value where it was.
+    ///
+    /// The alternative reading is "at the end", which would make
+    /// `insert(a, -1, v)` the same as `push`. That was rejected because it
+    /// gives `-1` two meanings in one language: the last element to `[]` and
+    /// past the last element to `insert`.
+    #[test]
+    fn insert_at_a_negative_index_counts_from_the_end() {
+        assert_eq!(
+            out("let a = [1, 2, 3]\ninsert(a, -1, 9)\nprint(a)"),
+            "[1, 2, 9, 3]\n"
+        );
+        // `-len` is the front, which is the far end of the range.
+        assert_eq!(
+            out("let a = [1, 2, 3]\ninsert(a, -3, 0)\nprint(a)"),
+            "[0, 1, 2, 3]\n"
         );
     }
 

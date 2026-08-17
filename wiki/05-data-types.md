@@ -107,8 +107,16 @@ print(word[9])   // index 9 is out of range for a string of length 5
 
 That is deliberate. A missing map key gives `nil` already, so if this did too
 you could not tell "there is no such character" from "there is one, and it is
-nothing". A negative index is an error as well, so `word[-1]` does not mean the
-last character.
+nothing".
+
+**A negative index counts back from the end**, so `word[-1]` is the last
+character and `word[-len(word)]` is the first. Going further back than the
+string is long is an error, the same as going past the front:
+
+```
+print(word[-1])   // o
+print(word[-9])   // index -9 is out of range for a string of length 5
+```
 
 Reading a character is all you can do: `word[0] = "H"` is an error. Build a
 new string instead, with `+` or `slice`.

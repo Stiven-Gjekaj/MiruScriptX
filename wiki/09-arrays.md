@@ -10,8 +10,19 @@ print(fruits[0])   // apple
 print(fruits[2])   // cherry
 ```
 
-Indexing is zero-based. Reading past the end, or with a negative index, is an
-error.
+Indexing is zero-based. Reading past the end is an error.
+
+**A negative index counts back from the end.** `-1` is the last element, `-2`
+the one before it, and `-len(a)` the first, which saves writing
+`a[len(a) - 1]` for the commonest of those:
+
+```
+print(fruits[-1])   // cherry
+print(fruits[-3])   // apple
+print(fruits[-4])   // index -4 is out of range for an array of length 3
+```
+
+`slice` and `insert` count the same way, and so does indexing a string.
 
 ## Changing an element
 
