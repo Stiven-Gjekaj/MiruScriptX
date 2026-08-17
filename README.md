@@ -78,6 +78,7 @@ for name in people {
   the position alongside the element
 - `let [x, y] = pair` to give an array's elements their own names, in a `let`
   or a loop
+- `match`, with a guard on an arm and several values per arm
 - `break` and `continue`
 - Modules: `import` a file and reach its names through a dot
 - `try`, which turns a failure into a value you can check
@@ -88,6 +89,8 @@ for name in people {
 - Arithmetic, comparison, and short-circuit logic, and `+=` for changing a
   variable in place
 - Strings you can index and interpolate: `s[0]`, and `f"{name} scored {score}"`
+- A negative index counts from the end: `a[-1]` is the last element
+- Parameters with defaults, and `...rest` for any number of arguments
 
 </td>
 <td width="50%" valign="top">
@@ -100,8 +103,8 @@ for name in people {
 - Higher-order builtins: `map`, `filter`, and `reduce`
 - File runner, a source formatter (`miru fmt`), and a REPL with history
 - A disassembler (`miru disasm`) that prints the bytecode for a program
-- A migration tool (`miru migrate`) that says what version 2.0 changes about a
-  program, and renames the half of it a tool can decide
+- A migration tool (`miru migrate`) that says what version 2 changed about a
+  version 1 program, and renames the half of it a tool can decide
 - Errors with a line, a column, and an underline under the token at fault
 - Errors you can catch as values, carrying the call path they came through
 - Minimal dependencies: rustyline at runtime, nix or windows-sys for raw-mode
@@ -290,10 +293,14 @@ scripts/     build_reference.sh regenerates the single-page reference
 </td>
 <td align="center" width="25%" valign="top">
 <h3>Depend</h3>
-<p>What will not<br/>change in 1.x</p>
+<p>What will not<br/>change in 2.x</p>
 <a href="docs/stability.md"><b>Stability</b></a>
 </td>
-<td align="center" width="25%" valign="top"></td>
+<td align="center" width="25%" valign="top">
+<h3>Upgrade</h3>
+<p>What version 2<br/>changed, and why</p>
+<a href="docs/migrating-to-2.md"><b>Migrating</b></a>
+</td>
 <td align="center" width="25%" valign="top"></td>
 </tr>
 </table>

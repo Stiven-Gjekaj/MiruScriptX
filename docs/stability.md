@@ -1,20 +1,26 @@
 # The MiruScriptX Stability Guarantee
 
-Version 1.12
+Version 2.0
 
 This document tells you what will not change while MiruScriptX has the version
-number 1. It is short on purpose. A promise that nobody can check is not a
+number 2. It is short on purpose. A promise that nobody can check is not a
 promise.
 
 The [specification](specification.md) says what the language does. This
 document says which of those statements you can depend on.
 
+**Version 1 kept this promise from 1.0 to 1.12 and then ended.** Section 7 says
+what version 2 changed and why, and
+[migrating to version 2](migrating-to-2.md) says what to do about it. A version
+1 program does not run here without a look; `miru migrate` says what to change,
+and reads a version 1 program in order to do it.
+
 ---
 
 ## 1. The rule
 
-A program that is correct with version 1.0 stays correct with every later
-version 1.x.
+A program that is correct with version 2.0 stays correct with every later
+version 2.x.
 
 "Correct" means the program does the same work and gives the same result. It
 does not mean each character of each message stays the same. Section 3 gives
@@ -26,52 +32,27 @@ the difference.
 
 ### 2.1 Syntax
 
-Every program that parses with 1.0 parses with each later 1.x, and has the same
+Every program that parses with 2.0 parses with each later 2.x, and has the same
 meaning. Sections 2 and 3 of the specification define this.
 
-A later 1.x can add syntax. From the release that adds it, the new syntax has
-the same promise as the rest: a later 1.x cannot remove it, and cannot change
+A later 2.x can add syntax. From the release that adds it, the new syntax has
+the same promise as the rest: a later 2.x cannot remove it, and cannot change
 what it means. This is the rule section 2.3 states for a builtin.
 
-1.3 is the first release to use this. It adds the `\u{...}` escape sequence in
-a string literal. No 1.0 program changes meaning, because `\u` was an error
-before.
+The syntax 2.0 adds is stable from 2.0 in that way: `match`, a default on a
+parameter, and a `...rest` parameter.
 
-1.9 uses it three times, and each is stable from 1.9 in the same way:
+**The one rule behind all of this: an error can be given a meaning later, and a
+meaning cannot be taken back.** Version 1 added syntax five times and each time
+the shape it took was an error before, so no program changed meaning. It is also
+why 1.9 spelled interpolation `f"..."` rather than `"${n}"`, which was already a
+working program that printed the braces, and why one loop variable over a map
+is still an error rather than a guess between the key and the value.
 
-- **Compound assignment**, `+=` and the four like it. `x += 1` was the error
-  `expected an expression but found '='`.
-- **Indexing a string**, `s[0]`. It was the error `cannot index a string`.
-- **The `f"..."` literal**. `f"` was a parse error.
-
-The third of those shows why the rule is worth keeping rather than working
-around. Interpolating a plain `"${n}"` would have been shorter to write and to
-explain, and it was rejected because `print("n is ${n}")` is a 1.0 program that
-prints the braces. Changing it needs version 2; a prefix needs nothing.
-
-1.10 uses it twice, and each is stable from 1.10 in the same way:
-
-- **A second loop variable**, `for key, value in map`. It was the error
-  `expected 'in' after the loop variable but found ','`.
-- **A pattern in a binding**, `let [x, y] = pair`, and the same in either
-  position of a `for`. `let [` was the error `expected an identifier after 'let'
-  but found '['`.
-
-1.11 uses it once. **`if` gives a value**, as in
-`let x = if c { 1 } else { 2 }`. It was the error `expected an expression but
-found 'if'`.
-
-1.11 also declined syntax for the same reason it added this. A `? :` operator
-is the other way to write the same choice, and both cannot be had: section 2.1
-does not permit removing the loser, so a language that shipped both would keep
-two ways to say one thing for as long as it has the version number 1. The
-record is on issue #49.
-
-What 1.10 did **not** add is part of the same rule. One loop variable over a map
-stays an error, because a key and a value are each a reasonable reading of
-`for x in m`: choosing either would be stable from 1.10 onward, and half of all
-readers would be permanently wrong. An error can be given a meaning later. A
-meaning cannot be taken back.
+**Fifteen words are reserved and have no meaning.** Section 2.5 of the
+specification lists them. Using one is an error, so a later 2.x can give one a
+grammar without breaking a program, which is the whole reason they were reserved
+together rather than one per major version.
 
 ### 2.2 Semantics
 
@@ -117,20 +98,22 @@ keeps a program's output free of control characters when it is redirected.
 rather than inventing eighty columns.
 
 **The key names `read_key` gives are stable.** Section 8.11 of the
-specification lists them. A later 1.x can add a name for a key that gives
+specification lists them. A later 2.x can add a name for a key that gives
 `"unknown"` today; it cannot change one that is already there.
 
-A later 1.x can add a builtin. A later 1.x cannot remove one, and cannot change
+A later 2.x can add a builtin. A later 2.x cannot remove one, and cannot change
 what one does.
 
 ### 2.4 The command line
 
 These commands and options keep their behaviour: `run`, `-e` and its long form
-`--eval`, `fmt`, `fmt -w`, `disasm`, `repl`, `--version`, and `--help`.
+`--eval`, `fmt`, `fmt -w`, `migrate`, `migrate -w`, `disasm`, `repl`,
+`--version`, and `--help`.
 
-1.12 adds `migrate` and `migrate -w`, stable from 1.12 in the way section 2.1
-describes for syntax. It is the last release with a later 1.x to be stable for,
-and it says what version 2 changes about a program. Section 7 covers it.
+**`migrate` reads a version 1 program**, which is the one thing in this binary
+that does. It exists so that upgrading first and migrating second, which is the
+order most people will do it in, does not mean reinstalling 1.12 to get out.
+Section 7 covers what it changes and what it will not.
 
 `0` and `1` keep their meanings. `0` means the program did all its work. `1`
 means an error stopped it.
@@ -181,11 +164,11 @@ module runs one time. A cycle is an error. A module gives the names it defines.
 
 ## 3. What is not stable
 
-Do not depend on these. A later 1.x can change any of them.
+Do not depend on these. A later 2.x can change any of them.
 
 ### 3.1 The words in a message
 
-The **shape** of an error report is stable. The **words** are not. A later 1.x
+The **shape** of an error report is stable. The **words** are not. A later 2.x
 can make a message clearer.
 
 **How many reports a program gets is not stable either.** Since 1.7 a program
@@ -200,7 +183,7 @@ program holds an error. Read the `message` field to show it to a person.
 
 ### 3.2 The numbers in the limits
 
-The limits in section 9 of the specification can change. A later 1.x can raise
+The limits in section 9 of the specification can change. A later 2.x can raise
 one.
 
 Two of them are recent, and neither has evidence behind the value: the nesting
@@ -210,7 +193,7 @@ uses for a value that contains itself. Do not depend on either.
 The two limits on the source text can also change, and are more likely to than
 the others: 1000 on how deeply a program nests, and 10000 on how long one
 expression is. Each is set by how much stack the tightest supported build has.
-A later 1.x can raise either. No 1.x lowers either.
+A later 2.x can raise either. No 2.x lowers either.
 
 Both were chosen to sit above what 1.0 did, and not only above what aborts.
 1.0 had no limit, so it ran until the stack ran out, and its release binary on
@@ -267,7 +250,7 @@ The functions the playground uses are not stable.
 
 ### 3.7 Speed
 
-Speed is not part of the promise. A later 1.x can be faster or slower.
+Speed is not part of the promise. A later 2.x can be faster or slower.
 
 ### 3.8 The numbers a seed produces
 
@@ -275,13 +258,13 @@ Speed is not part of the promise. A later 1.x can be faster or slower.
 gives an integer from `a` to `b`. Those ranges are stable, and so is the rule
 that two runs from the same seed give the same numbers.
 
-**Which numbers is not stable.** A later 1.x can change the generator, and then
+**Which numbers is not stable.** A later 2.x can change the generator, and then
 a seed gives a different sequence. A program that stores a seed and expects to
 reproduce a result later needs the same release of MiruScriptX, and not only the
 same seed.
 
 This is a decision and not an omission. A promise about the sequence would fix
-the algorithm for the whole of version 1, including any defect found in it.
+the algorithm for the whole of version 2, including any defect found in it.
 
 It is last in this section rather than beside 3.1, which it sits closest to in
 subject. The changelog refers to these subsections by number, so inserting one
@@ -290,12 +273,13 @@ thing.
 
 ---
 
-## 4. What a 1.x release can do
+## 4. What a 2.x release can do
 
-A later version 1.x can:
+A later version 2.x can:
 
 - Add a builtin.
-- Add syntax, if each 1.0 program keeps its meaning.
+- Add syntax, if each 2.0 program keeps its meaning. Giving one of the fifteen
+  reserved words a grammar is the readiest example.
 - Make an error message clearer.
 - Change a limit.
 - Change the bytecode or the virtual machine.
@@ -303,9 +287,9 @@ A later version 1.x can:
 
 ---
 
-## 5. What needs version 2
+## 5. What needs version 3
 
-A change that makes a correct 1.0 program incorrect needs version 2. This
+A change that makes a correct 2.0 program incorrect needs version 3. This
 includes:
 
 - Removal of a builtin, or a change to what one does.
@@ -323,31 +307,45 @@ disagreement.
 
 ---
 
-## 7. Where version 1 ends
+## 7. What version 2 changed, and why
 
-**1.12 is the last version 1.** There is no maintenance branch. A program that
-is correct on 1.0 is correct on 1.12, which is the whole of the promise this
-document makes, and 1.12 keeps it.
+Version 1 kept the promise in section 1 from 1.0 to 1.12, across thirteen
+releases. **1.12 was the last of them**, and there is no maintenance branch.
+[Migrating to version 2](migrating-to-2.md) is the practical guide; this section
+is the reason.
 
-Version 2 breaks it deliberately, and section 5 lists the kinds of change that
-require doing so. Two of them are why version 2 exists at all:
+**A major version was spent on two things that could not be had any other way.**
+Everything else in 2.0 rode along, because a break costs the same whether one
+thing changes or six, and spending it twice would have been the waste.
 
-- **Sixteen ordinary words become keywords.** A program that uses one as a name
-  stops parsing. Every future construct the language may want needs a word, and
-  reserving them one at a time means a major version for each.
+- **Sixteen ordinary words became keywords.** Every construct the language may
+  ever want needs a word, and version 1 had none free: all sixteen were legal
+  names. Reserving them one at a time would have meant a major version for each
+  feature that wanted one. Fifteen of them still mean nothing, which is the
+  budget doing its job: a later 2.x can give one a grammar for free.
 - **A negative index counts from the end.** `a[-1]` is the last element rather
-  than an error, and `slice` with a negative bound counts back rather than
-  clamping to `0`.
+  than an error. This had to reach `slice` and `insert` as well, or the language
+  would have gained a rule that held in one place only.
 
-**`miru migrate`, in 1.12, is the way across.** It has to live in a version 1
-because only a version 1 parser can read a program that calls a variable
-`match`. Run it before you upgrade, not after.
+Four changes followed from those rather than being chosen beside them:
 
-It renames the sixteen words, and it reports rather than rewrites the two
-places where a working call changes meaning: `slice` with a bound that can be
-negative, and `index_of` or `find`, which return `-1` today and will return
-`nil`.
+- **`index_of` and `find` give `nil` rather than `-1`.** Not optional. The
+  moment `-1` names the last element, `a[index_of(a, missing)]` answers with it:
+  a wrong answer where there used to be an error. Shipping the two apart would
+  have shipped a trap.
+- **`pow` refuses where the result is not a real number**, in `sqrt`'s words.
+- **`int`, `floor`, `ceil` and `round` refuse a float too large for an
+  integer**, rather than answering with the nearest one there is.
+- **`map`, `filter` and `reduce` check their function argument eagerly**, as
+  `sort` always did.
 
-That is the offer. This document promised that a program written for 1.0 keeps
-working for as long as the version starts with a 1, and it did. What it did not
-promise is that the 1 lasts forever.
+And three additions that needed no break at all, included because a release
+this size is the right place for them: `match`, a default on a parameter, and
+a `...rest` parameter. Each was an error in version 1, so section 2.1 would have
+permitted them in a 1.x; they are here because the parts they lean on are.
+
+**What version 2 did not change** is worth as much as what it did. Nothing in
+sections 2.2 to 2.7 moved: the evaluation order, the truth rules, the equality
+and order rules, the shape of an error, the termination promise, and the module
+rules are the same statements they were in 1.0. A major version is permission,
+not an instruction.

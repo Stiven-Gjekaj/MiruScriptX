@@ -422,6 +422,70 @@ them:
   nothing. The order that works is: merge to `main`, dispatch to prove all five
   platforms build and run without publishing, and only then push the tag.
 
+## 2.0: the language stops making exceptions for itself
+
+Shipped, in six parts. A major version is the project's single most expensive
+move, because the README's front page had been promising for thirteen releases
+that nothing would change, so the whole plan was built around one question:
+**what is bought for it**.
+
+The answer was two things that could not be had any other way, and everything
+else rode along, because a break costs the same whether one thing changes or
+six.
+
+- **Sixteen words became keywords**, fifteen of which still mean nothing. That
+  is the keyword budget spent once instead of one word per major version.
+- **A negative index counts from the end**, in `[]`, `slice` and `insert`.
+- **`index_of` and `find` give `nil`**, which was not a choice but a
+  consequence.
+- **`match`**, with guards and several cases per arm. Closes #48.
+- **Parameter defaults and `...rest`**. Closes #45 and #50.
+- **Four builtins refuse rather than inventing an answer.** Closes #52.
+
+Seven things worth carrying forward:
+
+- **Ask what the break buys before listing what it changes.** The list of
+  breaking changes was easy and nearly wrong: #52 was on it first and turned out
+  to be worth nothing on its own, which the issue says itself. The two items
+  that justified the version were the keyword budget and negative indexing, and
+  neither was the obvious candidate. A major version is bought, not filled.
+
+- **A sentinel and a new meaning for the same value cannot ship apart.**
+  `index_of` returning `-1` was safe for as long as no index could be negative.
+  The moment `-1` named the last element, `a[index_of(a, missing)]` answered
+  with it: a wrong answer replacing an error. Neither change is wrong alone and
+  the pair is a trap, which is the kind of thing only a written-out plan finds.
+
+- **Check a keyword list against the builtin names before agreeing to it.** Of
+  seventeen candidates, exactly one collided, and it was `type`, a builtin this
+  repository's own documentation calls in eleven places. The check took one
+  shell loop and came after the list was settled, which is one step later than
+  it should have. It is a test now.
+
+- **Read the issue's own examples before building what the issue asks for.**
+  Recorded in 1.11 and paid off here: #48's `match` needed guards and multi-case
+  arms, which were on nobody's question list until someone grepped the three
+  games it was filed for. That discovery is what moved it out of 1.11, and it is
+  why the version that shipped is useful.
+
+- **A migration tool should not reformat, and should run from the new binary.**
+  Reprinting the AST was the obvious reuse and would have buried two renamed
+  words in a diff touching every line. And the program that needs migrating is
+  exactly the program the new lexer refuses, so `migrate` reads a version 1
+  program on purpose: without that, upgrading first and migrating second, which
+  is the order most people use, means reinstalling the old release to get out.
+
+- **Two forms of one construct is a shape, not a special case.** `if` grew a
+  value form in 1.11 and `match` copied it exactly, down to one expression per
+  arm and the position deciding which form is built. Nothing new had to be
+  decided, and a reader learns one rule rather than two. Both times the first
+  golden cases were written as bare statements and read `ok nil`, which is the
+  same trap twice and the right behaviour both times.
+
+- **`cargo test` stops at the first failing target.** A stale README count in
+  `documentation` hid four real golden failures for a whole part.
+  `--no-fail-fast` from here.
+
 ## 1.12: the last version 1
 
 Shipped. It adds nothing to the language. It closes the two defects the 2.0

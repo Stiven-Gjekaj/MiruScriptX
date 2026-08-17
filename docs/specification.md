@@ -1,6 +1,6 @@
 # The MiruScriptX Language Specification
 
-Version 1.12
+Version 2.0
 
 This document defines the MiruScriptX language. It tells you what a program
 means. The [wiki](../wiki/01-introduction.md) teaches the language, and the
@@ -31,7 +31,7 @@ This document defines:
 ### 1.2 What this document does not define
 
 This document does not define the bytecode, the virtual machine, or the Rust
-API. These are parts of the implementation. They can change in a 1.x release.
+API. These are parts of the implementation. They can change in a 2.x release.
 The [architecture guide](architecture.md) describes them.
 
 ### 1.3 Language of this document
@@ -658,7 +658,7 @@ letters: an addition, a removal, a replacement, or a swap of two letters that
 touch. Upper case and lower case are the same for this comparison. The message
 gives one name, or no name.
 
-The number of changes that is permitted can change in a later 1.x release, and
+The number of changes that is permitted can change in a later 2.x release, and
 so can the words of the message. Section 3.1 of the
 [stability guarantee](stability.md) gives the rule.
 
@@ -1483,7 +1483,7 @@ that situation. `now` refuses because a wrong time is worse than none, and a
 random number that repeats is still a number in the correct range.
 
 **Which numbers follow from a given start is not defined by this document.** A
-later 1.x can change the generator. Section 3.8 of the
+later 2.x can change the generator. Section 3.8 of the
 [stability guarantee](stability.md) states this.
 
 ### 8.11 The keyboard
@@ -1675,4 +1675,4 @@ There are two exit codes. `0` means the program did all its work. `1` means an
 error stopped it, or the command line was not correct.
 
 > **Note.** `miru disasm` shows the bytecode. The bytecode is not part of this
-> specification, and it can change in a 1.x release.
+> specification, and it can change in a 2.x release.

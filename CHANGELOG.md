@@ -8,7 +8,20 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
-## Unreleased
+## 2.0.0 (2026-08-16)
+
+**The language stops making exceptions for itself.** Version 1 kept one promise
+from 1.0 to 1.12: a program correct on 1.0 was correct on every later 1.x. This
+release breaks it, deliberately and in a listed way.
+
+**A version 1 program does not run here without a look.** `miru migrate -w`
+renames what it can and reports what it will not touch, and it reads a version 1
+program on purpose, so it works from this binary and you can upgrade first.
+[Migrating to version 2](docs/migrating-to-2.md) is the guide; section 7 of the
+[stability guarantee](docs/stability.md) is the reason.
+
+The guarantee starts again here, unchanged in shape: a program correct on 2.0 is
+correct on every later 2.x.
 
 ### Added
 
