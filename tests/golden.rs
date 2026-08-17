@@ -938,6 +938,57 @@ fn one_loop_variable_over_a_map_is_refused_and_names_the_fix() {
 }
 
 #[test]
+fn a_builtin_refuses_rather_than_inventing_an_answer() {
+    check_all(&[
+        // `f64 as i64` saturates in Rust, so these four used to answer with the
+        // nearest integer there is: a wrong number where every sibling refuses.
+        // Section 5 says every integer operation tests for overflow, and `abs`,
+        // `sum`, `product` and `pow` all did.
+        ("int(float(\"1e300\"))", "err integer overflow in int @ 1:1"),
+        (
+            "int(float(\"-1e300\"))",
+            "err integer overflow in int @ 1:1",
+        ),
+        (
+            "floor(float(\"1e300\"))",
+            "err integer overflow in floor @ 1:1",
+        ),
+        (
+            "ceil(float(\"1e300\"))",
+            "err integer overflow in ceil @ 1:1",
+        ),
+        (
+            "round(float(\"1e300\"))",
+            "err integer overflow in round @ 1:1",
+        ),
+        // Off by one from an ordinary expression, which is how a program would
+        // meet this rather than by writing 1e300.
+        ("int(pow(2.0, 63.0))", "err integer overflow in int @ 1:1"),
+        // The boundary. 2^63 - 1 is not representable as a float, so the
+        // largest float below 2^63 is what a program can actually reach.
+        ("int(-pow(2.0, 63.0))", "ok -9223372036854775808"),
+        // Ordinary conversions are untouched, which is the half that keeps this
+        // from reading as "int is broken".
+        ("int(2.9)", "ok 2"),
+        ("floor(-2.5)", "ok -3"),
+        ("ceil(-2.5)", "ok -2"),
+        ("round(2.5)", "ok 3"),
+        // `pad_left` had no refusal path at all, so a wrong width asked for the
+        // process to die in a way the program could not see. Section 2.6 of the
+        // guarantee says that does not happen.
+        (
+            "pad_left(\"\", 20000000)",
+            "err pad_left would build a string longer than 10000000 characters @ 1:1",
+        ),
+        (
+            "pad_right(\"\", 20000000)",
+            "err pad_right would build a string longer than 10000000 characters @ 1:1",
+        ),
+        ("pad_left(\"x\", 5, \".\")", "ok \"....x\""),
+    ]);
+}
+
+#[test]
 fn match_branches_on_a_value() {
     // Every case here puts the `match` where a value goes. A bare `match` at
     // the top level is a *statement*, whose value is nil, which is the whole
@@ -1541,17 +1592,32 @@ fn builtins_and_their_errors() {
         ("pow(2, 10)", "ok 1024"),
         ("pow(2, -1)", "ok 0.5"),
         ("pow(2.0, 3)", "ok 8.0"),
-        // `pow` gives `nan` for a negative base with an exponent that is not a
-        // whole number, where `sqrt` refuses the same operation. The two do not
-        // agree, and section 2.3 of the guarantee does not let a 1.x correct
-        // it, so what section 5.2.1 now documents is pinned here instead.
-        //
-        // `nan != nan`, so these compare the printed form rather than the
-        // value. A case written as an equality would pass whatever `pow` gave.
-        ("str(pow(-8.0, 0.5))", "ok \"nan\""),
-        ("str(pow(-8, 0.5))", "ok \"nan\""),
-        ("str(pow(-8.0, 2.5))", "ok \"nan\""),
-        ("str(pow(-8.0, -0.5))", "ok \"nan\""),
+        // `pow` refuses a negative base with an exponent that is not a whole
+        // number, which is the same operation `sqrt` refuses and used to answer
+        // with `nan`. Issue #52 filed the disagreement; section 2.3 of the
+        // guarantee kept a 1.x from correcting it, and this is the release that
+        // could. A `nan` travels through everything that touches it and
+        // surfaces far from the line that made it.
+        (
+            "pow(-8.0, 0.5)",
+            "err pow of a negative number to a fractional power @ 1:1",
+        ),
+        (
+            "pow(-8, 0.5)",
+            "err pow of a negative number to a fractional power @ 1:1",
+        ),
+        (
+            "pow(-8.0, 2.5)",
+            "err pow of a negative number to a fractional power @ 1:1",
+        ),
+        (
+            "pow(-8.0, -0.5)",
+            "err pow of a negative number to a fractional power @ 1:1",
+        ),
+        // A `nan` that arrived in an argument is carried, not invented, so it
+        // is propagated the way `sum` and `product` propagate theirs. Compared
+        // as printed text, because `nan != nan`.
+        ("str(pow(float(\"nan\"), 2.0))", "ok \"nan\""),
         // A whole-number exponent is unaffected, which is the other half of the
         // rule and the half that keeps this from reading as "pow is broken".
         ("pow(-8.0, 2.0)", "ok 64.0"),
@@ -1636,7 +1702,17 @@ fn higher_order_builtins() {
         ("fn sum(xs) { return reduce(xs, fn(a, b) { return a + b }, 0) }\nsum([4, 5, 6])", "ok 15"),
         ("map([1, 0], fn(x) { return 1 / x })", "err division by zero @ 1:30"),
         ("map(5, fn(x) { return x })", "err map expects an array but got a int @ 1:1"),
-        ("map([1, 2], 3)", "err a int is not callable @ 1:1"),
+        // Checked before any element is reached, which is why the message
+        // names `map` rather than saying an int is not callable at the first
+        // call. `map([], 3)` used to answer `[]`, because an empty array makes
+        // no call and nothing ever looked.
+        ("map([1, 2], 3)", "err map expects a function but got a int @ 1:1"),
+        ("map([], 3)", "err map expects a function but got a int @ 1:1"),
+        ("filter([], nil)", "err filter expects a function but got a nil @ 1:1"),
+        (
+            "reduce([], nil, 7)",
+            "err reduce expects a function but got a nil @ 1:1",
+        ),
         ("map([1, 2])", "err map expects 2 arguments but got 1 @ 1:1"),
         ("filter(5, fn(x) { return true })", "err filter expects an array but got a int @ 1:1"),
         ("reduce([1, 2], fn(a, b) { return a })", "err reduce expects 3 arguments but got 2 @ 1:1"),

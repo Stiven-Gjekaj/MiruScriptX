@@ -87,6 +87,48 @@ semantic versioning.
 
 ### Changed
 
+- **Four builtins refuse rather than inventing an answer.** Each was a place the
+  language did something the rest of it would not, and none could be corrected
+  inside version 1. Closes #52, whose other half shipped with the negative index
+  below.
+
+  **`pow` refuses a negative base with a fractional exponent**, which is the
+  same question `sqrt` refuses and used to answer with `nan`:
+
+  ```
+  sqrt(-1)          // was an error
+  pow(-8.0, 0.5)    // was nan, and is now an error
+  ```
+
+  A `nan` travels through every operation that touches it and surfaces at a line
+  with no connection to the one that made it, which is what the refusal exists
+  to prevent. A `nan` that arrived in an argument is still carried, because
+  carrying one a program already has is not inventing one.
+
+  **`int`, `floor`, `ceil` and `round` refuse a float too large for an
+  integer.** All four cast without checking, and that cast saturates, so
+  `int(float("1e300"))` answered `9223372036854775807` and `int(pow(2.0, 63.0))`
+  was off by one. `abs`, `sum`, `product` and `pow` all refuse an overflow, and
+  section 5 of the specification says every integer operation tests for one.
+
+  **`map`, `filter` and `reduce` check their function argument before looking at
+  an element**, which `sort` always did. `map([], nil)` answered `[]`, because
+  an empty array makes no call and nothing ever looked: one of the four builtins
+  in section 8.8 checked its arguments and three checked them by accident.
+
+  **`pad_left` and `pad_right` gain `repeat`'s size limit.** All three build a
+  run of one character. `repeat` refused a result over ten million characters
+  with a sentence; the other two had no refusal path at all, so
+  `pad_left("", 9223372036854775807)` asked for the process to fail in a way the
+  program could not see, which section 2.6 of the guarantee says does not
+  happen.
+
+  **`remove` on an absent key is unchanged**, and that is a decision rather than
+  an oversight. It gives `nil` where `pop` refuses an empty array, so it is the
+  fifth place in this family. Making it refuse would cost the "remove if
+  present" idiom, and the real cause is that `m[k]` cannot tell a stored `nil`
+  from an absent key at all. Fixing `remove` alone treats a symptom.
+
 - **A negative index counts from the end.** `-1` is the last element, `-2` the
   one before it, and `-len` the first, everywhere the language takes a
   position:

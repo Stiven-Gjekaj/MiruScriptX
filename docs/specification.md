@@ -510,13 +510,16 @@ zero`.
 Arithmetic never gives `inf` or `nan`. Division by zero is an error, and every
 other operation that could give one of these is an error.
 
-Four operations can give one:
+Three operations can give one:
 
 - `float("inf")` and `float("-inf")` give an infinity.
 - `float("nan")` gives a not-a-number.
 - `pow` gives an infinity when the result is too large.
-- `pow` gives a not-a-number when the base is negative and the exponent is a
-  float that is not a whole number. Section 8.7 gives an example.
+
+**No operation invents a not-a-number.** `float("nan")` is the one way to make
+one, and a program that has one can carry it: `pow` with a `nan` argument gives
+`nan`, and `sum` and `product` of an array holding one give `nan`. Section 8.7
+gives the rule for `pow`.
 
 A program can hold these values. The rules for them are:
 
@@ -528,6 +531,9 @@ A program can hold these values. The rules for them are:
 - `min` and `max` with `nan` give the error `<name> cannot compare NaN`.
 - `int`, `floor`, `ceil`, and `round` on `inf` or `nan` give the error
   `<name> of a non-finite number`.
+- `int`, `floor`, `ceil`, and `round` on a float too large for an integer give
+  the error `integer overflow in <name>`. `int(float("1e300"))` is an error, not
+  the largest integer.
 
 ### 5.3 Truth
 
@@ -1261,7 +1267,10 @@ index, so the mistake still stops.
 
 `repeat` gives `""` for a count of `0`. A negative count is an error. A result
 longer than an implementation limit is an error; section 3.2 of the
-[stability guarantee](stability.md) leaves that limit free.
+[stability guarantee](stability.md) leaves that limit free. `pad_left` and
+`pad_right` have the same limit, for the same reason: all three build a run of
+one character, and a width nobody meant should fail with a sentence rather than
+by exhausting memory.
 
 `pad_left` puts the fill **before** `s`, which lines text up on the right. Use
 it for a column of numbers. `pad_right` puts the fill **after** `s`, which
@@ -1276,7 +1285,7 @@ lines text up on the left. Use it for a column of words.
 The fill `f` is one space if it is not given, and must be a string of exactly
 one character. The width is in characters, as `len` counts them. A string that
 is already `w` characters or longer comes back unchanged; it is not cut. A
-negative width is an error.
+negative width is an error, and so is a width past the limit `repeat` has.
 
 > **Note.** The width counts characters, not columns on a screen. A character
 > that a terminal draws two columns wide, such as an emoji, counts as one here,
@@ -1349,24 +1358,28 @@ an array that has one or more floats. Section 5.2 gives the promotion rule.
 Overflow of the integer form is an error, as it is for each other integer
 operation. An element that is not a number is an error.
 
-`pow` gives `nan` when the base is negative and the exponent is a float that is
-not a whole number. A whole-number exponent is not affected.
+**`pow` refuses a negative base with an exponent that is not a whole number**,
+because there is no real number for the result. A whole-number exponent is not
+affected.
 
 ```
-print(pow(-8.0, 0.5))    // nan
+print(pow(-8.0, 0.5))    // Error: pow of a negative number to a fractional power
 print(pow(-8.0, 2.0))    // 64.0
 print(pow(-8.0, 3.0))    // -512.0
 print(sqrt(-1))          // Error: sqrt of a negative number
 ```
 
-> **Note.** The first and the last lines ask the same question, and the language
-> answers it two ways. `pow` gives `nan` where `sqrt` refuses. A `nan` goes
-> through each arithmetic operation that touches it, and shows itself at a line
-> that has no connection to the line that made it.
->
-> `pow` is documented here rather than changed. Section 2.3 of the
-> [stability guarantee](stability.md) does not permit a change to what a builtin
-> does, so a `pow` that refuses needs version 2.
+The first and the last lines ask the same question, and the language gives one
+answer. Version 1 gave two: `pow` produced `nan` where `sqrt` refused, and that
+`nan` then went through each arithmetic operation that touched it and showed
+itself at a line with no connection to the one that made it.
+
+A `nan` that arrives in an argument is carried rather than refused, because
+carrying one a program already has is not inventing one:
+
+```
+print(pow(float("nan"), 2.0))   // nan
+```
 
 ### 8.8 Higher-order
 
@@ -1386,8 +1399,11 @@ elements by the values it received. The rules for those values are the rules
 section 8.4 gives for the elements of `sort(a)`: all numbers, or all strings.
 A value that is not one of those, including a caught error, is an error.
 
-`key` must be a function. `sort(a, nil)` is an error. This is different from
-`map` and `filter`, which give the error at the call.
+**All four check the function before they look at an element.** `sort(a, nil)`,
+`map(a, nil)`, `filter(a, nil)` and `reduce(a, nil, x)` are errors, and an empty
+array does not change that: `map([], nil)` is an error and not `[]`. Version 1
+checked only `sort` eagerly, so the other three found out at the first call, and
+an array with no elements makes no call.
 
 **The sort is stable.** Two elements with equal keys keep the order they had.
 This makes a sort by two keys two sorts, the less important key first:

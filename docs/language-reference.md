@@ -1614,6 +1614,15 @@ print(sum([1, 2, 3]), product([2, 3, 4]))     // 6 24
 print(sum([]), product([]))                   // 0 1
 ```
 
+Both `sqrt` and `pow` refuse an answer that is not a real number, so
+`sqrt(-1)` and `pow(-8.0, 0.5)` are errors rather than a quiet `nan` that
+travels through your arithmetic and surfaces somewhere unrelated. A whole-number
+exponent is unaffected: `pow(-8.0, 2.0)` is `64.0`.
+
+`floor`, `ceil`, `round` and `int` refuse a float too large to be an integer,
+the same way `abs` and `sum` refuse an overflow, rather than answering with the
+nearest integer there is.
+
 ## Conversion
 
 - `int(x)` converts a float (truncating toward zero) or a numeric string to an

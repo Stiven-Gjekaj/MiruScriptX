@@ -576,8 +576,8 @@ fn repeat(
     Ok(Value::Str(Rc::new(s.repeat(times))))
 }
 
-/// The longest string `repeat` will build, so a wrong count fails with a
-/// sentence rather than by exhausting memory.
+/// The longest string `repeat`, `pad_left` and `pad_right` will build, so a
+/// wrong count fails with a sentence rather than by exhausting memory.
 ///
 /// Ten million characters is far past any rule, bar, or indent a program has a
 /// reason to draw, and small enough that the refusal arrives immediately.
@@ -647,6 +647,17 @@ fn pad_to(name: &str, args: &[Value], on_the_left: bool) -> Result<Value, String
     // wants it cut has `slice`.
     if have >= want {
         return Ok(Value::Str(Rc::new(s.to_string())));
+    }
+    // The same limit `repeat` has, for the same reason and in the same words.
+    // Both build a run of one character; `repeat` refused a wrong count with a
+    // sentence and this had no refusal path at all, so
+    // `pad_left("", 9223372036854775807)` was a program asking for the process
+    // to die in a way it could not see. Section 2.6 of the guarantee says that
+    // does not happen.
+    if want > MAX_REPEAT_CHARACTERS {
+        return Err(format!(
+            "{name} would build a string longer than {MAX_REPEAT_CHARACTERS} characters"
+        ));
     }
     let fill: String = std::iter::repeat_n(fill, want - have).collect();
     let padded = if on_the_left {
@@ -1255,16 +1266,36 @@ fn round_like(name: &str, args: Vec<Value>, apply: fn(f64) -> f64) -> Result<Val
         Value::Int(n) => Ok(Value::Int(*n)),
         Value::Float(x) => {
             let rounded = apply(*x);
-            if rounded.is_finite() {
-                Ok(Value::Int(rounded as i64))
-            } else {
-                Err(format!("{name} of a non-finite number"))
+            if !rounded.is_finite() {
+                return Err(format!("{name} of a non-finite number"));
             }
+            as_int(rounded).ok_or_else(|| format!("integer overflow in {name}"))
         }
         other => Err(format!(
             "{name} expects a number but got a {}",
             other.type_name()
         )),
+    }
+}
+
+/// The integer `x` names, or `None` when no integer does.
+///
+/// **`f64 as i64` saturates**, so without this `int(float("1e300"))` answered
+/// `9223372036854775807`: a wrong number where every sibling refuses. `abs`,
+/// `sum`, `product` and `pow` all give "integer overflow in ..." rather than a
+/// nearby answer, and section 5 of the specification says every integer
+/// operation tests for overflow.
+///
+/// The upper bound is a strict `<` against 2^63 rather than `<=` against
+/// `i64::MAX`, because `i64::MAX as f64` rounds *up* to 2^63 and would let the
+/// one value past the end through. `i64::MIN as f64` is exact, so the lower
+/// bound needs no such care.
+fn as_int(x: f64) -> Option<Value> {
+    let least = i64::MIN as f64;
+    if x >= least && x < -least {
+        Some(Value::Int(x as i64))
+    } else {
+        None
     }
 }
 
@@ -1319,7 +1350,20 @@ fn pow(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resul
         _ => {
             let base = number_arg("pow", &args[0])?;
             let exp = number_arg("pow", &args[1])?;
-            Ok(Value::Float(base.powf(exp)))
+            let result = base.powf(exp);
+            // The other half of issue #52. `sqrt(-1)` refuses and
+            // `pow(-8.0, 0.5)` used to answer `nan`, which is the same question
+            // asked twice and answered differently. `nan` then travels through
+            // every operation that touches it and surfaces far from the line
+            // that made it, which is what the refusal exists to prevent.
+            //
+            // Only an invented `nan` refuses. One that arrived in an argument
+            // is propagated, the way `sum` and `product` propagate theirs:
+            // carrying a `nan` a program already had is not inventing one.
+            if result.is_nan() && !base.is_nan() && !exp.is_nan() {
+                return Err("pow of a negative number to a fractional power".to_string());
+            }
+            Ok(Value::Float(result))
         }
     }
 }
@@ -1331,11 +1375,10 @@ fn int(_out: &mut dyn Output, _input: &mut dyn Input, args: Vec<Value>) -> Resul
     match &args[0] {
         Value::Int(n) => Ok(Value::Int(*n)),
         Value::Float(f) => {
-            if f.is_finite() {
-                Ok(Value::Int(*f as i64))
-            } else {
-                Err("int of a non-finite number".to_string())
+            if !f.is_finite() {
+                return Err("int of a non-finite number".to_string());
             }
+            as_int(*f).ok_or_else(|| "integer overflow in int".to_string())
         }
         Value::Str(s) => s
             .trim()
@@ -1960,6 +2003,24 @@ fn array(items: Vec<Value>) -> Value {
 /// callback that pushes to the array being walked does not extend the walk. It
 /// also means the task owns its elements and can move them out one at a time
 /// instead of cloning them.
+/// A value that can be called, or a refusal naming what arrived instead.
+///
+/// **Checked eagerly, which `sort` always did and the other three did not.**
+/// `map`, `filter` and `reduce` only found out at the first call, so
+/// `map([], nil)` answered `[]`: an empty array makes no call, so a program
+/// that passed something uncallable was told nothing at all. One of the four
+/// builtins in section 8.8 checked its arguments and three checked them by
+/// accident.
+fn function_arg(name: &str, value: Value) -> Result<Value, String> {
+    match value {
+        func @ (Value::Closure(_) | Value::Builtin(_) | Value::HostBuiltin(_)) => Ok(func),
+        other => Err(format!(
+            "{name} expects a function but got a {}",
+            other.type_name()
+        )),
+    }
+}
+
 fn array_and_function(name: &str, args: Vec<Value>) -> Result<(Vec<Value>, Value), String> {
     if args.len() != 2 {
         return Err(format!("{name} expects 2 arguments but got {}", args.len()));
@@ -1974,7 +2035,8 @@ fn array_and_function(name: &str, args: Vec<Value>) -> Result<(Vec<Value>, Value
             ))
         }
     };
-    Ok((items, args.next().expect("two arguments")))
+    let func = function_arg(name, args.next().expect("two arguments"))?;
+    Ok((items, func))
 }
 
 /// `map(array, f)` returns a new array holding `f(x)` for each element `x`, in
@@ -2070,8 +2132,9 @@ fn reduce(args: Vec<Value>) -> Result<HostTask, String> {
             ))
         }
     };
+    let func = function_arg("reduce", args.next().expect("three arguments"))?;
     Ok(HostTask::Reduce {
-        func: args.next().expect("three arguments"),
+        func,
         items,
         next: 0,
         acc: args.next().expect("three arguments"),
@@ -2692,7 +2755,11 @@ mod tests {
 
     #[test]
     fn map_rejects_a_non_callable_function() {
-        assert!(err("map([1, 2], 3)").contains("not callable"));
+        // Eagerly, so an empty array is refused too. `sort` always did this and
+        // the other three found out at the first call, which meant no call and
+        // no complaint when there was nothing to iterate.
+        assert!(err("map([], 3)").contains("map expects a function"));
+        assert!(err("map([1, 2], 3)").contains("map expects a function"));
     }
 
     #[test]
@@ -2728,7 +2795,7 @@ mod tests {
 
     #[test]
     fn filter_rejects_a_non_callable_predicate() {
-        assert!(err("filter([1, 2], 3)").contains("not callable"));
+        assert!(err("filter([1, 2], 3)").contains("filter expects a function"));
     }
 
     #[test]
@@ -2767,7 +2834,7 @@ mod tests {
 
     #[test]
     fn reduce_rejects_a_non_callable_function() {
-        assert!(err("reduce([1, 2], 3, 0)").contains("not callable"));
+        assert!(err("reduce([1, 2], 3, 0)").contains("reduce expects a function"));
     }
 
     #[test]
