@@ -323,6 +323,14 @@ impl Lexer {
             // A '.' only reaches here when it is not part of a number:
             // `read_number` takes one that is followed by a digit, so `1.5` is
             // a single float while `1.foo` is an int, a dot, and a name.
+            // `...` before `.`, so the longer token wins. Two dots are still
+            // two dots: nothing spells `..`, and a wrong number of them reads
+            // better as a repeated `.` than as a token nobody wrote.
+            '.' if self.peek() == Some('.') && self.peek_at(1) == Some('.') => {
+                self.advance();
+                self.advance();
+                TokenKind::Ellipsis
+            }
             '.' => TokenKind::Dot,
             ';' => TokenKind::Newline,
             '=' => {

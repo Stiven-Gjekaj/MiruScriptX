@@ -292,7 +292,8 @@ compound  = target ( "+=" | "-=" | "*=" | "/=" | "%=" ) expression
 target    = identifier | index | field
 
 function  = "fn" identifier "(" [ params ] ")" block
-params    = identifier { "," identifier }
+params    = [ param { "," param } [ "," ] ] [ "," "..." identifier ]
+param     = identifier [ "=" expression ]
 
 return    = "return" [ expression ]
 
@@ -784,12 +785,73 @@ the values of that step.
 
 A function that reaches its end without a `return` gives `nil`.
 
-A call with the wrong number of arguments gives an error. The error names the
-function, the number it needs, and the number it received.
-
 A closure keeps the variables it uses. While the enclosing function runs, the
 closure and the function share each variable. After the enclosing function
 returns, the closure keeps its own copy.
+
+### 5.10.1 Parameters
+
+A parameter list holds required parameters, then parameters with a default,
+then at most one `...rest` parameter.
+
+```
+fn greet(name, greeting = "Hello") { }
+fn log_all(prefix, ...rest) { }
+```
+
+Two rules are syntax errors:
+
+- A parameter without a default cannot follow one with a default.
+- Nothing can follow the `...rest` parameter.
+
+Both exist so that a call matches its parameters by position alone. There are
+no named arguments.
+
+### 5.10.2 How a call matches
+
+Let `required` be the number of parameters without a default, and `named` be
+the number of parameters in total.
+
+- A call gives an error unless it supplies at least `required` arguments. A
+  function without `...rest` also gives an error above `named`.
+- The first arguments fill the named parameters in order.
+- Each named parameter the call did not supply is filled by its default.
+- A `...rest` parameter is an array of the arguments past `named`. A call that
+  supplied `named` or fewer gives it an empty array.
+
+**A default is evaluated at each call that omits it**, in the order the
+parameters are written, before the body runs. It is not evaluated when the call
+supplies the parameter. Two things follow, and both are deliberate:
+
+```
+fn at(t = now()) { return t }         // the time of the call, not of the program
+fn add(a = []) { push(a, 1) return a }
+print(add(), add())                    // [1] [1], never [1] [1, 1]
+```
+
+A default can name a parameter written before it, because that parameter is
+already filled:
+
+```
+fn span(from, to = from + 10) { return to - from }
+print(span(1))    // 10
+```
+
+A default cannot name its own parameter or a later one. Such a name means
+whatever it means outside the function, and is an error if it means nothing.
+
+### 5.10.3 The error for the wrong number of arguments
+
+The error names the function, what it wants, and what it received:
+
+| The function | The error |
+| ------------ | --------- |
+| `fn f(a)` | `function f expects 1 argument but received 0` |
+| `fn f(a, b)` | `function f expects 2 arguments but received 3` |
+| `fn f(a, b = 1)` | `function f expects 1 to 2 arguments but received 3` |
+| `fn f(a, b, ...r)` | `function f expects at least 2 arguments but received 1` |
+
+A range is always plural, because it names more than one acceptable count.
 
 ---
 

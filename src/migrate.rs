@@ -279,7 +279,7 @@ fn bound_in_stmt(stmt: &Stmt, into: &mut HashSet<String>) {
         }
         StmtKind::Function { name, params, body } => {
             into.insert(name.clone());
-            into.extend(params.iter().cloned());
+            into.extend(params.names().map(str::to_string));
             for stmt in body {
                 bound_in_stmt(stmt, into);
             }

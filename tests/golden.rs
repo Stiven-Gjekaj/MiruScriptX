@@ -120,7 +120,7 @@ fn runtime_errors_render_with_a_caret() {
         ),
         (
             "fn f(a) { return a }\nf(1, 2)",
-            "error (line 2, column 1): function f expects 1 argument(s) but received 2\n    f(1, 2)\n    ^",
+            "error (line 2, column 1): function f expects 1 argument but received 2\n    f(1, 2)\n    ^",
         ),
         // A leading tab is reproduced in the caret indent, so the caret stays
         // aligned however the line is displayed.
@@ -273,7 +273,7 @@ fn errors_underline_the_token_they_blame() {
         // The call site is blamed, so the underline covers the callee's name.
         (
             "fn make_adder(x) {\n  return x\n}\nmake_adder(1, 2)",
-            "error (line 4, column 1): function make_adder expects 1 argument(s) but received 2\n    make_adder(1, 2)\n    ^^^^^^^^^^",
+            "error (line 4, column 1): function make_adder expects 1 argument but received 2\n    make_adder(1, 2)\n    ^^^^^^^^^^",
         ),
         (
             "let counter = 5\ncounter()",
@@ -938,6 +938,77 @@ fn one_loop_variable_over_a_map_is_refused_and_names_the_fix() {
 }
 
 #[test]
+fn a_parameter_can_have_a_default_or_collect_the_rest() {
+    check_all(&[
+        // A default fills a parameter the call left out.
+        (
+            "fn greet(n, g = \"Hello\") { return g + \", \" + n }\ngreet(\"Aiko\")",
+            "ok \"Hello, Aiko\"",
+        ),
+        (
+            "fn greet(n, g = \"Hello\") { return g + \", \" + n }\ngreet(\"Ken\", \"Hi\")",
+            "ok \"Hi, Ken\"",
+        ),
+        // A default may name a parameter written before it, because that one is
+        // already filled by the time this runs.
+        ("fn span(a, b = a + 10) { return b - a }\nspan(1)", "ok 10"),
+        // **Per call, not once at definition.** If the default were evaluated
+        // when the function was defined, both calls would share one array and
+        // this would be `[1, 1]`. That is the trap the decision avoided.
+        (
+            "fn c(into = []) {\n  push(into, 1)\n  return into\n}\nc()\nc()",
+            "ok [1]",
+        ),
+        // A rest parameter is an ordinary array, empty when nothing is left.
+        (
+            "fn f(a, ...r) { return [a, r] }\nf(1, 2, 3)",
+            "ok [1, [2, 3]]",
+        ),
+        ("fn f(a, ...r) { return [a, r] }\nf(1)", "ok [1, []]"),
+        ("fn f(...r) { return len(r) }\nf()", "ok 0"),
+        ("fn f(...r) { return len(r) }\nf(1, 2, 3)", "ok 3"),
+        // All three kinds at once, which is where the argument-matching rule
+        // earns being written down.
+        (
+            "fn f(a, b = a * 2, ...r) { return [a, b, r] }\nf(1)",
+            "ok [1, 2, []]",
+        ),
+        (
+            "fn f(a, b = a * 2, ...r) { return [a, b, r] }\nf(1, 5, 7)",
+            "ok [1, 5, [7]]",
+        ),
+        // Every shape of the arity error, which is the one message this part
+        // had to rewrite. A range is plural even when its top is 1.
+        (
+            "fn f(a) { return a }\nf()",
+            "err function f expects 1 argument but received 0 @ 2:1",
+        ),
+        (
+            "fn f(a, b = 1) { return a }\nf(1, 2, 3)",
+            "err function f expects 1 to 2 arguments but received 3 @ 2:1",
+        ),
+        (
+            "fn f(a = 1) { return a }\nf(1, 2)",
+            "err function f expects 0 to 1 arguments but received 2 @ 2:1",
+        ),
+        (
+            "fn f(a, b, ...r) { return a }\nf(1)",
+            "err function f expects at least 2 arguments but received 1 @ 2:1",
+        ),
+        // A callback reaches the same entry points, so a higher-order builtin
+        // needs no special case for either shape. Issue #50 asked for that.
+        (
+            "fn d(x, k = 2) { return x * k }\nmap([1, 2], d)",
+            "ok [2, 4]",
+        ),
+        (
+            "fn n(...xs) { return len(xs) }\nmap([1, 2], n)",
+            "ok [1, 1]",
+        ),
+    ]);
+}
+
+#[test]
 fn functions_calls_and_recursion() {
     check_all(&[
         ("fn add(a, b) { return a + b }\nadd(2, 3)", "ok 5"),
@@ -984,11 +1055,11 @@ fn call_errors_report_the_call_site() {
     check_all(&[
         (
             "fn one(a) { return a }\none(1, 2)",
-            "err function one expects 1 argument(s) but received 2 @ 2:1",
+            "err function one expects 1 argument but received 2 @ 2:1",
         ),
         (
             "fn one(a) { return a }\none()",
-            "err function one expects 1 argument(s) but received 0 @ 2:1",
+            "err function one expects 1 argument but received 0 @ 2:1",
         ),
         ("let x = 5\nx(1)", "err a int is not callable @ 2:1"),
         ("nil()", "err a nil is not callable @ 1:1"),
@@ -1136,7 +1207,7 @@ fn arrays_maps_and_indexing() {
         ("copy(\"ab\")", "ok \"ab\""),
         ("copy(7)", "ok 7"),
         ("copy(nil)", "ok nil"),
-        ("copy()", "err copy expects 1 argument(s) but got 0 @ 1:1"),
+        ("copy()", "err copy expects 1 argument but got 0 @ 1:1"),
         // range with a step. The first is the one that was impossible.
         ("range(5, 0, -1)", "ok [5, 4, 3, 2, 1]"),
         ("range(0, 10, 2)", "ok [0, 2, 4, 6, 8]"),
@@ -1419,7 +1490,7 @@ fn builtins_and_their_errors() {
             "sort([1, \"a\"])",
             "err sort expects an array of all numbers or all strings @ 1:1",
         ),
-        ("len()", "err len expects 1 argument(s) but got 0 @ 1:1"),
+        ("len()", "err len expects 1 argument but got 0 @ 1:1"),
         ("keys([])", "err keys expects a map but got a array @ 1:1"),
         (
             "has([], \"a\")",
@@ -1435,7 +1506,7 @@ fn builtins_and_their_errors() {
         ),
         (
             "remove({\"a\": 1})",
-            "err remove expects 2 argument(s) but got 1 @ 1:1",
+            "err remove expects 2 arguments but got 1 @ 1:1",
         ),
         (
             "push(5, 1)",
@@ -1474,9 +1545,9 @@ fn higher_order_builtins() {
         ("map([1, 0], fn(x) { return 1 / x })", "err division by zero @ 1:30"),
         ("map(5, fn(x) { return x })", "err map expects an array but got a int @ 1:1"),
         ("map([1, 2], 3)", "err a int is not callable @ 1:1"),
-        ("map([1, 2])", "err map expects 2 argument(s) but got 1 @ 1:1"),
+        ("map([1, 2])", "err map expects 2 arguments but got 1 @ 1:1"),
         ("filter(5, fn(x) { return true })", "err filter expects an array but got a int @ 1:1"),
-        ("reduce([1, 2], fn(a, b) { return a })", "err reduce expects 3 argument(s) but got 2 @ 1:1"),
+        ("reduce([1, 2], fn(a, b) { return a })", "err reduce expects 3 arguments but got 2 @ 1:1"),
         ("filter([1,2,3], fn(x) { return nil })", "ok []"),
     ]);
 }
@@ -1533,9 +1604,9 @@ fn sort_takes_a_key_function() {
         ),
         (
             "sort([1, 2], fn(x) { return x }, 3)",
-            "err sort expects 1 or 2 argument(s) but got 3 @ 1:1",
+            "err sort expects 1 to 2 arguments but got 3 @ 1:1",
         ),
-        ("sort()", "err sort expects 1 or 2 argument(s) but got 0 @ 1:1"),
+        ("sort()", "err sort expects 1 to 2 arguments but got 0 @ 1:1"),
         // Since 1.6 `sort` is a higher-order builtin, so a caught error handed
         // to it is refused by its own type check rather than by the guard in
         // `call_native`, which higher-order builtins do not reach. Both stop
@@ -1615,7 +1686,7 @@ fn a_higher_order_builtin_can_be_another_one_s_callback() {
         // position never has the arity it needs.
         (
             "map([[1], [2]], map)",
-            "err map expects 2 argument(s) but got 1 @ 1:1",
+            "err map expects 2 arguments but got 1 @ 1:1",
         ),
     ]);
 }
@@ -2634,7 +2705,7 @@ fn now_refuses_where_there_is_no_clock() {
         ),
         // The arity check runs before the clock is consulted, so the complaint
         // about the call is the same whether or not the host has one.
-        ("now(1)", "err now expects 0 argument(s) but got 1 @ 1:1"),
+        ("now(1)", "err now expects 0 arguments but got 1 @ 1:1"),
     ]);
 }
 
@@ -2659,7 +2730,7 @@ fn read_key_refuses_where_there_is_no_keyboard() {
         ),
         (
             "read_key(1)",
-            "err read_key expects 0 argument(s) but got 1 @ 1:1",
+            "err read_key expects 0 arguments but got 1 @ 1:1",
         ),
     ]);
 }
@@ -2683,7 +2754,7 @@ fn random_stays_inside_its_range() {
         ("random() == random()", "ok false"),
         (
             "random(1)",
-            "err random expects 0 argument(s) but got 1 @ 1:1",
+            "err random expects 0 arguments but got 1 @ 1:1",
         ),
     ]);
 }
@@ -2715,7 +2786,7 @@ fn random_int_stays_inside_its_range() {
         ),
         (
             "random_int(1)",
-            "err random_int expects 2 argument(s) but got 1 @ 1:1",
+            "err random_int expects 2 arguments but got 1 @ 1:1",
         ),
     ]);
 }
@@ -2747,7 +2818,7 @@ fn a_seed_makes_a_run_repeat() {
         ),
         ("seed(3)", "ok nil"),
         ("seed(1.5)", "err seed expects an int but got a float @ 1:1"),
-        ("seed()", "err seed expects 1 argument(s) but got 0 @ 1:1"),
+        ("seed()", "err seed expects 1 argument but got 0 @ 1:1"),
     ]);
 }
 
@@ -2774,11 +2845,11 @@ fn the_file_builtins_check_their_arguments() {
         ),
         (
             "read_file()",
-            "err read_file expects 1 argument(s) but got 0 @ 1:1",
+            "err read_file expects 1 argument but got 0 @ 1:1",
         ),
         (
             "write_file(\"p\")",
-            "err write_file expects 2 argument(s) but got 1 @ 1:1",
+            "err write_file expects 2 arguments but got 1 @ 1:1",
         ),
     ]);
 }
@@ -2791,6 +2862,6 @@ fn args_is_empty_where_there_is_no_command_line() {
     check_all(&[
         ("args()", "ok []"),
         ("len(args())", "ok 0"),
-        ("args(1)", "err args expects 0 argument(s) but got 1 @ 1:1"),
+        ("args(1)", "err args expects 0 arguments but got 1 @ 1:1"),
     ]);
 }

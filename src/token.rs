@@ -143,6 +143,12 @@ pub enum TokenKind {
     LBracket, // [
     RBracket, // ]
     Comma,    // ,
+    /// `...`, which marks the rest parameter in a parameter list.
+    ///
+    /// One token rather than three dots, so that a call site spreading an
+    /// array back out (`f(...args)`) has a token waiting for it. Issue #50
+    /// asked for that room to be left.
+    Ellipsis, // ...
     Colon,    // :
     Dot,      // .
 
@@ -204,6 +210,7 @@ impl TokenKind {
             TokenKind::LBracket => "'['".to_string(),
             TokenKind::RBracket => "']'".to_string(),
             TokenKind::Comma => "','".to_string(),
+            TokenKind::Ellipsis => "'...'".to_string(),
             TokenKind::Colon => "':'".to_string(),
             TokenKind::Dot => "'.'".to_string(),
             TokenKind::Newline => "end of line".to_string(),

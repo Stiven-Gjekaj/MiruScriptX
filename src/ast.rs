@@ -54,6 +54,52 @@ impl Pattern {
     }
 }
 
+/// One named parameter, with the expression that fills it when a call does not.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Param {
+    pub name: String,
+    /// `None` for a parameter a call must supply.
+    ///
+    /// **The expression is kept rather than a value**, because a default is
+    /// evaluated at each call that omits it rather than once at definition.
+    /// Issue #45 settled that: it is what `fn f(t = now())` has to mean for the
+    /// time to belong to the call, and it is what keeps `fn f(a = [])` from
+    /// sharing one array between every call, which is the trap Python is known
+    /// for.
+    pub default: Option<Expr>,
+}
+
+/// A function's whole parameter list.
+///
+/// **The rest parameter is its own field rather than an entry in the list**,
+/// because the rules that make a call matchable are rules about the shape:
+/// nothing required may follow something defaulted, and `...rest` is last. One
+/// flat list with markers would let the parser build a shape the compiler then
+/// has to refuse, and the refusal belongs where the syntax is read.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Params {
+    /// The named parameters, required ones first, then defaulted ones.
+    pub named: Vec<Param>,
+    /// The name of a `...rest` parameter, which is an ordinary array inside the
+    /// body holding whatever arguments came past the named ones.
+    pub rest: Option<String>,
+}
+
+impl Params {
+    /// How many arguments a call must supply.
+    pub fn required(&self) -> usize {
+        self.named.iter().filter(|p| p.default.is_none()).count()
+    }
+
+    /// Every name this list binds, in the order their slots are laid out.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.named
+            .iter()
+            .map(|p| p.name.as_str())
+            .chain(self.rest.as_deref())
+    }
+}
+
 /// The different kinds of statements in the language.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StmtKind {
@@ -118,7 +164,7 @@ pub enum StmtKind {
     /// A named function declaration: `fn name(params) { .. }`.
     Function {
         name: String,
-        params: Vec<String>,
+        params: Params,
         body: Vec<Stmt>,
     },
 }
@@ -287,7 +333,7 @@ pub enum ExprKind {
     Try(Box<Expr>),
     /// An anonymous function value: `fn(params) { .. }`.
     Function {
-        params: Vec<String>,
+        params: Params,
         body: Vec<Stmt>,
     },
 }

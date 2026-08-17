@@ -10,6 +10,37 @@ semantic versioning.
 
 ## Unreleased
 
+### Added
+
+- **A parameter can have a default, and a function can take any number of
+  arguments.** Closes #45 and #50, which are one complaint written twice: the
+  language uses both shapes in its own builtins and offered neither to a
+  program.
+
+  ```
+  fn greet(name, greeting = "Hello") {
+    return greeting + ", " + name + "!"
+  }
+
+  fn log_all(prefix, ...rest) {
+    for m in rest { print(prefix + m) }
+  }
+  ```
+
+  **A default is evaluated at each call that leaves it out**, not once when the
+  function is defined. `fn f(t = now())` gives the time of the call, and
+  `fn f(a = [])` gives a new array every time rather than one array shared by
+  every call, which is the trap Python is known for. A default may name a
+  parameter written before it: `fn span(from, to = from + 10)` works.
+
+  `...rest` is an ordinary array, so nothing new appears in the value model.
+  Two rules are syntax errors, and both exist so a call matches by position:
+  a parameter without a default cannot follow one with a default, and nothing
+  can follow `...rest`.
+
+  A callback reaches the same code, so `map`, `filter`, `reduce` and `sort`
+  take a function of either shape without a special case.
+
 ### Changed
 
 - **A negative index counts from the end.** `-1` is the last element, `-2` the
@@ -51,6 +82,21 @@ semantic versioning.
   A program that tested `== -1` must test `== nil`. `miru migrate` reports every
   call site; it cannot rewrite them, because whether the result is compared or
   used is not something a tool can decide.
+
+- **The arity error says what the function wants.** It named one count and
+  spelled it `argument(s)`, which is what a message says when nobody has
+  decided between the two spellings. A function can now want a range or a
+  minimum, so there were three shapes to add and a plural to settle:
+
+  ```
+  function f expects 1 argument but received 0
+  function f expects 1 to 2 arguments but received 3
+  function f expects at least 2 arguments but received 1
+  ```
+
+  A range is always plural, because it names more than one acceptable count.
+  The builtins say it the same way, `sort` included, so one mistake does not
+  get two spellings depending on which kind of function it was.
 
 ## 1.12.0 (2026-08-16)
 

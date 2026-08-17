@@ -137,12 +137,23 @@ fn define_host(globals: &mut Globals, name: &'static str, func: HostFn) {
     globals.define(slot, Value::HostBuiltin(HostBuiltin { name, func }));
 }
 
+/// Refuse a builtin call that brought the wrong number of arguments.
+///
+/// The wording follows [`crate::value::Arity::describe`], which a user function
+/// now uses, because a program should not be told `expects 1 argument` by one
+/// and `expects 1 argument` by the other for the same mistake. `argument(s)`
+/// is what a message says when nobody has decided between the two spellings.
 fn check_arity(name: &str, args: &[Value], expected: usize) -> Result<(), String> {
     if args.len() == expected {
         Ok(())
     } else {
+        let plural = if expected == 1 {
+            "argument"
+        } else {
+            "arguments"
+        };
         Err(format!(
-            "{name} expects {expected} argument(s) but got {}",
+            "{name} expects {expected} {plural} but got {}",
             args.len()
         ))
     }
@@ -1951,10 +1962,7 @@ fn array(items: Vec<Value>) -> Value {
 /// instead of cloning them.
 fn array_and_function(name: &str, args: Vec<Value>) -> Result<(Vec<Value>, Value), String> {
     if args.len() != 2 {
-        return Err(format!(
-            "{name} expects 2 argument(s) but got {}",
-            args.len()
-        ));
+        return Err(format!("{name} expects 2 arguments but got {}", args.len()));
     }
     let mut args = args.into_iter();
     let items = match args.next().expect("two arguments") {
@@ -2007,7 +2015,7 @@ fn filter(args: Vec<Value>) -> Result<HostTask, String> {
 fn sort(args: Vec<Value>) -> Result<HostTask, String> {
     if args.is_empty() || args.len() > 2 {
         return Err(format!(
-            "sort expects 1 or 2 argument(s) but got {}",
+            "sort expects 1 to 2 arguments but got {}",
             args.len()
         ));
     }
@@ -2050,10 +2058,7 @@ fn sort(args: Vec<Value>) -> Result<HostTask, String> {
 /// returns the final accumulator.
 fn reduce(args: Vec<Value>) -> Result<HostTask, String> {
     if args.len() != 3 {
-        return Err(format!(
-            "reduce expects 3 argument(s) but got {}",
-            args.len()
-        ));
+        return Err(format!("reduce expects 3 arguments but got {}", args.len()));
     }
     let mut args = args.into_iter();
     let items = match args.next().expect("three arguments") {
@@ -2692,7 +2697,7 @@ mod tests {
 
     #[test]
     fn map_checks_arity() {
-        assert!(err("map([1, 2])").contains("2 argument(s)"));
+        assert!(err("map([1, 2])").contains("2 arguments"));
     }
 
     #[test]
@@ -2728,7 +2733,7 @@ mod tests {
 
     #[test]
     fn filter_checks_arity() {
-        assert!(err("filter([1, 2])").contains("2 argument(s)"));
+        assert!(err("filter([1, 2])").contains("2 arguments"));
     }
 
     #[test]
@@ -2767,7 +2772,7 @@ mod tests {
 
     #[test]
     fn reduce_checks_arity() {
-        assert!(err("reduce([1, 2], fn(acc, x) { return acc })").contains("3 argument(s)"));
+        assert!(err("reduce([1, 2], fn(acc, x) { return acc })").contains("3 arguments"));
     }
 }
 

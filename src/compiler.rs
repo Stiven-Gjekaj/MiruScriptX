@@ -6,10 +6,10 @@
 
 use std::rc::Rc;
 
-use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Pattern, Stmt, StmtKind, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Params, Pattern, Stmt, StmtKind, UnaryOp};
 use crate::chunk::{Chunk, OpCode};
 use crate::globals::{Globals, ModuleId, ROOT_MODULE};
-use crate::value::{CompiledFunction, Value};
+use crate::value::{Arity, CompiledFunction, Value};
 use crate::MiruError;
 
 /// The message for exceeding the local slot cap. Shared so the two places that
@@ -141,7 +141,13 @@ impl<'g> Compiler<'g> {
         compiler.chunk.write_op(OpCode::Return, line, column);
         Ok(Rc::new(CompiledFunction {
             name: None,
-            arity: 0,
+            arity: Arity {
+                required: 0,
+                named: 0,
+                rest: false,
+                entries: vec![0],
+                body: 0,
+            },
             chunk: compiler.chunk,
             file: compiler.file,
         }))
@@ -292,21 +298,55 @@ impl<'g> Compiler<'g> {
     /// Compile a function's parameters and body into a nested [`CompiledFunction`]
     /// and emit a `Closure` in the current chunk that builds it at runtime, along
     /// with the specs for capturing its upvalues.
+    /// Compile one function, including the code that fills in the parameters a
+    /// call leaves out.
+    ///
+    /// **The defaults are a chain that falls through.** Each one is compiled
+    /// where the next parameter's slot is the top of the stack, so evaluating
+    /// it pushes the value straight into place and no instruction is needed to
+    /// store it. A call that supplied `required + n` arguments starts at
+    /// `entries[n]`, runs the defaults for everything after it, and arrives at
+    /// the body with every slot filled.
+    ///
+    /// Each default is compiled **before its own parameter is declared**, so
+    /// `fn f(a, b = a)` reads the earlier parameter and `fn f(a = a)` reads
+    /// whatever `a` means outside rather than its own empty slot.
     fn function(
         &mut self,
         name: Option<&str>,
-        params: &[String],
+        params: &Params,
         body: &[Stmt],
         line: usize,
         column: usize,
     ) -> Result<(), MiruError> {
         self.begin_function();
         // Inside a function, declarations are local; parameters take the first
-        // slots (0..arity), where the call places the arguments.
+        // slots, where the call places the arguments.
         self.scope_depth = 1;
-        for param in params {
-            self.declare_local(param, line)?;
+        let required = params.required();
+        for param in &params.named[..required] {
+            self.declare_local(&param.name, line)?;
         }
+
+        let mut entries = Vec::with_capacity(params.named.len() - required + 1);
+        for param in &params.named[required..] {
+            entries.push(self.chunk.code.len());
+            let default = param.default.as_ref().expect("a defaulted parameter");
+            self.expression(default)?;
+            self.declare_local(&param.name, line)?;
+        }
+        // Where a call that filled every named parameter starts. With a rest
+        // parameter that is an empty array, because such a call brought nothing
+        // for it; a call that brought more skips this and starts at `body`,
+        // where the VM has already pushed the array it collected.
+        entries.push(self.chunk.code.len());
+        if let Some(rest) = &params.rest {
+            self.chunk.write_op(OpCode::Array, line, column);
+            self.write_u16(0, line, column);
+            self.declare_local(rest, line)?;
+        }
+        let body_start = self.chunk.code.len();
+
         for stmt in body {
             self.statement(stmt)?;
         }
@@ -317,7 +357,13 @@ impl<'g> Compiler<'g> {
 
         let function = Rc::new(CompiledFunction {
             name: name.map(str::to_string),
-            arity: params.len(),
+            arity: Arity {
+                required,
+                named: params.named.len(),
+                rest: params.rest.is_some(),
+                entries,
+                body: body_start,
+            },
             chunk,
             // Every function in a module belongs to that module, however deeply
             // nested, so this is the compiler's one file rather than anything

@@ -422,9 +422,75 @@ pub type AmbientFn = fn(&mut Ambient, Vec<Value>) -> Result<Value, String>;
 
 /// A function compiled to bytecode. The whole program is itself one of these,
 /// an anonymous script with no parameters.
+/// How a function's parameters match a call's arguments, and where to start
+/// running for each argument count a call may bring.
+///
+/// **The defaults are bytecode at the top of the function, not values held
+/// here.** A default is evaluated at each call that omits it, so it has to be
+/// code, and the natural place for that code is the function's own chunk: it
+/// runs in the function's scope, so a default can name an earlier parameter
+/// without anything special, and it leaves its value on the stack exactly where
+/// the parameter's slot is. Nothing has to store it.
+///
+/// [`Arity::entries`] is what makes that work. `entries[n]` is where to start
+/// when a call supplied `required + n` arguments: the defaults for the
+/// parameters it left out, in order, each falling through to the next.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Arity {
+    /// Parameters with no default. A call must supply at least this many.
+    pub required: usize,
+    /// Named parameters in total, required and defaulted together.
+    pub named: usize,
+    /// Whether a `...rest` parameter collects everything past `named`.
+    pub rest: bool,
+    /// Where to begin for each argument count from `required` to `named`, so
+    /// this holds `named - required + 1` offsets.
+    pub entries: Vec<usize>,
+    /// Where the body begins, past every default and past the empty `rest`.
+    /// Only a call that supplied more than `named` arguments starts here, and
+    /// only a function with a `rest` parameter can take one.
+    pub body: usize,
+}
+
+impl Arity {
+    /// The largest number of arguments a call may bring, or `None` for a
+    /// function that takes any number.
+    pub fn most(&self) -> Option<usize> {
+        if self.rest {
+            None
+        } else {
+            Some(self.named)
+        }
+    }
+
+    /// How many arguments this function wants, in words: "2 arguments", "1
+    /// argument", "1 to 3 arguments", "at least 2 arguments".
+    ///
+    /// One place, because the message is built in two: the bytecode call path
+    /// and the one a higher-order builtin uses for a callback. They said the
+    /// same thing before only by both saying `argument(s)`, which is what a
+    /// program writes when nobody has decided.
+    pub fn describe(&self) -> String {
+        let plural = |n: usize| if n == 1 { "argument" } else { "arguments" };
+        match self.most() {
+            None => format!("at least {} {}", self.required, plural(self.required)),
+            Some(most) if most == self.required => format!("{most} {}", plural(most)),
+            // A range is always plural, even when its top is 1: it names more
+            // than one acceptable count, so "0 to 1 argument" is wrong however
+            // the numbers fall.
+            Some(most) => format!("{} to {most} arguments", self.required),
+        }
+    }
+
+    /// Whether `count` arguments can fill these parameters.
+    pub fn accepts(&self, count: usize) -> bool {
+        count >= self.required && self.most().is_none_or(|most| count <= most)
+    }
+}
+
 pub struct CompiledFunction {
     pub name: Option<String>,
-    pub arity: usize,
+    pub arity: Arity,
     pub chunk: Chunk,
     /// The module this function was compiled from, or `None` for the file being
     /// run.

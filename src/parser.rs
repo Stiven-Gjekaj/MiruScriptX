@@ -5,7 +5,9 @@
 //! drives infix operators by binding power, while prefix operators, calls, and
 //! indexing are handled by [`Parser::unary`] and [`Parser::postfix`].
 
-use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Pattern, Stmt, StmtKind, UnaryOp};
+use crate::ast::{
+    BinaryOp, Expr, ExprKind, LogicalOp, Param, Params, Pattern, Stmt, StmtKind, UnaryOp,
+};
 use crate::token::{FStringPart, Token, TokenKind};
 use crate::MiruError;
 
@@ -700,12 +702,51 @@ impl Parser {
         Ok(statements)
     }
 
-    fn parse_params(&mut self) -> Result<Vec<String>, MiruError> {
+    /// `(a, b = 1, ...rest)`.
+    ///
+    /// **Two rules keep a call matchable by position**, and both are refused
+    /// here rather than in the compiler, because they are about the shape of
+    /// the syntax rather than about what it means. A required parameter cannot
+    /// follow a defaulted one, or there would be no way to tell which argument
+    /// filled which name. And `...rest` is last, because it takes everything
+    /// remaining and anything after it could never be reached.
+    fn parse_params(&mut self) -> Result<Params, MiruError> {
         self.expect(TokenKind::LParen, "to start a parameter list")?;
-        let mut params = Vec::new();
+        let mut params = Params::default();
         if !self.check(&TokenKind::RParen) {
             loop {
-                params.push(self.expect_identifier("as a parameter name")?);
+                let token = self.peek().clone();
+                if params.rest.is_some() {
+                    return Err(MiruError::with_column(
+                        token.line,
+                        token.column,
+                        "a '...' parameter takes the rest of the arguments, so nothing can \
+                         follow it",
+                    ));
+                }
+                if self.check(&TokenKind::Ellipsis) {
+                    self.advance();
+                    params.rest = Some(self.expect_identifier("after '...'")?);
+                } else {
+                    let name = self.expect_identifier("as a parameter name")?;
+                    let default = if self.check(&TokenKind::Assign) {
+                        self.advance();
+                        Some(self.expression()?)
+                    } else {
+                        None
+                    };
+                    if default.is_none() && params.named.iter().any(|p| p.default.is_some()) {
+                        return Err(MiruError::with_column(
+                            token.line,
+                            token.column,
+                            format!(
+                                "parameter '{name}' has no default, so it cannot come after one \
+                                 that does"
+                            ),
+                        ));
+                    }
+                    params.named.push(Param { name, default });
+                }
                 if self.check(&TokenKind::Comma) {
                     self.advance();
                     if self.check(&TokenKind::RParen) {
@@ -1583,11 +1624,57 @@ mod tests {
         match &statements[0].kind {
             StmtKind::Function { name, params, body } => {
                 assert_eq!(name, "add");
-                assert_eq!(params, &vec!["a".to_string(), "b".to_string()]);
+                assert_eq!(params.names().collect::<Vec<_>>(), ["a", "b"]);
+                assert_eq!(params.required(), 2);
+                assert_eq!(params.rest, None);
                 assert_eq!(body.len(), 1);
                 assert!(matches!(body[0].kind, StmtKind::Return(Some(_))));
             }
             other => panic!("expected a function declaration, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_defaults_and_a_rest_parameter() {
+        let statements = parse_program("fn f(a, b = 1, ...rest) {\n  return a\n}");
+        match &statements[0].kind {
+            StmtKind::Function { params, .. } => {
+                assert_eq!(params.names().collect::<Vec<_>>(), ["a", "b", "rest"]);
+                // `required` is what a call must bring, so the defaulted one
+                // and the rest parameter are both outside it.
+                assert_eq!(params.required(), 1);
+                assert_eq!(params.rest.as_deref(), Some("rest"));
+                assert!(params.named[0].default.is_none());
+                assert!(params.named[1].default.is_some());
+            }
+            other => panic!("expected a function declaration, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_required_parameter_cannot_follow_a_defaulted_one() {
+        let tokens = Lexer::tokenize("fn f(a = 1, b) { return a }").expect("tokenizes");
+        let error = first_error_from(tokens);
+        assert!(
+            error.message.contains("cannot come after one that does"),
+            "message was: {}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn nothing_can_follow_a_rest_parameter() {
+        for source in [
+            "fn f(...r, a) { return a }",
+            "fn f(...r, ...s) { return 1 }",
+        ] {
+            let tokens = Lexer::tokenize(source).expect("tokenizes");
+            let error = first_error_from(tokens);
+            assert!(
+                error.message.contains("nothing can follow it"),
+                "message for {source} was: {}",
+                error.message
+            );
         }
     }
 

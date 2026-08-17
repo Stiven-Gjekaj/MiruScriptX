@@ -24,8 +24,8 @@ use crate::globals::{Globals, ModuleId, ROOT_MODULE};
 use crate::random::Rng;
 use crate::suggest::with_suggestion;
 use crate::value::{
-    Ambient, Clock, Closure, CompiledFunction, EmptyInput, Input, Keyboard, NativeFn, NoClock,
-    NoKeyboard, NoScreen, NoSystem, Output, Screen, System, Upvalue, Value,
+    Ambient, Arity, Clock, Closure, CompiledFunction, EmptyInput, Input, Keyboard, NativeFn,
+    NoClock, NoKeyboard, NoScreen, NoSystem, Output, Screen, System, Upvalue, Value,
 };
 use crate::MiruError;
 
@@ -1129,15 +1129,12 @@ impl Vm {
         let callee = self.stack[callee_slot].clone();
         match callee {
             Value::Closure(closure) => {
-                let arity = closure.function.arity;
-                if argcount != arity {
+                if !closure.function.arity.accepts(argcount) {
                     let name = closure.function.name.as_deref().unwrap_or("<anonymous>");
                     return Err(runtime_error(
                         chunk,
                         op_ip,
-                        format!(
-                            "function {name} expects {arity} argument(s) but received {argcount}"
-                        ),
+                        wrong_arity(name, &closure.function.arity, argcount),
                     ));
                 }
                 if self.frames.len() >= MAX_CALL_DEPTH {
@@ -1149,9 +1146,10 @@ impl Vm {
                     .as_fatal());
                 }
                 let slot_base = self.stack.len() - argcount;
+                let ip = self.fill_parameters(&closure.function.arity, slot_base, argcount);
                 self.frames.push(CallFrame {
                     closure,
-                    ip: 0,
+                    ip,
                     slot_base,
                 });
                 Ok(CallOutcome::Frame)
@@ -1406,6 +1404,29 @@ impl Vm {
         }
     }
 
+    /// Settle the arguments against the parameters, and say where the function
+    /// should start running.
+    ///
+    /// Two things can be left to do once a call's arguments are on the stack.
+    /// Arguments past the named parameters belong in the `rest` array, which is
+    /// built here because only the VM can see how many arrived. Parameters the
+    /// call left out are filled by bytecode in the function itself, so all this
+    /// does for those is pick the entry point that runs the right defaults.
+    ///
+    /// The caller has already checked [`Arity::accepts`], so `argcount` is
+    /// within range and both index calculations are in bounds.
+    fn fill_parameters(&mut self, arity: &Arity, slot_base: usize, argcount: usize) -> usize {
+        if argcount > arity.named {
+            // Only a function with a rest parameter can be here. The extras are
+            // already contiguous on top of the stack, in the order they were
+            // written, so they come off as the array's elements directly.
+            let extras = self.stack.split_off(slot_base + arity.named);
+            self.stack.push(Value::array(extras));
+            return arity.body;
+        }
+        arity.entries[argcount - arity.required]
+    }
+
     /// Apply a callee on the innermost task's behalf.
     ///
     /// Errors report at the position of the call that started the task, not
@@ -1416,16 +1437,13 @@ impl Vm {
         let (line, column) = (pending.line, pending.column);
         match callee {
             Value::Closure(closure) => {
-                let arity = closure.function.arity;
-                if args.count() != arity {
+                let argcount = args.count();
+                if !closure.function.arity.accepts(argcount) {
                     let name = closure.function.name.as_deref().unwrap_or("<anonymous>");
                     return Err(MiruError::with_column(
                         line,
                         column,
-                        format!(
-                            "function {name} expects {arity} argument(s) but received {}",
-                            args.count()
-                        ),
+                        wrong_arity(name, &closure.function.arity, argcount),
                     ));
                 }
                 if self.frames.len() >= MAX_CALL_DEPTH {
@@ -1440,9 +1458,14 @@ impl Vm {
                 self.stack.push(Value::Closure(Rc::clone(&closure)));
                 let slot_base = self.stack.len();
                 args.push_onto(&mut self.stack);
+                // The same entry point the bytecode path picks, so a callback
+                // with defaults or a rest parameter behaves the same whether
+                // `map` called it or a `f(..)` in the source did. Issue #50
+                // asked for exactly that, without a special case.
+                let ip = self.fill_parameters(&closure.function.arity, slot_base, argcount);
                 self.frames.push(CallFrame {
                     closure,
-                    ip: 0,
+                    ip,
                     slot_base,
                 });
                 Ok(TaskCall::Pushed)
@@ -1873,6 +1896,20 @@ fn in_file(mut error: MiruError, spec: &str) -> MiruError {
     error
 }
 
+/// What to say when a call brings the wrong number of arguments.
+///
+/// Written once for both call paths. The old wording was
+/// `expects 1 argument(s) but received 2`, which is what a message says when
+/// nobody has decided between the two spellings; a function can now want a
+/// range or a minimum as well, so there was a count to fix and three shapes to
+/// add at the same time.
+fn wrong_arity(name: &str, arity: &Arity, received: usize) -> String {
+    format!(
+        "function {name} expects {} but received {received}",
+        arity.describe()
+    )
+}
+
 fn runtime_error(chunk: &Chunk, offset: usize, message: impl Into<String>) -> MiruError {
     let (line, column) = chunk.position(offset);
     MiruError::with_column(line, column, message)
@@ -1890,7 +1927,13 @@ mod tests {
         chunk.write_op(OpCode::Return, 1, 1);
         let script = Rc::new(CompiledFunction {
             name: None,
-            arity: 0,
+            arity: Arity {
+                required: 0,
+                named: 0,
+                rest: false,
+                entries: vec![0],
+                body: 0,
+            },
             chunk,
             file: None,
         });
@@ -2096,7 +2139,13 @@ mod tests {
 
         let function = Rc::new(CompiledFunction {
             name: Some("outer".to_string()),
-            arity: 0,
+            arity: Arity {
+                required: 0,
+                named: 0,
+                rest: false,
+                entries: vec![0],
+                body: 0,
+            },
             chunk,
             file: None,
         });

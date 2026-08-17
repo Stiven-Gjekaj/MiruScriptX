@@ -16,7 +16,7 @@
 
 use std::collections::HashSet;
 
-use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Pattern, Stmt, StmtKind, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, LogicalOp, Params, Pattern, Stmt, StmtKind, UnaryOp};
 
 /// A single line comment, remembered so the formatter can put it back.
 #[derive(Debug, Clone)]
@@ -113,7 +113,7 @@ impl Printer<'_> {
                 self.push_line(indent, "}".to_string());
             }
             StmtKind::Function { name, params, body } => {
-                let header = format!("fn {name}({}) {{", params.join(", "));
+                let header = format!("fn {name}({}) {{", fmt_params(params));
                 let header = self.attach_trailing(stmt.line, header);
                 self.push_line(indent, header);
                 self.print_stmts(body, indent + 1);
@@ -296,7 +296,7 @@ fn stmt_inline(stmt: &Stmt) -> String {
             block_inline(body)
         ),
         StmtKind::Function { name, params, body } => {
-            format!("fn {name}({}) {}", params.join(", "), block_inline(body))
+            format!("fn {name}({}) {}", fmt_params(params), block_inline(body))
         }
     }
 }
@@ -309,6 +309,25 @@ fn else_inline(else_branch: &Option<Vec<Stmt>>) -> String {
             None => format!(" else {}", block_inline(branch)),
         },
     }
+}
+
+/// Render a parameter list: `a`, `a, b = 1`, `a, ...rest`.
+///
+/// The three forms print in the order the parser accepts them, which is the
+/// order they were written, so this round trips without deciding anything.
+fn fmt_params(params: &Params) -> String {
+    let mut parts: Vec<String> = params
+        .named
+        .iter()
+        .map(|param| match &param.default {
+            Some(default) => format!("{} = {}", param.name, fmt_expr(default)),
+            None => param.name.clone(),
+        })
+        .collect();
+    if let Some(rest) = &params.rest {
+        parts.push(format!("...{rest}"));
+    }
+    parts.join(", ")
 }
 
 /// Render a binding target: `x`, or `[x, y]` for one that takes an array
@@ -492,7 +511,7 @@ fn fmt_expr(expr: &Expr) -> String {
             format!("{}({})", fmt_operand(callee, 8), args.join(", "))
         }
         ExprKind::Function { params, body } => {
-            format!("fn({}) {}", params.join(", "), block_inline(body))
+            format!("fn({}) {}", fmt_params(params), block_inline(body))
         }
     }
 }
@@ -763,6 +782,9 @@ mod tests {
             "let [x, [y, z]] = v",
             "let s = if a { 1 } else if b { 2 } else { 3 }",
             "for i, [x, y] in cells {\n  print(i)\n}",
+            // A default is an expression, so it has to be reprinted as one.
+            "fn f(a, b = 1 + 2, ...rest) {\n  return b\n}",
+            "let g = fn(x = [1, 2], ...more) { return x }",
         ];
         for source in sources {
             let formatted = fmt(source);
