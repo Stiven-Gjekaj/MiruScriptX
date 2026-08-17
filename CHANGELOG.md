@@ -8,7 +8,7 @@ All notable changes to MiruScriptX are recorded here. The format is based on
 Keep a Changelog (https://keepachangelog.com), and the project aims to follow
 semantic versioning.
 
-## 2.0.0 (2026-08-16)
+## 2.0.0 (2026-08-17)
 
 **The language stops making exceptions for itself.** Version 1 kept one promise
 from 1.0 to 1.12: a program correct on 1.0 was correct on every later 1.x. This
